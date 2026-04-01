@@ -1,3 +1,5 @@
+import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
+
 export type ProviderName = 'claude' | 'codex';
 export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 export type CodexApprovalPolicy = 'never' | 'on-request' | 'on-failure' | 'untrusted';
@@ -69,7 +71,7 @@ export type ClaudePermissionMode = 'bypass' | 'normal';
 
 export interface ProviderPermissionContext {
   signal: AbortSignal;
-  suggestions?: any[];
+  suggestions?: PermissionUpdate[];
   blockedPath?: string;
   decisionReason?: string;
   title?: string;
@@ -83,7 +85,7 @@ export type ProviderPermissionDecision =
   | {
       behavior: 'allow';
       updatedInput?: Record<string, unknown>;
-      updatedPermissions?: any[];
+      updatedPermissions?: PermissionUpdate[];
       toolUseID?: string;
     }
   | {

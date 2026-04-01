@@ -23,6 +23,11 @@ const REQUIRED_HOOKS = [
   'Stop',
 ];
 
+type ClaudeSettings = {
+  hooks?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
 function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -52,7 +57,7 @@ function installHookScript(): boolean {
 }
 
 function updateClaudeConfig(): boolean {
-  let config: any = {};
+  let config: ClaudeSettings = {};
 
   if (fs.existsSync(CLAUDE_CONFIG_PATH)) {
     try {

@@ -1,6 +1,6 @@
 {
   "name": "workspacecord",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Turn Discord into a local workspace control plane for multi-agent coding sessions.",
   "type": "module",
   "license": "MIT",

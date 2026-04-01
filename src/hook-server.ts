@@ -4,9 +4,14 @@ import { updateSessionState } from './panel-adapter.ts';
 import * as sessions from './thread-manager.ts';
 import { discoverAndRegisterSession } from './session-discovery.ts';
 import { isPlatformEvent } from './state/event-normalizer.ts';
-import type { Client } from 'discord.js';
+import type { AnyThreadChannel, Client, TextChannel } from 'discord.js';
 import { gateCoordinator } from './state/gate-coordinator.ts';
-import type { TextChannel } from 'discord.js';
+
+type SessionChannel = TextChannel | AnyThreadChannel;
+
+function isSessionChannel(channel: unknown): channel is SessionChannel {
+  return !!channel && typeof channel === 'object' && 'send' in channel && 'messages' in channel;
+}
 
 const HOOK_PORT = 23456;
 const REQUEST_TIMEOUT_MS = 5000; // 5 秒超时
@@ -102,7 +107,7 @@ async function handleHookEvent(req: IncomingMessage, res: ServerResponse): Promi
 
       // 获取 Discord channel
       const channel = discordClient?.channels.cache.get(session.channelId);
-      if (!channel || !('send' in channel)) {
+      if (!isSessionChannel(channel)) {
         res.writeHead(200);
         res.end(JSON.stringify({ ok: true, message: 'Channel not found' }));
         return;
@@ -111,13 +116,14 @@ async function handleHookEvent(req: IncomingMessage, res: ServerResponse): Promi
       // 更新会话状态
       await updateSessionState(session.id, event, {
         sourceHint: event.source,
-        channel: channel as any,
+        channel,
       });
 
       // 更新最近观察信息
       sessions.updateSession(session.id, {
         lastObservedState: event.type,
-        lastObservedEventKey: event.metadata?.hookEvent as string,
+        lastObservedEventKey:
+          typeof event.metadata?.hookEvent === 'string' ? event.metadata.hookEvent : undefined,
         lastObservedAt: event.timestamp,
       });
 

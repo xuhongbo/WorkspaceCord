@@ -3,6 +3,7 @@ import { Client } from 'discord.js';
 import { discoverAndRegisterSession } from './session-discovery.ts';
 import * as sessions from './thread-manager.ts';
 import { updateSessionState } from './panel-adapter.ts';
+import type { PlatformEventType } from './state/types.ts';
 
 const EVENT_QUEUE = '/tmp/workspacecord-hook-events.jsonl';
 const POLL_INTERVAL = 500; // 500ms
@@ -10,6 +11,15 @@ const POLL_INTERVAL = 500; // 500ms
 let lastReadPosition = 0;
 let watcherInterval: NodeJS.Timeout | null = null;
 let discordClient: Client | null = null;
+
+interface HookQueueEvent {
+  sessionId?: string;
+  state?: PlatformEventType;
+  metadata?: {
+    cwd?: string;
+    timestamp?: number;
+  };
+}
 
 export function startHookWatcher(client: Client) {
   discordClient = client;
@@ -66,7 +76,7 @@ async function pollEvents() {
   }
 }
 
-async function handleHookEvent(event: any) {
+async function handleHookEvent(event: HookQueueEvent) {
   const { sessionId, state, metadata } = event;
 
   if (!sessionId || !state) {
