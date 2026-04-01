@@ -1,0 +1,79 @@
+{
+  "name": "workspacecord",
+  "version": "1.0.0",
+  "description": "Turn Discord into a local workspace control plane for multi-agent coding sessions.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xuhongbo/WorkspaceCord.git"
+  },
+  "homepage": "https://github.com/xuhongbo/WorkspaceCord#readme",
+  "bugs": {
+    "url": "https://github.com/xuhongbo/WorkspaceCord/issues"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "ai",
+    "claude",
+    "codex",
+    "coding-assistant",
+    "agent",
+    "multi-agent",
+    "cli"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "workspacecord": "./dist/cli.js",
+    "wsc": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "start": "node --experimental-strip-types src/cli.ts",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:integration:smoke": "node --experimental-strip-types scripts/integration-smoke.ts",
+    "test:multi-session:smoke": "node --experimental-strip-types scripts/multi-session-smoke.ts",
+    "test:session-sync:smoke": "node --experimental-strip-types scripts/session-sync-smoke.ts",
+    "test:monitor:e2e": "node --experimental-strip-types scripts/monitor-e2e.ts",
+    "test:acceptance:local": "node --experimental-strip-types scripts/local-acceptance-suite.ts",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.85",
+    "@clack/prompts": "^1.1.0",
+    "configstore": "^8.0.0",
+    "discord.js": "^14.25.1",
+    "execa": "^9.6.1",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/configstore": "^6.0.2",
+    "@types/node": "^25.5.0",
+    "eslint": "^10.1.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.4.0",
+    "prettier": "^3.8.1",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.57.2",
+    "vitest": "^4.1.2"
+  },
+  "optionalDependencies": {
+    "@openai/codex-sdk": "^0.117.0"
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  }
+}
