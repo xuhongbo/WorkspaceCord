@@ -182,3 +182,9 @@ We welcome contributions! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for d
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
+
+## Acknowledgments
+
+This project was inspired by:
+- [agentcord](https://github.com/radu2lupu/agentcord) - Discord integration for AI agents
+- [clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk) - Claude desktop integration
