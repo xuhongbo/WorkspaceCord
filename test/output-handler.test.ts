@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderEvent } from '../src/providers/types.ts';
 
+const deliveryMocks = vi.hoisted(() => ({
+  buildDeliveryPlan: vi.fn(),
+  deliver: vi.fn(),
+}));
+
 const mocks = vi.hoisted(() => ({
   initializeSessionPanel: vi.fn(),
   updateSessionState: vi.fn(),
@@ -20,6 +25,12 @@ vi.mock('../src/panel-adapter.ts', () => ({
   queueDigest: mocks.queueDigest,
   flushDigest: mocks.flushDigest,
 }));
+vi.mock('../src/discord/delivery-policy.ts', () => ({
+  buildDeliveryPlan: deliveryMocks.buildDeliveryPlan,
+}));
+vi.mock('../src/discord/delivery.ts', () => ({
+  deliver: deliveryMocks.deliver,
+}));
 vi.mock('../src/thread-manager.ts', () => ({
   getSession: mocks.getSession,
   updateSession: mocks.updateSession,
@@ -33,10 +44,12 @@ const { handleOutputStream } = await import('../src/output-handler.ts');
 function createFakeChannel() {
   const sent: unknown[] = [];
   return {
+    id: 'chat-1',
     sent,
     async send(payload: unknown) {
       sent.push(payload);
       return {
+        id: `sent-${sent.length}`,
         content:
           typeof payload === 'object' && payload && 'content' in (payload as Record<string, unknown>)
             ? String((payload as Record<string, unknown>).content ?? '')
@@ -60,6 +73,16 @@ async function* streamEvents(events: ProviderEvent[]): AsyncGenerator<ProviderEv
 describe('handleOutputStream', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    deliveryMocks.buildDeliveryPlan.mockImplementation((input) => ({
+      sessionId: input.sessionId,
+      chatId: input.chatId,
+      replyToMessageId: input.replyToMessageId,
+      editTargetMessageId: input.editTargetMessageId,
+      chunks: [input.text],
+      filesOnFirstChunk: input.files,
+      mode: input.mode,
+    }));
+    deliveryMocks.deliver.mockResolvedValue(['msg-1']);
     mocks.getSession.mockReturnValue({
       id: 'session-1',
       agentLabel: 'demo',
@@ -114,6 +137,7 @@ describe('handleOutputStream', () => {
       'session-1',
       expect.objectContaining({ type: 'result' }),
       expect.stringContaining('A'.repeat(200)),
+      [],
     );
     const call = mocks.handleResultEvent.mock.calls.at(-1);
     expect(String(call?.[2]).includes('B'.repeat(200))).toBe(true);
@@ -167,4 +191,54 @@ describe('handleOutputStream', () => {
       expect.objectContaining({ type: 'work_started' }),
     );
   });
+
+  it('image_file 附件通过最终消息协同层发送', async () => {
+    const channel = createFakeChannel();
+    const filePath = '/Users/ld/Documents/github/agentcord/tmp/test-image.png';
+    await import('node:fs/promises').then((fs) => fs.writeFile(filePath, 'img'));
+
+    await handleOutputStream(
+      streamEvents([
+        { type: 'image_file', filePath },
+        { type: 'result', success: true, costUsd: 0, durationMs: 25, numTurns: 1, errors: [] },
+      ]),
+      channel as Parameters<typeof handleOutputStream>[1],
+      'session-1',
+    );
+
+    expect(deliveryMocks.buildDeliveryPlan).not.toHaveBeenCalled();
+    expect(deliveryMocks.deliver).not.toHaveBeenCalled();
+    expect(mocks.handleResultEvent).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ type: 'result' }),
+      expect.any(String),
+      [filePath],
+    );
+    expect(channel.sent).toEqual([]);
+  });
+
+  it('text_delta 在长任务过程中通过 progress_update 发中间消息', async () => {
+    const channel = createFakeChannel();
+
+    async function* delayedStream() {
+      yield { type: 'text_delta', text: 'working' } as ProviderEvent;
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      yield { type: 'result', success: true, costUsd: 0, durationMs: 25, numTurns: 1, errors: [] } as ProviderEvent;
+    }
+
+    await handleOutputStream(
+      delayedStream(),
+      channel as Parameters<typeof handleOutputStream>[1],
+      'session-1',
+    );
+
+    expect(deliveryMocks.buildDeliveryPlan).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'progress_update' }),
+    );
+    expect(deliveryMocks.deliver).toHaveBeenCalledWith(
+      channel,
+      expect.objectContaining({ mode: 'progress_update' }),
+    );
+  });
+
 });

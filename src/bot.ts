@@ -51,6 +51,8 @@ import { startHealthMonitor, stopHealthMonitor, setBotStartTime } from './health
 import { gateCoordinator } from './state/gate-coordinator.ts';
 import { reconcileSessionRecordsWithGuild } from './session-housekeeping.ts';
 import { startPerformanceMonitoring, stopPerformanceMonitoring } from './panel-adapter.ts';
+import { buildDeliveryPlan } from './discord/delivery-policy.ts';
+import { deliver } from './discord/delivery.ts';
 
 let client: Client;
 let logChannel: TextChannel | null = null;
@@ -176,26 +178,23 @@ export async function flushLogs(): Promise<void> {
   if (!logChannel || logBuffer.length === 0) return;
   const lines = logBuffer.splice(0, logBuffer.length);
 
-  // Split into chunks that fit Discord's 2000-char limit
-  const chunks: string[] = [];
-  let current = '';
-  for (const line of lines) {
-    const separator = current ? '\n' : '';
-    if (current.length + separator.length + line.length > 1900) {
-      if (current) chunks.push(current);
-      current = line.length > 1900 ? line.slice(0, 1900) : line;
-    } else {
-      current += separator + line;
-    }
-  }
-  if (current) chunks.push(current);
-
-  for (const chunk of chunks) {
-    try {
-      await logChannel.send(chunk);
-    } catch {
-      // Log channel may have been deleted or bot lost permissions
-    }
+  try {
+    const plan = buildDeliveryPlan({
+      sessionId: `bot-log:${logChannel.id}`,
+      chatId: logChannel.id,
+      text: lines.join('\n'),
+      files: [],
+      mode: 'log',
+      policy: {
+        textChunkLimit: config.textChunkLimit ?? 2000,
+        chunkMode: config.chunkMode ?? 'length',
+        replyToMode: config.replyToMode ?? 'first',
+        ackReaction: config.ackReaction ?? '👀',
+      },
+    });
+    await deliver(logChannel, plan);
+  } catch {
+    // Log channel may have been deleted or bot lost permissions
   }
 }
 
@@ -297,12 +296,23 @@ async function notifyUnmanagedCodexHint(session: { id: string; channelId: string
   if (!channel) return;
 
   try {
-    await channel.send(
-      [
+    const plan = buildDeliveryPlan({
+      sessionId: session.id,
+      chatId: session.channelId,
+      text: [
         '💡 提示：此 Codex 会话为非受管模式，仅支持状态监控',
         '如需远程审批能力，请使用 `workspacecord codex` 命令启动会话',
       ].join('\n'),
-    );
+      files: [],
+      mode: 'system_notice',
+      policy: {
+        textChunkLimit: config.textChunkLimit ?? 2000,
+        chunkMode: config.chunkMode ?? 'length',
+        replyToMode: config.replyToMode ?? 'first',
+        ackReaction: config.ackReaction ?? '👀',
+      },
+    });
+    await deliver(channel, plan);
   } catch (err) {
     console.warn('[Codex Hint] 发送非受管提示失败:', err);
   }

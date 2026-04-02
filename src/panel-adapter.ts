@@ -102,7 +102,7 @@ export async function initializeSessionPanel(
     provider: session?.provider,
   });
 
-  const summaryHandler = new SummaryHandler(channel, statusCard);
+  const summaryHandler = new SummaryHandler(sessionId, channel.id, channel, statusCard);
   const interactionCard = new InteractionCard(channel);
 
   sessionComponents.set(sessionId, {
@@ -209,6 +209,7 @@ export async function handleResultEvent(
   sessionId: string,
   event: Extract<ProviderEvent, { type: 'result' }>,
   textContent: string,
+  attachments: string[] = [],
 ): Promise<void> {
   const components = getSessionComponents(sessionId);
   if (!components) return;
@@ -224,7 +225,7 @@ export async function handleResultEvent(
   sessions.setCurrentInteractionMessage(sessionId, undefined);
 
   if (isSessionEnd) {
-    await components.summaryHandler.sendEndingSummary(textContent);
+    await components.summaryHandler.sendEndingSummary(textContent, attachments);
     await updateSessionState(sessionId, {
       type: 'session_ended',
       sessionId,
@@ -234,9 +235,15 @@ export async function handleResultEvent(
       metadata: { from: 'result' },
     });
   } else if (!event.success) {
+    const session = sessions.getSession(sessionId);
     const failureText =
       textContent.trim() || event.errors.join('\n').trim() || '任务失败';
-    await components.summaryHandler.sendTurnFailure(failureText, snapshot.turn);
+    await components.summaryHandler.sendTurnFailure(
+      failureText,
+      snapshot.turn,
+      session?.lastInboundMessageId,
+      attachments,
+    );
     await updateSessionState(sessionId, {
       type: 'errored',
       sessionId,
@@ -248,7 +255,12 @@ export async function handleResultEvent(
   } else {
     const before = ensureSession(sessionId);
     const session = sessions.getSession(sessionId);
-    await components.summaryHandler.sendTurnSummary(textContent, before.turn);
+    await components.summaryHandler.sendTurnSummary(
+      textContent,
+      before.turn,
+      session?.lastInboundMessageId,
+      attachments,
+    );
     const after = stateMachine.incrementTurn(sessionId);
     sessions.updateSession(sessionId, {
       currentTurn: after.turn,

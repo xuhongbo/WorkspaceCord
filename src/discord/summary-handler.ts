@@ -2,71 +2,70 @@
 // 参考设计文档 5.5
 
 import { EmbedBuilder, type TextChannel, type AnyThreadChannel } from 'discord.js';
+import { config } from '../config.ts';
 import type { StatusCard } from './status-card.ts';
+import { buildDeliveryPlan, chunkText } from './delivery-policy.ts';
+import { deliver } from './delivery.ts';
 
 export class SummaryHandler {
+  private sessionId: string;
+  private chatId: string;
   private channel: TextChannel | AnyThreadChannel;
   private statusCard: StatusCard;
   private digestMessageIds: string[] = [];
 
-  constructor(channel: TextChannel | AnyThreadChannel, statusCard: StatusCard) {
+  constructor(
+    sessionId: string,
+    chatId: string,
+    channel: TextChannel | AnyThreadChannel,
+    statusCard: StatusCard,
+  ) {
+    this.sessionId = sessionId;
+    this.chatId = chatId;
     this.channel = channel;
     this.statusCard = statusCard;
   }
 
-  async sendTurnSummary(content: string, turn: number): Promise<void> {
-    const chunks = this.splitIfNeeded(content);
-
-    for (let i = 0; i < chunks.length; i++) {
-      const embed = new EmbedBuilder()
-        .setColor(0x00ff00)
-        .setDescription(chunks[i])
-        .setTimestamp();
-
-      if (i === 0) embed.setTitle('✅ 本轮完成');
-      if (chunks.length > 1) embed.setFooter({ text: `第 ${i + 1}/${chunks.length} 部分` });
-
-      await this.channel.send({ embeds: [embed] });
-    }
-
-    // 状态回落到 idle
+  async sendTurnSummary(
+    content: string,
+    turn: number,
+    replyToMessageId?: string,
+    attachments: string[] = [],
+  ): Promise<void> {
+    await this.sendFinalSummaryMessage(
+      'user_reply',
+      '✅ 本轮完成\n\n',
+      content,
+      replyToMessageId,
+      attachments,
+    );
     await this.statusCard.update('idle', { turn: turn + 1, updatedAt: Date.now() });
   }
 
-  async sendTurnFailure(content: string, turn: number): Promise<void> {
-    const chunks = this.splitIfNeeded(content);
-
-    for (let i = 0; i < chunks.length; i++) {
-      const embed = new EmbedBuilder()
-        .setColor(0xe74c3c)
-        .setDescription(chunks[i])
-        .setTimestamp();
-
-      if (i === 0) embed.setTitle('❌ 本轮失败');
-      if (chunks.length > 1) embed.setFooter({ text: `第 ${i + 1}/${chunks.length} 部分` });
-
-      await this.channel.send({ embeds: [embed] });
-    }
-
+  async sendTurnFailure(
+    content: string,
+    turn: number,
+    replyToMessageId?: string,
+    attachments: string[] = [],
+  ): Promise<void> {
+    await this.sendFinalSummaryMessage(
+      'user_reply',
+      '❌ 本轮失败\n\n',
+      content,
+      replyToMessageId,
+      attachments,
+    );
     await this.statusCard.update('error', { turn, updatedAt: Date.now() });
   }
 
-  async sendEndingSummary(content: string): Promise<void> {
-    const chunks = this.splitIfNeeded(content);
-
-    for (let i = 0; i < chunks.length; i++) {
-      const embed = new EmbedBuilder()
-        .setColor(0x808080)
-        .setDescription(chunks[i])
-        .setTimestamp();
-
-      if (i === 0) embed.setTitle('🏁 会话结束');
-      if (chunks.length > 1) embed.setFooter({ text: `第 ${i + 1}/${chunks.length} 部分` });
-
-      await this.channel.send({ embeds: [embed] });
-    }
-
-    // 状态进入 offline
+  async sendEndingSummary(content: string, attachments: string[] = []): Promise<void> {
+    await this.sendFinalSummaryMessage(
+      'system_notice',
+      '🏁 会话结束\n\n',
+      content,
+      undefined,
+      attachments,
+    );
     await this.statusCard.update('offline', { turn: 0, updatedAt: Date.now() });
   }
 
@@ -75,70 +74,99 @@ export class SummaryHandler {
     if (chunks.length === 0) return;
 
     const nextMessageIds: string[] = [];
+    const chunksToCreate: string[] = [];
+    const replacedMessageIds: string[] = [];
+
     for (let i = 0; i < chunks.length; i++) {
-      const embed = new EmbedBuilder()
-        .setColor(0x3498db)
-        .setDescription(chunks[i])
-        .setTimestamp();
-
-      if (i === 0) embed.setTitle('📌 最近摘要');
-      if (chunks.length > 1) {
-        embed.setFooter({ text: `第 ${i + 1}/${chunks.length} 部分` });
-      } else {
-        embed.setFooter({ text: `更新于 <t:${Math.floor(Date.now() / 1000)}:R>` });
-      }
-
       const existingId = this.digestMessageIds[i];
       if (existingId) {
+        const embed = this.buildDigestEmbed(chunks[i], i, chunks.length);
         try {
           await this.channel.messages.edit(existingId, { embeds: [embed] });
           nextMessageIds.push(existingId);
           continue;
         } catch {
-          // fall through to re-send below
+          replacedMessageIds.push(existingId);
         }
       }
-
-      const message = await this.channel.send({ embeds: [embed] });
-      nextMessageIds.push(message.id);
+      chunksToCreate.push(chunks[i]);
     }
 
-    for (const staleId of this.digestMessageIds.slice(chunks.length)) {
+    if (chunksToCreate.length > 0) {
+      const text = chunksToCreate
+        .map((chunk, idx) => {
+          const absoluteIndex = nextMessageIds.length + idx;
+          const title = absoluteIndex === 0 ? '📌 最近摘要\n\n' : '';
+          const footer = chunks.length > 1 ? `\n\n-# 第 ${absoluteIndex + 1}/${chunks.length} 部分` : '';
+          return `${title}${chunk}${footer}`.trim();
+        })
+        .join('\n\n');
+      const plan = buildDeliveryPlan({
+        sessionId: this.sessionId,
+        chatId: this.chatId,
+        text,
+        files: [],
+        mode: 'log',
+        policy: {
+          textChunkLimit: config.textChunkLimit,
+          chunkMode: config.chunkMode,
+          replyToMode: config.replyToMode,
+          ackReaction: config.ackReaction,
+        },
+      });
+      const createdIds = await deliver(this.channel, plan);
+      nextMessageIds.push(...createdIds);
+    }
+
+    for (const staleId of [...replacedMessageIds, ...this.digestMessageIds.slice(chunks.length)]) {
       await this.channel.messages.delete(staleId).catch(() => {});
     }
 
     this.digestMessageIds = nextMessageIds;
   }
 
-  private splitIfNeeded(content: string): string[] {
-    const MAX_LENGTH = 1900; // 留 buffer
-    if (!content.trim()) return [];
-    if (content.length <= MAX_LENGTH) return [content];
+  private buildDigestEmbed(content: string, index: number, total: number): EmbedBuilder {
+    const embed = new EmbedBuilder()
+      .setColor(0x3498db)
+      .setDescription(content)
+      .setTimestamp();
 
-    const chunks: string[] = [];
-    let current = '';
-
-    const sentences = content.split(/(?<=[.!?。！？])\s+/);
-
-    for (const sentence of sentences) {
-      if (current.length + sentence.length > MAX_LENGTH) {
-        if (current) {
-          chunks.push(current.trim());
-          current = '';
-        }
-        if (sentence.length > MAX_LENGTH) {
-          for (let i = 0; i < sentence.length; i += MAX_LENGTH) {
-            chunks.push(sentence.slice(i, i + MAX_LENGTH));
-          }
-        } else {
-          current = sentence;
-        }
-      } else {
-        current += (current ? ' ' : '') + sentence;
-      }
+    if (index === 0) embed.setTitle('📌 最近摘要');
+    if (total > 1) {
+      embed.setFooter({ text: `第 ${index + 1}/${total} 部分` });
+    } else {
+      embed.setFooter({ text: `更新于 <t:${Math.floor(Date.now() / 1000)}:R>` });
     }
+    return embed;
+  }
 
-    if (current) chunks.push(current.trim());
-    return chunks;
+  private async sendFinalSummaryMessage(
+    mode: 'user_reply' | 'summary' | 'system_notice',
+    prefix: string,
+    content: string,
+    replyToMessageId?: string,
+    attachments: string[] = [],
+  ): Promise<void> {
+    const text = `${prefix}${content}`.trim();
+    const plan = buildDeliveryPlan({
+      sessionId: this.sessionId,
+      chatId: this.chatId,
+      text,
+      files: attachments,
+      mode,
+      replyToMessageId,
+      policy: {
+        textChunkLimit: config.textChunkLimit,
+        chunkMode: config.chunkMode,
+        replyToMode: config.replyToMode,
+        ackReaction: config.ackReaction,
+      },
+    });
+    await deliver(this.channel, plan);
+  }
+
+  private splitIfNeeded(content: string): string[] {
+    if (!content.trim()) return [];
+    return chunkText(content, 1900, 'length');
   }
 }
