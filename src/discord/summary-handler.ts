@@ -107,7 +107,9 @@ export class SummaryHandler {
         },
       });
       const createdIds = await deliver(this.channel, plan);
-      nextMessageIds[i] = createdIds[0];
+      if (createdIds.length > 0) {
+        nextMessageIds[i] = createdIds[0];
+      }
     }
 
     for (const staleId of [...staleMessageIds, ...this.digestMessageIds.slice(chunks.length)]) {
