@@ -1,0 +1,115 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+const sendPromptMock = vi.fn();
+const continueSessionMock = vi.fn();
+const supportsMock = vi.fn(() => true);
+const ensureProviderMock = vi.fn(async () => ({
+  name: 'codex',
+  sendPrompt: sendPromptMock,
+  continueSession: continueSessionMock,
+  supports: supportsMock,
+}));
+
+vi.mock('../src/providers/index.ts', () => ({
+  ensureProvider: ensureProviderMock,
+}));
+
+vi.mock('../src/agents.ts', () => ({
+  getAgent: vi.fn(() => undefined),
+}));
+
+vi.mock('../src/project-manager.ts', () => ({
+  getPersonality: vi.fn(() => undefined),
+}));
+
+vi.mock('../src/config.ts', () => ({
+  config: {
+    defaultMode: 'auto',
+    codexSandboxMode: 'workspace-write',
+    codexApprovalPolicy: 'on-failure',
+    codexNetworkAccessEnabled: false,
+    codexWebSearchMode: 'disabled',
+    codexReasoningEffort: '',
+    claudePermissionMode: 'normal',
+  },
+}));
+
+describe('thread-manager system prompt', () => {
+  let dataDir = '';
+  let workDir = '';
+
+  beforeEach(() => {
+    vi.resetModules();
+    sendPromptMock.mockReset();
+    sendPromptMock.mockImplementation(async function* () {
+      yield { type: 'result', success: true, costUsd: 0, durationMs: 1, numTurns: 1, errors: [] };
+    });
+    dataDir = mkdtempSync(join(tmpdir(), 'workspacecord-system-prompt-data-'));
+    workDir = mkdtempSync(join(tmpdir(), 'workspacecord-system-prompt-work-'));
+  });
+
+  afterEach(async () => {
+    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    _setDataDirForTest(null);
+    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  it('把 discord 交互语义注入 systemPromptParts', async () => {
+    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    _setDataDirForTest(dataDir);
+    const threadManager = await import('../src/thread-manager.ts');
+
+    const session = await threadManager.createSession({
+      channelId: 'channel-1',
+      categoryId: 'category-1',
+      projectName: 'demo',
+      agentLabel: 'demo-session',
+      provider: 'codex',
+      directory: workDir,
+      type: 'persistent',
+    });
+
+    for await (const _event of threadManager.sendPrompt(session.id, 'hello')) {
+      // consume stream
+    }
+
+    expect(sendPromptMock).toHaveBeenCalled();
+    const options = sendPromptMock.mock.calls.at(-1)?.[1];
+    const promptText = String(options?.systemPromptParts?.join('\n') ?? '');
+    expect(promptText).toContain('Discord');
+    expect(promptText).toContain('附件默认不自动下载');
+    expect(promptText).toContain('workspacecord attachment fetch');
+    expect(promptText).toContain('新的可见消息');
+  });
+
+  it('monitor 模式也注入 discord 交互语义', async () => {
+    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    _setDataDirForTest(dataDir);
+    const threadManager = await import('../src/thread-manager.ts');
+
+    const session = await threadManager.createSession({
+      channelId: 'channel-2',
+      categoryId: 'category-1',
+      projectName: 'demo',
+      agentLabel: 'monitor-session',
+      provider: 'codex',
+      directory: workDir,
+      type: 'persistent',
+      mode: 'monitor',
+    });
+
+    for await (const _event of threadManager.sendPrompt(session.id, 'hello monitor')) {
+    }
+
+    const options = sendPromptMock.mock.calls.at(-1)?.[1];
+    const promptText = String(options?.systemPromptParts?.join('\n') ?? '');
+    expect(promptText).toContain('Discord');
+    expect(promptText).toContain('附件默认不自动下载');
+    expect(promptText).toContain('workspacecord attachment fetch');
+  });
+
+});

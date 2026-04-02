@@ -24,6 +24,11 @@ switch (command) {
     await handleProject(process.argv.slice(3));
     break;
   }
+  case 'attachment': {
+    const { handleAttachment } = await import('./attachment-cli.ts');
+    await handleAttachment(process.argv.slice(3));
+    break;
+  }
   case 'daemon': {
     const { handleDaemon } = await import('./daemon.ts');
     await handleDaemon(process.argv[3]);
@@ -48,6 +53,7 @@ switch (command) {
     workspacecord config list         List all config values
     workspacecord config path         Show config file path
     workspacecord project <subcommand> Manage mounted projects
+    workspacecord attachment fetch    Download registered Discord attachments
     workspacecord daemon              Manage background service (install/uninstall/status)
     workspacecord codex [options]     Launch managed Codex session with remote approval
     workspacecord help                Show this help message

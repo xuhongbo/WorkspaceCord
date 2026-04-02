@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 
 let dataDirOverride: string | null = null;
 
-function getDataDir(): string {
+export function getDataDir(): string {
   return dataDirOverride ?? join(homedir(), '.workspacecord');
 }
 

@@ -45,6 +45,7 @@ export interface ThreadSession {
   humanResolved: boolean; // 当前轮次是否已被人工处理
   currentInteractionMessageId?: string; // 当前等待人工的交互消息 ID
   statusCardMessageId?: string; // 常驻状态卡消息 ID
+  lastInboundMessageId?: string; // 最近一条驱动本轮回复的入站消息 ID
   // 本地会话实时感知字段（设计文档 11.2 节）
   discoverySource?: 'discord' | 'claude-hook' | 'codex-log' | 'sync'; // 会话发现来源
   lastObservedState?: string; // 最近本地观察到的状态
@@ -158,6 +159,8 @@ export interface Config {
   codexPath: string;
   anthropicApiKey: string;
   anthropicBaseUrl: string;
+  sessionSyncIntervalMs: number;
+  sessionSyncRecentDays: number;
 }
 
 // ─── Archived Session ─────────────────────────────────────────────────────────
@@ -168,6 +171,7 @@ export interface ArchivedSession {
   categoryId: string;
   agentLabel: string;
   provider: ProviderName;
+  providerSessionId?: string;
   directory: string;
   mode: SessionMode;
   createdAt: number;
