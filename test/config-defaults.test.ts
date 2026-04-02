@@ -16,6 +16,13 @@ describe('config defaults', () => {
     expect(config.defaultProvider).toBe('codex');
   });
 
+  it('discord 投递默认配置与官方源码一致', () => {
+    expect(config.ackReaction).toBe('👀');
+    expect(config.replyToMode).toBe('first');
+    expect(config.textChunkLimit).toBe(2000);
+    expect(config.chunkMode).toBe('length');
+  });
+
   it('命令里的 provider 默认提示为 Codex', () => {
     const defs = getCommandDefinitions();
     const names = new Set<string>();
@@ -38,5 +45,26 @@ describe('config defaults', () => {
       }
     }
     expect(Array.from(names)).toContain('Codex（默认）');
+  });
+});
+
+
+describe('config runtime fallback', () => {
+  it('非法运行时配置会回退到安全默认值', async () => {
+    vi.resetModules();
+    vi.doMock('../src/global-config.ts', () => ({
+      getConfigValue: (key: string) => {
+        if (key === 'DISCORD_TOKEN') return 'token';
+        if (key === 'DISCORD_CLIENT_ID') return 'client';
+        if (key === 'REPLY_TO_MODE') return 'broken';
+        if (key === 'CHUNK_MODE') return 'smart';
+        if (key === 'TEXT_CHUNK_LIMIT') return '99999';
+        return undefined;
+      },
+    }));
+    const mod = await import('../src/config.ts?fallback');
+    expect(mod.config.replyToMode).toBe('first');
+    expect(mod.config.chunkMode).toBe('length');
+    expect(mod.config.textChunkLimit).toBe(2000);
   });
 });

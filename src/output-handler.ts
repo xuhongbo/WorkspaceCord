@@ -1,5 +1,4 @@
 import {
-  AttachmentBuilder,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -12,9 +11,9 @@ import {
 
 type SessionChannel = TextChannel | AnyThreadChannel;
 import { existsSync } from 'node:fs';
+import { config } from './config.ts';
 import type { ProviderEvent, ProviderName } from './providers/types.ts';
 import {
-  splitMessage,
   truncate,
   detectNumberedOptions,
   detectYesNoPrompt,
@@ -29,6 +28,8 @@ import {
 } from './codex-renderer.ts';
 import { getSession } from './thread-manager.ts';
 import * as sessions from './thread-manager.ts';
+import { buildDeliveryPlan } from './discord/delivery-policy.ts';
+import { deliver } from './discord/delivery.ts';
 import {
   initializeSessionPanel,
   updateSessionState,
@@ -400,6 +401,22 @@ class MessageStreamer {
     this.flushing = true;
     try {
       this.dirty = false;
+      if (this.currentText.trim()) {
+        const plan = buildDeliveryPlan({
+          sessionId: this._sessionId,
+          chatId: this._channel.id,
+          text: this.currentText,
+          files: [],
+          mode: 'progress_update',
+          policy: {
+            textChunkLimit: config.textChunkLimit,
+            chunkMode: config.chunkMode,
+            replyToMode: config.replyToMode,
+            ackReaction: config.ackReaction,
+          },
+        });
+        await deliver(this._channel, plan);
+      }
     } finally {
       this.flushing = false;
       if (this.dirty) this.scheduleFlush();
@@ -475,6 +492,7 @@ export async function handleOutputStream(
   let fileChangeCount = 0;
   const recentCommands: string[] = [];
   const changedFiles: string[] = [];
+  const pendingAttachments: string[] = [];
   let lastDigestFlushAt = Date.now();
   const session = sessions.getSession(sessionId);
 
@@ -585,9 +603,7 @@ export async function handleOutputStream(
 
         case 'image_file': {
           if (existsSync(event.filePath)) {
-            await streamer.finalize();
-            const attachment = new AttachmentBuilder(event.filePath);
-            await channel.send({ files: [attachment] });
+            pendingAttachments.push(event.filePath);
           }
           break;
         }
@@ -674,10 +690,11 @@ export async function handleOutputStream(
               });
             } else {
               await flushDigest(sessionId);
-              await handleResultEvent(sessionId, event, lastText);
+              await handleResultEvent(sessionId, event, lastText, [...pendingAttachments]);
             }
           }
-          break;
+          pendingAttachments.length = 0;
+         break;
         }
 
         case 'error': {

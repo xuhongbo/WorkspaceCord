@@ -52,6 +52,9 @@ const MODE_LABELS: Record<SessionMode, string> = {
   monitor: '🧠 Monitor — steers until complete',
 };
 
+const CLEANUP_PREVIEW_LIST_LIMIT = 10;
+const CLEANUP_PREVIEW_LABEL_LIMIT = 120;
+
 type ExistingStatusCardRegistrar = (
   sessionId: string,
   channel: TextChannel,
@@ -80,8 +83,38 @@ async function registerStatusCardWithPanelAdapter(
 
 const CONTROL_CHANNEL_NAME = 'control';
 
+function truncateCleanupLabel(label: string, max = CLEANUP_PREVIEW_LABEL_LIMIT): string {
+  if (label.length <= max) return label;
+  return `${label.slice(0, Math.max(0, max - 1))}…`;
+}
+
 function formatCleanupChannelLine(channelId: string, label?: string): string {
-  return label ? `- <#${channelId}> ${label}` : `- <#${channelId}>`;
+  return label ? `- <#${channelId}> ${truncateCleanupLabel(label)}` : `- <#${channelId}>`;
+}
+
+function appendCleanupPreviewSection(
+  lines: string[],
+  title: string,
+  sessions: Array<{ channelId: string; agentLabel?: string }>,
+): void {
+  lines.push('', title);
+
+  if (sessions.length === 0) {
+    lines.push('- 无');
+    return;
+  }
+
+  const visibleSessions = sessions.slice(0, CLEANUP_PREVIEW_LIST_LIMIT);
+  lines.push(
+    ...visibleSessions.map((session) =>
+      formatCleanupChannelLine(session.channelId, session.agentLabel),
+    ),
+  );
+
+  const remaining = sessions.length - visibleSessions.length;
+  if (remaining > 0) {
+    lines.push(`- ... 其余 ${remaining} 个频道已省略`);
+  }
 }
 
 function renderCleanupPreviewMessage(preview: ReturnType<typeof buildProjectCleanupPreview>): string {
@@ -102,23 +135,8 @@ function renderCleanupPreviewMessage(preview: ReturnType<typeof buildProjectClea
     lines.push(`- 历史归档：<#${preview.protectedChannels.historyChannelId}>`);
   }
 
-  lines.push('', '将跳过（进行中）：');
-  if (preview.skippedGenerating.length === 0) {
-    lines.push('- 无');
-  } else {
-    lines.push(
-      ...preview.skippedGenerating.map((session) =>
-        formatCleanupChannelLine(session.channelId, session.agentLabel),
-      ),
-    );
-  }
-
-  lines.push('', '将归档：');
-  lines.push(
-    ...preview.archiveCandidates.map((session) =>
-      formatCleanupChannelLine(session.channelId, session.agentLabel),
-    ),
-  );
+  appendCleanupPreviewSection(lines, '将跳过（进行中）：', preview.skippedGenerating);
+  appendCleanupPreviewSection(lines, '将归档：', preview.archiveCandidates);
   lines.push(
     '',
     `预计归档 ${preview.archiveCandidates.length} 个频道，跳过 ${preview.skippedGenerating.length} 个进行中的会话。`,

@@ -29,9 +29,14 @@ export const VALID_KEYS = new Set([
   'ANTHROPIC_BASE_URL',
   'MESSAGE_RETENTION_DAYS',
   'RATE_LIMIT_MS',
+  'ACK_REACTION',
+  'REPLY_TO_MODE',
+  'TEXT_CHUNK_LIMIT',
+  'CHUNK_MODE',
   'SHELL_ENABLED',
   'SHELL_ALLOWED_USERS',
   'SESSION_SYNC_INTERVAL_MS',
+  'SESSION_SYNC_RECENT_DAYS',
   'HEALTH_REPORT_ENABLED',
   'HEALTH_REPORT_INTERVAL_MS',
   'HEALTH_CHECK_STUCK_THRESHOLD_MS',
@@ -84,8 +89,33 @@ export function validateConfigValue(key: string, value: string): string | null {
         return `Invalid value for SHELL_ENABLED. Expected "true" or "false"`;
       }
       break;
+    case 'TEXT_CHUNK_LIMIT': {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 1 || n > 2000) {
+        return `Invalid value for ${key}. Expected an integer between 1 and 2000`;
+      }
+      break;
+    }
+    case 'ACK_REACTION':
+      if (value === '') break;
+      if (/^<a?:[A-Za-z0-9_~]+:\d+>$/.test(value)) break;
+      if (/\s/.test(value)) {
+        return 'Invalid value for ACK_REACTION. Expected a Unicode emoji, empty string, or custom emoji like <:name:id>';
+      }
+      break;
+    case 'REPLY_TO_MODE':
+      if (!['off', 'first', 'all'].includes(value)) {
+        return `Invalid value for REPLY_TO_MODE. Expected one of: off, first, all`;
+      }
+      break;
+    case 'CHUNK_MODE':
+      if (!['length', 'newline'].includes(value)) {
+        return `Invalid value for CHUNK_MODE. Expected one of: length, newline`;
+      }
+      break;
     case 'RATE_LIMIT_MS':
     case 'SESSION_SYNC_INTERVAL_MS':
+    case 'SESSION_SYNC_RECENT_DAYS':
     case 'HEALTH_REPORT_INTERVAL_MS':
     case 'HEALTH_CHECK_STUCK_THRESHOLD_MS':
     case 'HEALTH_CHECK_IDLE_THRESHOLD_MS': {

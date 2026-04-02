@@ -13,10 +13,18 @@ import { listCodexSessionsForProjects } from './codex-session-discovery.ts';
 import { getAllRegisteredProjects } from './project-registry.ts';
 import * as sessions from './thread-manager.ts';
 import { config } from './config.ts';
+import { isArchivedProviderSession } from './archive-manager.ts';
 
 const SYNC_INTERVAL_MS = config.sessionSyncIntervalMs;
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let syncInProgress = false;
+
+function isWithinRecentSessionWindow(lastActivityAt: number | undefined, now = Date.now()): boolean {
+  if (config.sessionSyncRecentDays <= 0) return true;
+  if (typeof lastActivityAt !== 'number' || !Number.isFinite(lastActivityAt)) return false;
+  const recentSessionWindowMs = config.sessionSyncRecentDays * 24 * 60 * 60 * 1000;
+  return lastActivityAt >= now - recentSessionWindowMs;
+}
 
 async function runSyncSafely(client: Client): Promise<void> {
   if (syncInProgress) return;
@@ -104,6 +112,7 @@ async function syncPersistentSession(
 async function runSync(client: Client): Promise<void> {
   const guild = client.guilds.cache.first();
   if (!guild) return;
+  const now = Date.now();
 
   const projects = getAllRegisteredProjects().filter((project) => project.discordCategoryId);
   if (projects.length === 0) return;
@@ -127,6 +136,8 @@ async function runSync(client: Client): Promise<void> {
         const claudeSessions = await claudeSdk.listSessions({ dir: project.path, limit: 50 });
         for (const item of claudeSessions) {
           if (!item?.sessionId || existingProviderIds.has(item.sessionId)) continue;
+          if (!isWithinRecentSessionWindow(item.lastModified, now)) continue;
+          if (isArchivedProviderSession('claude', item.sessionId)) continue;
           await syncPersistentSession(
             guild,
             category,
@@ -149,6 +160,8 @@ async function runSync(client: Client): Promise<void> {
   const codexSessions = await listCodexSessionsForProjects(projects.map((project) => project.path));
   for (const session of codexSessions) {
     if (existingProviderIds.has(session.id)) continue;
+    if (!isWithinRecentSessionWindow(session.updatedAt, now)) continue;
+    if (isArchivedProviderSession('codex', session.id)) continue;
     const project = projects.find((item) => item.path === session.projectPath);
     if (!project?.discordCategoryId) continue;
 

@@ -5,13 +5,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import type { Client, TextChannel } from 'discord.js';
+import { config } from './config.ts';
+import { buildDeliveryPlan } from './discord/delivery-policy.ts';
+import { deliver } from './discord/delivery.ts';
 
-const HOOK_SCRIPT_PATH = path.join(homedir(), '.claude', 'hooks', 'workspacecord-hook.cjs');
 const HOOK_FAILURE_LOG_PATH = path.join(homedir(), '.workspacecord', 'hook-failures.log');
-const CLAUDE_CONFIG_PATHS = [
-  path.join(homedir(), '.claude', 'settings.json'),
-  path.join(homedir(), '.claude', 'config.json'),
+const PROJECT_REQUIRED_HOOKS = [
+  'SessionStart',
+  'UserPromptSubmit',
+  'PreToolUse',
+  'PostToolUse',
+  'Stop',
 ];
+const GLOBAL_REQUIRED_HOOKS = [...PROJECT_REQUIRED_HOOKS, 'AskUser'];
 
 export interface HookHealthStatus {
   isHealthy: boolean;
@@ -25,16 +31,27 @@ export interface HookHealthStatus {
 export function checkHookHealth(): HookHealthStatus {
   const issues: string[] = [];
   const warnings: string[] = [];
+  const developmentRuntime = process.env.NODE_ENV === 'development';
+  const hookScriptCandidates = getHookScriptCandidates(developmentRuntime);
+  const hookScriptPath = hookScriptCandidates.find((candidate) => fs.existsSync(candidate));
 
   // 检查钩子脚本是否存在
-  if (!fs.existsSync(HOOK_SCRIPT_PATH)) {
-    issues.push('钩子脚本不存在: ~/.claude/hooks/workspacecord-hook.cjs');
+  if (!hookScriptPath) {
+    issues.push(
+      developmentRuntime
+        ? '钩子脚本不存在: .claude/hooks/workspacecord-hook.cjs 或 ~/.claude/hooks/workspacecord-hook.cjs'
+        : '钩子脚本不存在: ~/.claude/hooks/workspacecord-hook.cjs',
+    );
   } else {
     // 检查脚本是否可执行
     try {
-      const stats = fs.statSync(HOOK_SCRIPT_PATH);
+      const stats = fs.statSync(hookScriptPath);
       if (!(stats.mode & 0o111)) {
-        warnings.push('钩子脚本不可执行,请运行: chmod +x ~/.claude/hooks/workspacecord-hook.cjs');
+        warnings.push(
+          developmentRuntime && hookScriptPath.startsWith(process.cwd())
+            ? '钩子脚本不可执行,请运行: chmod +x .claude/hooks/workspacecord-hook.cjs'
+            : '钩子脚本不可执行,请运行: chmod +x ~/.claude/hooks/workspacecord-hook.cjs',
+        );
       }
     } catch (err) {
       warnings.push(`无法检查钩子脚本权限: ${(err as Error).message}`);
@@ -42,9 +59,15 @@ export function checkHookHealth(): HookHealthStatus {
   }
 
   // 检查 Claude 配置文件
-  const configPath = CLAUDE_CONFIG_PATHS.find((candidate) => fs.existsSync(candidate));
+  const configPath = getClaudeConfigPaths(developmentRuntime).find((candidate) =>
+    fs.existsSync(candidate),
+  );
   if (!configPath) {
-    warnings.push('Claude 配置文件不存在: ~/.claude/settings.json 或 ~/.claude/config.json');
+    warnings.push(
+      developmentRuntime
+        ? 'Claude 配置文件不存在: .claude/settings.json、.claude/config.json、~/.claude/settings.json 或 ~/.claude/config.json'
+        : 'Claude 配置文件不存在: ~/.claude/settings.json 或 ~/.claude/config.json',
+    );
   } else {
     try {
       const configContent = fs.readFileSync(configPath, 'utf8');
@@ -54,14 +77,10 @@ export function checkHookHealth(): HookHealthStatus {
       if (!config.hooks || typeof config.hooks !== 'object') {
         issues.push('Claude 配置中未找到 hooks 配置');
       } else {
-        const requiredHooks = [
-          'SessionStart',
-          'UserPromptSubmit',
-          'PreToolUse',
-          'PostToolUse',
-          'Stop',
-          'AskUser',
-        ];
+        const requiredHooks =
+          developmentRuntime && configPath.startsWith(path.join(process.cwd(), '.claude'))
+            ? PROJECT_REQUIRED_HOOKS
+            : GLOBAL_REQUIRED_HOOKS;
         const missingHooks = requiredHooks.filter(
           (hook) => !hasHookCommand(config.hooks[hook], 'workspacecord-hook.cjs'),
         );
@@ -94,6 +113,33 @@ export function checkHookHealth(): HookHealthStatus {
     issues,
     warnings,
   };
+}
+
+function getHookScriptCandidates(developmentRuntime: boolean): string[] {
+  const projectHookScriptPath = path.join(
+    process.cwd(),
+    '.claude',
+    'hooks',
+    'workspacecord-hook.cjs',
+  );
+  const globalHookScriptPath = path.join(homedir(), '.claude', 'hooks', 'workspacecord-hook.cjs');
+
+  return developmentRuntime
+    ? [projectHookScriptPath, globalHookScriptPath]
+    : [globalHookScriptPath];
+}
+
+function getClaudeConfigPaths(developmentRuntime: boolean): string[] {
+  const projectConfigPaths = [
+    path.join(process.cwd(), '.claude', 'settings.json'),
+    path.join(process.cwd(), '.claude', 'config.json'),
+  ];
+  const globalConfigPaths = [
+    path.join(homedir(), '.claude', 'settings.json'),
+    path.join(homedir(), '.claude', 'config.json'),
+  ];
+
+  return developmentRuntime ? [...projectConfigPaths, ...globalConfigPaths] : globalConfigPaths;
 }
 
 function hasHookCommand(entry: unknown, scriptName: string): boolean {
@@ -138,40 +184,44 @@ export async function sendHookHealthNotification(
   }
 
   if (status.isHealthy && status.warnings.length === 0) {
-    // 健康状态,不发送通知
     return;
   }
 
-  const embed = {
-    title: status.isHealthy ? '⚠️ Claude 钩子配置警告' : '❌ Claude 钩子配置异常',
-    color: status.isHealthy ? 0xf39c12 : 0xe74c3c,
-    fields: [] as Array<{ name: string; value: string }>,
-    timestamp: new Date().toISOString(),
-  };
+  const lines = [
+    status.isHealthy ? '⚠️ Claude 钩子配置警告' : '❌ Claude 钩子配置异常',
+  ];
 
   if (status.issues.length > 0) {
-    embed.fields.push({
-      name: '问题',
-      value: status.issues.map((issue) => `• ${issue}`).join('\n'),
-    });
+    lines.push('', '问题：', ...status.issues.map((issue) => `- ${issue}`));
   }
 
   if (status.warnings.length > 0) {
-    embed.fields.push({
-      name: '警告',
-      value: status.warnings.map((warning) => `• ${warning}`).join('\n'),
-    });
+    lines.push('', '警告：', ...status.warnings.map((warning) => `- ${warning}`));
   }
 
-  embed.fields.push({
-    name: '影响',
-    value: status.isHealthy
+  lines.push(
+    '',
+    '影响：',
+    status.isHealthy
       ? '钩子可能无法正常工作,本地 Claude 会话可能无法实时同步到 Discord'
       : '本地 Claude 会话将无法实时同步到 Discord,仅能通过补漏层发现(延迟约 30 秒)',
-  });
+  );
 
   try {
-    await channel.send({ embeds: [embed] });
+    const plan = buildDeliveryPlan({
+      sessionId: `hook-health:${notificationChannelId}`,
+      chatId: notificationChannelId,
+      text: lines.join('\n'),
+      files: [],
+      mode: 'system_notice',
+      policy: {
+        textChunkLimit: config.textChunkLimit ?? 2000,
+        chunkMode: config.chunkMode ?? 'length',
+        replyToMode: config.replyToMode ?? 'first',
+        ackReaction: config.ackReaction ?? '👀',
+      },
+    });
+    await deliver(channel, plan);
   } catch (err) {
     console.error('[Hook Health] Failed to send notification:', err);
   }

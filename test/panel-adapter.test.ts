@@ -77,6 +77,7 @@ describe('panel-adapter', () => {
       currentTurn: 3,
       humanResolved: false,
       statusCardMessageId: undefined,
+      lastInboundMessageId: 'user-msg-1',
     }));
     statusAdopt.mockResolvedValue(undefined);
     statusInitialize.mockResolvedValue(undefined);
@@ -104,7 +105,7 @@ describe('panel-adapter', () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 600));
 
-    expect(sendTurnFailure).toHaveBeenCalledWith('命令执行失败', 3);
+    expect(sendTurnFailure).toHaveBeenCalledWith('命令执行失败', 3, 'user-msg-1', []);
     expect(sendTurnSummary).not.toHaveBeenCalled();
     expect(statusUpdate).toHaveBeenLastCalledWith(
       'error',

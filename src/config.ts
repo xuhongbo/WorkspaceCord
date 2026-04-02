@@ -42,6 +42,16 @@ function optionalBool(key: string, fallback: boolean): boolean {
   return value === 'true' || value === '1';
 }
 
+function optionalEnum<T extends string>(
+  key: string,
+  fallback: T,
+  allowed: readonly T[],
+): T {
+  const value = getConfigValue(key);
+  if (!value) return fallback;
+  return (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+}
+
 export const config = {
   token: required('DISCORD_TOKEN'),
   clientId: required('DISCORD_CLIENT_ID'),
@@ -52,9 +62,9 @@ export const config = {
 
   dataDir: join(homedir(), '.workspacecord'),
 
-  defaultProvider: optional('DEFAULT_PROVIDER', 'codex') as ProviderName,
-  defaultMode: optional('DEFAULT_MODE', 'auto') as SessionMode,
-  claudePermissionMode: optional('CLAUDE_PERMISSION_MODE', 'normal') as 'bypass' | 'normal',
+  defaultProvider: optionalEnum('DEFAULT_PROVIDER', 'codex', ['claude', 'codex']) as ProviderName,
+  defaultMode: optionalEnum('DEFAULT_MODE', 'auto', ['auto', 'plan', 'normal', 'monitor']) as SessionMode,
+  claudePermissionMode: optionalEnum('CLAUDE_PERMISSION_MODE', 'normal', ['bypass', 'normal']),
 
   maxSubagentDepth: optionalInt('MAX_SUBAGENT_DEPTH', 3),
   maxActiveSessionsPerProject: optionalInt('MAX_ACTIVE_SESSIONS', 20),
@@ -62,28 +72,19 @@ export const config = {
 
   messageRetentionDays: optionalInt('MESSAGE_RETENTION_DAYS', 0),
   rateLimitMs: optionalInt('RATE_LIMIT_MS', 1000),
+  ackReaction: optional('ACK_REACTION', '👀'),
+  replyToMode: optionalEnum('REPLY_TO_MODE', 'first', ['off', 'first', 'all']),
+  textChunkLimit: Math.max(1, Math.min(optionalInt('TEXT_CHUNK_LIMIT', 2000), 2000)),
+  chunkMode: optionalEnum('CHUNK_MODE', 'length', ['length', 'newline']),
 
   shellEnabled: optionalBool('SHELL_ENABLED', false),
   shellAllowedUsers: optionalList('SHELL_ALLOWED_USERS'),
 
-  codexSandboxMode: optional('CODEX_SANDBOX_MODE', 'workspace-write') as
-    | 'read-only'
-    | 'workspace-write'
-    | 'danger-full-access',
-  codexApprovalPolicy: optional('CODEX_APPROVAL_POLICY', 'on-failure') as
-    | 'never'
-    | 'on-request'
-    | 'on-failure'
-    | 'untrusted',
+  codexSandboxMode: optionalEnum('CODEX_SANDBOX_MODE', 'workspace-write', ['read-only', 'workspace-write', 'danger-full-access']),
+  codexApprovalPolicy: optionalEnum('CODEX_APPROVAL_POLICY', 'on-failure', ['never', 'on-request', 'on-failure', 'untrusted']),
   codexNetworkAccessEnabled: optionalBool('CODEX_NETWORK_ACCESS_ENABLED', false),
-  codexWebSearchMode: optional('CODEX_WEB_SEARCH', 'disabled') as 'disabled' | 'cached' | 'live',
-  codexReasoningEffort: optional('CODEX_REASONING_EFFORT', '') as
-    | 'minimal'
-    | 'low'
-    | 'medium'
-    | 'high'
-    | 'xhigh'
-    | '',
+  codexWebSearchMode: optionalEnum('CODEX_WEB_SEARCH', 'disabled', ['disabled', 'cached', 'live']),
+  codexReasoningEffort: optionalEnum('CODEX_REASONING_EFFORT', '', ['', 'minimal', 'low', 'medium', 'high', 'xhigh']),
   codexBaseUrl: optional('CODEX_BASE_URL', ''),
   codexApiKey: optional('CODEX_API_KEY', ''),
   codexPath: optional('CODEX_PATH', ''),
@@ -92,6 +93,7 @@ export const config = {
   anthropicBaseUrl: optional('ANTHROPIC_BASE_URL', ''),
 
   sessionSyncIntervalMs: optionalInt('SESSION_SYNC_INTERVAL_MS', 30_000),
+  sessionSyncRecentDays: optionalInt('SESSION_SYNC_RECENT_DAYS', 3),
 
   healthReportIntervalMs: optionalInt('HEALTH_REPORT_INTERVAL_MS', 600_000),
   healthReportEnabled: optionalBool('HEALTH_REPORT_ENABLED', true),

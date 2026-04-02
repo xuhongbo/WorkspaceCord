@@ -14,6 +14,7 @@ import type {
 } from './types.ts';
 import { config } from './config.ts';
 import type { ProviderCanUseTool } from './providers/types.ts';
+import { buildDiscordSessionMessageContext } from './discord/session-message-context.ts';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -118,6 +119,7 @@ export async function loadSessions(): Promise<void> {
       humanResolved: s.humanResolved ?? false,
       currentInteractionMessageId: s.currentInteractionMessageId,
       statusCardMessageId: s.statusCardMessageId,
+      lastInboundMessageId: s.lastInboundMessageId,
       discoverySource: s.discoverySource ?? 'discord',
       lastObservedState: s.lastObservedState,
       lastObservedEventKey: s.lastObservedEventKey,
@@ -174,6 +176,7 @@ async function persistSessionsNow(): Promise<void> {
       humanResolved: s.humanResolved,
       currentInteractionMessageId: s.currentInteractionMessageId,
       statusCardMessageId: s.statusCardMessageId,
+      lastInboundMessageId: s.lastInboundMessageId,
       discoverySource: s.discoverySource,
       lastObservedState: s.lastObservedState,
       lastObservedEventKey: s.lastObservedEventKey,
@@ -303,6 +306,7 @@ export async function createSession(params: CreateSessionParams): Promise<Thread
     humanResolved: false,
     currentInteractionMessageId: undefined,
     statusCardMessageId: undefined,
+    lastInboundMessageId: undefined,
     discoverySource,
     remoteHumanControl,
   };
@@ -607,6 +611,8 @@ function buildSystemPromptParts(session: ThreadSession): string[] {
   const modePrompt = MODE_PROMPTS[session.mode];
   if (modePrompt) parts.push(modePrompt);
 
+  parts.push(buildDiscordSessionMessageContext());
+
   return parts;
 }
 
@@ -617,6 +623,7 @@ function buildMonitorSystemPromptParts(session: ThreadSession): string[] {
   if (personality) parts.push(personality);
 
   parts.push(MONITOR_SYSTEM_PROMPT);
+  parts.push(buildDiscordSessionMessageContext());
   return parts;
 }
 
@@ -871,6 +878,15 @@ export async function registerLocalSession(
   guild: import('discord.js').Guild,
 ): Promise<RegisterLocalSessionResult | null> {
   const { provider, providerSessionId, cwd, discoverySource, labelHint, remoteHumanControl } = params;
+
+  const { isArchivedProviderSession } = await import('./archive-manager.ts');
+  if (isArchivedProviderSession(provider, providerSessionId)) {
+    console.log(
+      `[registerLocalSession] Skip archived ${provider} session ${providerSessionId} ` +
+      `(source: ${discoverySource})`
+    );
+    return null;
+  }
 
   // 1. 检查是否已注册
   const existing = getSessionByProviderSessionId(provider, providerSessionId);

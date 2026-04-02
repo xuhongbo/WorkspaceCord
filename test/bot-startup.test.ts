@@ -19,6 +19,8 @@ const invalidateAllOnRestart = vi.fn(() => []);
 const checkHookHealth = vi.fn(() => ({ isHealthy: true, issues: [], warnings: [] }));
 const logHookHealthStatus = vi.fn();
 const sendHookHealthNotification = vi.fn();
+const buildDeliveryPlan = vi.fn();
+const deliver = vi.fn();
 const startPerformanceMonitoring = vi.fn();
 const stopPerformanceMonitoring = vi.fn();
 const reconcileSessionRecordsWithGuild = vi.fn(async () => ({ checkedSessions: 0, endedMissingSessions: 0 }));
@@ -156,6 +158,8 @@ vi.mock('../src/panel-adapter.ts', () => ({
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
 }));
+vi.mock('../src/discord/delivery-policy.ts', () => ({ buildDeliveryPlan }));
+vi.mock('../src/discord/delivery.ts', () => ({ deliver }));
 vi.mock('../src/state/gate-coordinator.ts', () => ({
   gateCoordinator: {
     invalidateAllOnRestart,
@@ -168,6 +172,8 @@ const { startBot } = await import('../src/bot.ts');
 describe('bot startup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    buildDeliveryPlan.mockImplementation((input) => ({ sessionId: input.sessionId, chatId: input.chatId, chunks: [input.text], filesOnFirstChunk: input.files, mode: input.mode }));
+    deliver.mockResolvedValue(['msg-1']);
     readyHandler = undefined;
     mkdirSync('/tmp/workspacecord-test-bot-startup', { recursive: true });
     const lockPath = '/tmp/workspacecord-test-bot-startup/bot.lock';
@@ -187,5 +193,16 @@ describe('bot startup', () => {
 
     expect(startHookServer).toHaveBeenCalledTimes(1);
     expect(startHookWatcher).toHaveBeenCalledTimes(1);
+  });
+
+
+  it('flushLogs 通过统一投递层发送日志', async () => {
+    const mod = await import('../src/bot.ts');
+    await startBot();
+    mod.botLog('hello log');
+    await mod.flushLogs();
+
+    expect(buildDeliveryPlan).toHaveBeenCalledWith(expect.objectContaining({ mode: 'log' }));
+    expect(deliver).toHaveBeenCalled();
   });
 });

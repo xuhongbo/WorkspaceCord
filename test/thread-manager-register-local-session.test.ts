@@ -93,4 +93,52 @@ describe('thread-manager registerLocalSession', () => {
       }),
     );
   });
+
+  it('已归档的 provider 会话不会被自动重新注册', async () => {
+    vi.doMock('../src/archive-manager.ts', () => ({
+      isArchivedProviderSession: vi.fn(() => true),
+    }));
+
+    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    _setDataDirForTest(dataDir);
+
+    const projectRegistry = await import('../src/project-registry.ts');
+    const threadManager = await import('../src/thread-manager.ts');
+
+    await projectRegistry.loadRegistry();
+    await projectRegistry.registerProject('demo-project', rootDir);
+    await projectRegistry.bindProjectCategory('demo-project', 'cat-demo', 'Demo Category');
+
+    const demoCategory = {
+      id: 'cat-demo',
+      type: ChannelType.GuildCategory,
+      children: { cache: { find: vi.fn(() => undefined) } },
+    };
+    const createChannel = vi.fn(async ({ parent }: { parent: string }) => ({
+      id: `channel-${parent}`,
+      parentId: parent,
+      topic: 'codex session (local) | Provider Session: provider-archived',
+    }));
+    const guild = {
+      channels: {
+        cache: {
+          get: vi.fn((id: string) => (id === 'cat-demo' ? demoCategory : undefined)),
+        },
+        create: createChannel,
+      },
+    } as unknown as Guild;
+
+    const result = await threadManager.registerLocalSession(
+      {
+        provider: 'codex',
+        providerSessionId: 'provider-archived',
+        cwd: rootDir,
+        discoverySource: 'codex-log',
+      },
+      guild,
+    );
+
+    expect(result).toBeNull();
+    expect(createChannel).not.toHaveBeenCalled();
+  });
 });
