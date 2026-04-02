@@ -385,6 +385,47 @@ describe('agent commands', () => {
     );
   });
 
+  it('cleanup 在候选过多时会截断预览正文', async () => {
+    buildProjectCleanupPreview.mockReturnValue({
+      categoryId: 'cat-1',
+      projectName: 'demo',
+      protectedChannels: {
+        currentChannelId: 'current-1',
+        controlChannelId: 'control-1',
+        historyChannelId: 'forum-1',
+      },
+      archiveCandidates: Array.from({ length: 30 }, (_, index) => ({
+        id: `idle-${index + 1}`,
+        channelId: `idle-${index + 1}`,
+        agentLabel: `idle-session-${index + 1}-${'x'.repeat(80)}`,
+      })),
+      skippedGenerating: [],
+      skippedUnknown: [],
+    });
+    createCleanupRequest.mockReturnValue({
+      id: 'cleanup-1',
+      userId: 'user-1',
+      guildId: 'guild-1',
+      categoryId: 'cat-1',
+      currentChannelId: 'current-1',
+      candidateSessionIds: Array.from({ length: 30 }, (_, index) => `idle-${index + 1}`),
+      createdAt: 1,
+    });
+
+    const interaction = makeInteraction({
+      subcommand: 'cleanup',
+      channel: makeTextChannel({ id: 'current-1', parentId: 'cat-1' }),
+      guild: makeGuild({ channels: [makeTextChannel({ id: 'current-1', parentId: 'cat-1' })] }),
+    });
+
+    await handleAgent(interaction as never);
+
+    const replyPayload = interaction.reply.mock.calls[0]?.[0];
+    expect(replyPayload.content.length).toBeLessThanOrEqual(2000);
+    expect(replyPayload.content).toContain('其余 20 个频道已省略');
+    expect(replyPayload.content).toContain('预计归档 30 个频道');
+  });
+
   it('cleanup 在子代理线程中执行时会保护父会话频道', async () => {
     buildProjectCleanupPreview.mockReturnValue({
       categoryId: 'cat-1',
