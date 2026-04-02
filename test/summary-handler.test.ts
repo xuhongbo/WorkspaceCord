@@ -98,10 +98,12 @@ describe('SummaryHandler', () => {
       filesOnFirstChunk: input.files,
       mode: input.mode,
     }));
-    deliver.mockResolvedValueOnce(['m1', 'm2']).mockResolvedValueOnce(['m3']);
+    // Each chunk is now sent individually — 2 deliver calls for 2 chunks
+    deliver.mockResolvedValueOnce(['m1']).mockResolvedValueOnce(['m2']);
     const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
 
     await handler.sendDigestSummary('A'.repeat(2500));
+    expect(deliver).toHaveBeenCalledTimes(2);
     expect(deliver).toHaveBeenCalledWith(channel, expect.objectContaining({ mode: 'log' }));
     expect(channel.send).not.toHaveBeenCalled();
 
@@ -121,16 +123,23 @@ describe('SummaryHandler', () => {
       filesOnFirstChunk: input.files,
       mode: input.mode,
     }));
-    deliver.mockResolvedValueOnce(['m1', 'm2']).mockResolvedValueOnce(['m3']);
+    // First digest: 2 chunks sent individually
+    deliver.mockResolvedValueOnce(['m1']).mockResolvedValueOnce(['m2'])
+    // Second digest: chunk 0 edit fails → re-sent via deliver
+      .mockResolvedValueOnce(['m3']);
     const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
 
     await handler.sendDigestSummary('A'.repeat(2500));
+    // First edit (chunk 0) fails, second edit (chunk 1) succeeds
     channel.messages.edit.mockImplementationOnce(async () => { throw new Error('gone'); }).mockImplementationOnce(async () => undefined);
 
     await handler.sendDigestSummary('B'.repeat(2500));
 
-    expect(deliver).toHaveBeenCalledTimes(2);
+    // 2 deliver calls for first digest + 1 for failed-edit chunk in second = 3 total
+    expect(deliver).toHaveBeenCalledTimes(3);
+    // Stale message 'm1' should be deleted
     expect(channel.messages.delete).toHaveBeenCalledTimes(1);
+    expect(channel.messages.delete).toHaveBeenCalledWith('m1');
   });
 
 });

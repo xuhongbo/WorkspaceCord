@@ -73,9 +73,8 @@ export class SummaryHandler {
     const chunks = this.splitIfNeeded(content);
     if (chunks.length === 0) return;
 
-    const nextMessageIds: string[] = [];
-    const chunksToCreate: string[] = [];
-    const replacedMessageIds: string[] = [];
+    const nextMessageIds: string[] = new Array(chunks.length);
+    const staleMessageIds: string[] = [];
 
     for (let i = 0; i < chunks.length; i++) {
       const existingId = this.digestMessageIds[i];
@@ -83,24 +82,17 @@ export class SummaryHandler {
         const embed = this.buildDigestEmbed(chunks[i], i, chunks.length);
         try {
           await this.channel.messages.edit(existingId, { embeds: [embed] });
-          nextMessageIds.push(existingId);
+          nextMessageIds[i] = existingId;
           continue;
         } catch {
-          replacedMessageIds.push(existingId);
+          staleMessageIds.push(existingId);
         }
       }
-      chunksToCreate.push(chunks[i]);
-    }
 
-    if (chunksToCreate.length > 0) {
-      const text = chunksToCreate
-        .map((chunk, idx) => {
-          const absoluteIndex = nextMessageIds.length + idx;
-          const title = absoluteIndex === 0 ? '📌 最近摘要\n\n' : '';
-          const footer = chunks.length > 1 ? `\n\n-# 第 ${absoluteIndex + 1}/${chunks.length} 部分` : '';
-          return `${title}${chunk}${footer}`.trim();
-        })
-        .join('\n\n');
+      // Send a single chunk individually to avoid re-chunking
+      const title = i === 0 ? '📌 最近摘要\n\n' : '';
+      const footer = chunks.length > 1 ? `\n\n-# 第 ${i + 1}/${chunks.length} 部分` : '';
+      const text = `${title}${chunks[i]}${footer}`.trim();
       const plan = buildDeliveryPlan({
         sessionId: this.sessionId,
         chatId: this.chatId,
@@ -115,10 +107,10 @@ export class SummaryHandler {
         },
       });
       const createdIds = await deliver(this.channel, plan);
-      nextMessageIds.push(...createdIds);
+      nextMessageIds[i] = createdIds[0];
     }
 
-    for (const staleId of [...replacedMessageIds, ...this.digestMessageIds.slice(chunks.length)]) {
+    for (const staleId of [...staleMessageIds, ...this.digestMessageIds.slice(chunks.length)]) {
       await this.channel.messages.delete(staleId).catch(() => {});
     }
 

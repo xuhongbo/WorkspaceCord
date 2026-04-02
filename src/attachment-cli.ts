@@ -25,7 +25,7 @@ export async function handleAttachment(args: string[]): Promise<void> {
       const messageId = readFlag(rest, '--message');
       const attachmentId = readFlag(rest, '--attachment');
       const all = rest.includes('--all');
-      const currentSessionId = readFlag(rest, '--current-session') ?? process.env.workspacecord_CURRENT_SESSION_ID;
+      const currentSessionId = readFlag(rest, '--current-session') ?? process.env.workspacecord_CURRENT_SESSION_ID ?? sessionId;
 
       if (!sessionId || !messageId || (!attachmentId && !all)) {
         console.error(

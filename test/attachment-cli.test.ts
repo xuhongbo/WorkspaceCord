@@ -40,7 +40,7 @@ describe('attachment-cli', () => {
       messageId: 'msg-1',
       attachmentId: 'att-1',
       all: false,
-      currentSessionId: undefined,
+      currentSessionId: 'session-1',
     });
     expect(log).toHaveBeenCalledWith(expect.stringContaining('"path": "/tmp/note.md"'));
   });
@@ -56,7 +56,7 @@ describe('attachment-cli', () => {
       messageId: 'msg-1',
       attachmentId: undefined,
       all: true,
-      currentSessionId: undefined,
+      currentSessionId: 'session-1',
     });
   });
 });
