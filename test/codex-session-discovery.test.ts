@@ -32,6 +32,31 @@ describe('codex-session-discovery', () => {
     expect(file).toContain('one.jsonl');
   });
 
+  it('parses ISO updated_at values from the Codex session index', async () => {
+    const codexHome = mkdtempSync(join(tmpdir(), 'codex-home-'));
+    mkdirSync(join(codexHome, 'sessions', '2026', '03'), { recursive: true });
+    writeFileSync(
+      join(codexHome, 'session_index.jsonl'),
+      JSON.stringify({
+        id: 'iso-1',
+        thread_name: 'iso thread',
+        updated_at: '2026-04-02T06:52:03.397718Z',
+      }),
+    );
+    writeFileSync(
+      join(codexHome, 'sessions', '2026', '03', 'iso.jsonl'),
+      JSON.stringify({
+        type: 'session_meta',
+        payload: { id: 'iso-1', cwd: '/repo/iso' },
+      }),
+    );
+
+    const index = await readSessionIndex(codexHome);
+    expect(index).toHaveLength(1);
+    expect(index[0].updatedAt).toBeTypeOf('number');
+    expect(index[0].updatedAt).toBeGreaterThan(0);
+  });
+
   it('does not false-match another file that merely references the session id in later content', async () => {
     const codexHome = mkdtempSync(join(tmpdir(), 'codex-home-'));
     mkdirSync(join(codexHome, 'sessions', '2026', '03'), { recursive: true });

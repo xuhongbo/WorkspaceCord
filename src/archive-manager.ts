@@ -21,6 +21,17 @@ export function getArchivedSessions(categoryId: string): ArchivedSession[] {
   return archived.filter((a) => a.categoryId === categoryId);
 }
 
+export function isArchivedProviderSession(
+  provider: ThreadSession['provider'],
+  providerSessionId: string | undefined,
+): boolean {
+  if (!providerSessionId) return false;
+  return archived.some(
+    (record) =>
+      record.provider === provider && record.providerSessionId === providerSessionId,
+  );
+}
+
 // ─── Ensure #history forum channel ────────────────────────────────────────────
 
 async function ensureHistoryChannel(
@@ -80,6 +91,7 @@ export async function archiveSession(
     categoryId: session.categoryId,
     agentLabel: session.agentLabel,
     provider: session.provider,
+    providerSessionId: session.providerSessionId,
     directory: session.directory,
     mode: session.mode,
     createdAt: session.createdAt,

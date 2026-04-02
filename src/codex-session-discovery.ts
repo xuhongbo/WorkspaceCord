@@ -40,6 +40,15 @@ interface SessionMetaRecord {
   cwd: string | null;
 }
 
+function parseUpdatedAt(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
 export async function readSessionIndex(codexHome = join(homedir(), '.codex')): Promise<CodexIndexedSession[]> {
   const indexPath = join(codexHome, 'session_index.jsonl');
   if (!existsSync(indexPath)) return [];
@@ -61,7 +70,7 @@ export async function readSessionIndex(codexHome = join(homedir(), '.codex')): P
         id: json.id,
         threadName:
           typeof json.thread_name === 'string' && json.thread_name ? json.thread_name : json.id,
-        updatedAt: typeof json.updated_at === 'number' ? json.updated_at : undefined,
+        updatedAt: parseUpdatedAt(json.updated_at),
       });
     } catch {
       // skip malformed records
