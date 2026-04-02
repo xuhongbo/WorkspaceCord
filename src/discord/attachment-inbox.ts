@@ -118,7 +118,10 @@ export async function getMessageAttachments(
 export async function fetchRegisteredAttachments(
   options: FetchAttachmentOptions,
 ): Promise<DownloadedAttachment[]> {
-  if (options.currentSessionId && options.currentSessionId !== options.sessionId) {
+  if (!options.currentSessionId) {
+    throw new Error('currentSessionId is required: session context must be provided for attachment downloads');
+  }
+  if (options.currentSessionId !== options.sessionId) {
     throw new Error('current session mismatch: cross-session attachment download is not allowed');
   }
 

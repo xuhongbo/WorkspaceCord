@@ -194,7 +194,11 @@ describe('handleOutputStream', () => {
 
   it('image_file 附件通过最终消息协同层发送', async () => {
     const channel = createFakeChannel();
-    const filePath = '/Users/ld/Documents/github/agentcord/tmp/test-image.png';
+    const { mkdtempSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const tmpDir = mkdtempSync(join(tmpdir(), 'workspacecord-test-'));
+    const filePath = join(tmpDir, 'test-image.png');
     await import('node:fs/promises').then((fs) => fs.writeFile(filePath, 'img'));
 
     await handleOutputStream(
