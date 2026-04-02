@@ -103,6 +103,7 @@ describe('thread-manager system prompt', () => {
     });
 
     for await (const _event of threadManager.sendPrompt(session.id, 'hello monitor')) {
+      // consume stream
     }
 
     const options = sendPromptMock.mock.calls.at(-1)?.[1];
