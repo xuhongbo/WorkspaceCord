@@ -157,3 +157,5 @@ Thumbs.db
 .discord-friends/
 
 /bin
+# Local git worktrees
+.worktrees/
