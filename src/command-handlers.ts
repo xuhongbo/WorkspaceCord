@@ -211,7 +211,7 @@ function buildPermissionUpdatePatch(
   if (sandbox) patch.codexSandboxMode = sandbox;
   if (approval) patch.codexApprovalPolicy = approval;
   if (bypass !== undefined) patch.codexBypass = bypass;
-  if (sandbox || approval || bypass !== undefined) {
+  if (sandbox || approval) {
     patch.codexNetworkAccessEnabled = true;
     patch.codexWebSearchMode = 'live';
   }

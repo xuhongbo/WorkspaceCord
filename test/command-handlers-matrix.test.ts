@@ -603,6 +603,25 @@ describe('agent commands', () => {
     );
   });
 
+  it('permissions 仅更新 bypass 不会强制开启网络访问', async () => {
+    getSessionByChannel.mockReturnValue({
+      ...session,
+      provider: 'codex',
+      isGenerating: false,
+    });
+    const interaction = makeInteraction({
+      subcommand: 'permissions',
+      values: { 'codex-bypass': 'off' },
+      channel: makeTextChannel({ id: 'session-channel' }),
+    });
+
+    await handleAgent(interaction as never);
+
+    expect(updateSessionPermissions).toHaveBeenCalledWith('session-1', {
+      codexBypass: false,
+    });
+  });
+
   it('goal 设置监督目标', async () => {
     const interaction = makeInteraction({ subcommand: 'goal', values: { goal: 'finish it' }, channel: makeTextChannel({ id: 'session-channel' }) });
     await handleAgent(interaction as never);
