@@ -154,13 +154,19 @@ async function main() {
   run(`git commit -m "chore: release ${newVersion}"`);
   run(`git tag ${newVersion}`);
 
-  // Step 7: Push
+  // Step 7: Push (with rebase if remote has new commits)
   console.log('\n🚀 Pushing to remote...');
-  run('git push');
-  run('git push --tags');
+  try {
+    run('git push');
+    run('git push --tags');
+  } catch {
+    console.log('  Push rejected, rebasing with remote...');
+    run('git pull --rebase origin main');
+    run('git push');
+    run('git push --tags');
+  }
 
   // Step 8: Create GitHub Release
-  // Write notes to a temp file to avoid shell escaping issues
   console.log('\n📢 Creating GitHub Release...');
   const tmpDir = mkdtempSync(join(tmpdir(), 'wsc-release-'));
   const notesFile = join(tmpDir, 'RELEASE_NOTES.md');
@@ -168,13 +174,11 @@ async function main() {
 
   try {
     run(`gh release create ${newVersion} --title "Release ${newVersion}" --notes-file "${notesFile}"`);
-    console.log(`\n✅ Release ${newVersion} created!`);
-  } catch (err) {
-    console.error('\n⚠️  Failed to create GitHub Release via gh CLI.');
-    console.error('  The tag has been pushed. You can create the release manually:');
-    console.error(`  gh release create ${newVersion} --title "Release ${newVersion}" --notes-file "${notesFile}"`);
+  } catch {
+    // Tag already exists (e.g. from a previous failed run), update instead
+    console.log('  Release already exists, updating notes...');
+    run(`gh release edit ${newVersion} --notes-file "${notesFile}"`);
   } finally {
-    // Clean up temp files
     try {
       rmSync(tmpDir, { recursive: true, force: true });
     } catch {
