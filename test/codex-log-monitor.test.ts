@@ -237,12 +237,54 @@ describe('CodexLogMonitor', () => {
     (monitor as any).pollFile(filePath, fileName);
 
     expect(onRegisterSession).toHaveBeenCalledTimes(1);
-    expect(onRegisterSession).toHaveBeenCalledWith('f-g-h-i-j', '/test/repo');
+    expect(onRegisterSession).toHaveBeenCalledWith('f-g-h-i-j', '/test/repo', undefined, undefined);
     expect(onStateChange).toHaveBeenCalledWith(
       'codex:f-g-h-i-j',
       'idle',
       'session_meta',
       { cwd: '/test/repo' },
+    );
+  });
+
+  it('快速注册会携带子代理元数据', () => {
+    const baseDir = mkdtempSync(join(tmpdir(), 'codex-monitor-'));
+    const { filePath, fileName } = makeSessionDir(baseDir);
+    const onStateChange = vi.fn();
+    const onRegisterSession = vi.fn().mockResolvedValue(true);
+    const monitor = new CodexLogMonitor(baseDir, onStateChange, onRegisterSession);
+
+    appendFileSync(
+      filePath,
+      `${JSON.stringify({
+        type: 'session_meta',
+        payload: {
+          cwd: '/test/repo',
+          forked_from_id: 'parent-session',
+          source: {
+            subagent: {
+              thread_spawn: {
+                parent_thread_id: 'parent-session',
+                depth: 2,
+              },
+            },
+          },
+        },
+      })}\n`,
+      'utf8',
+    );
+    appendFileSync(
+      filePath,
+      `${JSON.stringify({ type: 'event_msg', payload: { type: 'task_started' } })}\n`,
+      'utf8',
+    );
+
+    (monitor as any).pollFile(filePath, fileName);
+
+    expect(onRegisterSession).toHaveBeenCalledWith(
+      'f-g-h-i-j',
+      '/test/repo',
+      undefined,
+      { parentProviderSessionId: 'parent-session', depth: 2 },
     );
   });
 
@@ -272,5 +314,41 @@ describe('CodexLogMonitor', () => {
     (monitor as any).pollFile(filePath, fileName);
 
     expect(onRegisterSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('快速注册失败后会在后续事件重试', async () => {
+    const baseDir = mkdtempSync(join(tmpdir(), 'codex-monitor-'));
+    const { filePath, fileName } = makeSessionDir(baseDir);
+    const onStateChange = vi.fn();
+    const onRegisterSession = vi
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    const monitor = new CodexLogMonitor(baseDir, onStateChange, onRegisterSession);
+
+    appendFileSync(
+      filePath,
+      `${JSON.stringify({ type: 'session_meta', payload: { cwd: '/test/repo' } })}\n`,
+      'utf8',
+    );
+    appendFileSync(
+      filePath,
+      `${JSON.stringify({ type: 'event_msg', payload: { type: 'task_started' } })}\n`,
+      'utf8',
+    );
+
+    (monitor as any).pollFile(filePath, fileName);
+    await Promise.resolve();
+
+    appendFileSync(
+      filePath,
+      `${JSON.stringify({ type: 'response_item', payload: { type: 'function_call' } })}\n`,
+      'utf8',
+    );
+
+    (monitor as any).pollFile(filePath, fileName);
+    await Promise.resolve();
+
+    expect(onRegisterSession).toHaveBeenCalledTimes(2);
   });
 });

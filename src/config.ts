@@ -82,8 +82,8 @@ export const config = {
 
   codexSandboxMode: optionalEnum('CODEX_SANDBOX_MODE', 'workspace-write', ['read-only', 'workspace-write', 'danger-full-access']),
   codexApprovalPolicy: optionalEnum('CODEX_APPROVAL_POLICY', 'on-failure', ['never', 'on-request', 'on-failure', 'untrusted']),
-  codexNetworkAccessEnabled: optionalBool('CODEX_NETWORK_ACCESS_ENABLED', false),
-  codexWebSearchMode: optionalEnum('CODEX_WEB_SEARCH', 'disabled', ['disabled', 'cached', 'live']),
+  codexNetworkAccessEnabled: optionalBool('CODEX_NETWORK_ACCESS_ENABLED', true),
+  codexWebSearchMode: optionalEnum('CODEX_WEB_SEARCH', 'live', ['disabled', 'cached', 'live']),
   codexReasoningEffort: optionalEnum('CODEX_REASONING_EFFORT', '', ['', 'minimal', 'low', 'medium', 'high', 'xhigh']),
   codexBaseUrl: optional('CODEX_BASE_URL', ''),
   codexApiKey: optional('CODEX_API_KEY', ''),
@@ -99,6 +99,8 @@ export const config = {
   healthReportEnabled: optionalBool('HEALTH_REPORT_ENABLED', true),
   healthCheckStuckThresholdMs: optionalInt('HEALTH_CHECK_STUCK_THRESHOLD_MS', 1_800_000),
   healthCheckIdleThresholdMs: optionalInt('HEALTH_CHECK_IDLE_THRESHOLD_MS', 7_200_000),
+
+  hookSecret: optional('HOOK_SECRET', ''),
 } as const;
 
 if (config.anthropicApiKey) process.env.ANTHROPIC_API_KEY = config.anthropicApiKey;
@@ -106,7 +108,7 @@ if (config.anthropicBaseUrl) process.env.ANTHROPIC_BASE_URL = config.anthropicBa
 
 if (config.allowedUsers.length === 0 && !config.allowAllUsers) {
   if (process.env.NODE_ENV !== 'test' && process.env.VITEST !== 'true') {
-    console.error('ERROR: Set ALLOWED_USERS or ALLOW_ALL_USERS=true');
+    console.error('ERROR: no users are allowed because neither ALLOWED_USERS nor ALLOW_ALL_USERS is configured');
     process.exit(1);
   }
 }

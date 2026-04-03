@@ -118,11 +118,17 @@ function refreshSession(session: Session): Session {
 }
 
 function waitForGateResolution(session: Session, gateId: string): Promise<GateResolveResult> {
+  console.log(
+    `[SessionExecutor] gate:waiting sessionId=${session.id} gateId=${gateId}`,
+  );
   return new Promise((resolve) => {
     let settled = false;
     const settle = (result: GateResolveResult) => {
       if (settled) return;
       settled = true;
+      console.log(
+        `[SessionExecutor] gate:resolved sessionId=${session.id} gateId=${gateId} action=${result.action} source=${result.source}`,
+      );
       resolve(result);
     };
 
@@ -172,11 +178,18 @@ function createClaudePermissionHandler(
     const liveSession = refreshSession(session);
     const detail = buildPermissionDetail(toolName, input, context);
 
+    console.log(
+      `[SessionExecutor] permission:request sessionId=${liveSession.id} tool=${toolName} action=${context.displayName || toolName}`,
+    );
+
     await handleAwaitingHuman(liveSession.id, detail, { source: 'claude' });
 
     const currentSession = refreshSession(liveSession);
     const gateId = currentSession.activeHumanGateId;
     if (!gateId) {
+      console.warn(
+        `[SessionExecutor] permission:gate-failed sessionId=${currentSession.id} tool=${toolName} reason="failed to create gate"`,
+      );
       return {
         behavior: 'deny',
         message: '未能创建人工门控',
@@ -186,6 +199,22 @@ function createClaudePermissionHandler(
     }
 
     const resolved = await waitForGateResolution(currentSession, gateId);
+
+    if (resolved.action === 'approve') {
+      console.log(
+        `[SessionExecutor] permission:approved sessionId=${currentSession.id} tool=${toolName} source=${resolved.source}`,
+      );
+    } else {
+      const reason =
+        resolved.source === 'timeout'
+          ? 'timeout'
+          : resolved.source === 'terminal'
+            ? 'terminal'
+            : 'discord';
+      console.log(
+        `[SessionExecutor] permission:denied sessionId=${currentSession.id} tool=${toolName} source=${reason}`,
+      );
+    }
 
     await updateSessionState(currentSession.id, {
       type: 'human_resolved',
@@ -768,6 +797,9 @@ async function runWorkerPass(
   iteration: number,
   mode: 'prompt' | 'continue' = 'prompt',
 ) {
+  console.log(
+    `[SessionExecutor] worker:start sessionId=${session.id} iteration=${iteration} mode=${mode}`,
+  );
   session = applyWorkflowHook(session, 'before_worker_pass', {
     status: iteration > 1 ? 'retrying' : 'worker_running',
     iteration,
@@ -776,12 +808,7 @@ async function runWorkerPass(
 
   let lastEventAt = Date.now();
   let watchdogTriggered = false;
-  const watchdog = setInterval(() => {
-    if (Date.now() - lastEventAt >= WORKER_IDLE_TIMEOUT_MS) {
-      watchdogTriggered = true;
-      sessions.abortSessionWithReason(session.id, 'watchdog');
-    }
-  }, 1000);
+  let watchdog: ReturnType<typeof setInterval>;
 
   const stream =
     mode === 'continue'
@@ -796,6 +823,16 @@ async function runWorkerPass(
             : undefined,
         });
   try {
+    watchdog = setInterval(() => {
+      if (Date.now() - lastEventAt >= WORKER_IDLE_TIMEOUT_MS) {
+        watchdogTriggered = true;
+        console.warn(
+          `[SessionExecutor] worker:watchdog sessionId=${session.id} iteration=${iteration} timeout=${WORKER_IDLE_TIMEOUT_MS}ms`,
+        );
+        sessions.abortSessionWithReason(session.id, 'watchdog');
+      }
+    }, 1000);
+
     const result = await handleOutputStream(
       stream,
       channel,
@@ -824,6 +861,9 @@ async function runWorkerPass(
         lastWorkerSummary: summarizeWorkerPass(stalledReport),
         lastWorkerReport: stalledReport,
       });
+      console.warn(
+        `[SessionExecutor] worker:stalled sessionId=${session.id} iteration=${iteration} reason=watchdog`,
+      );
       return stalledResult;
     }
 
@@ -835,12 +875,15 @@ async function runWorkerPass(
       lastWorkerSummary: summarizeWorkerPass(resultReport),
       lastWorkerReport: resultReport,
     });
+    console.log(
+      `[SessionExecutor] worker:end sessionId=${session.id} iteration=${iteration} commands=${result.commandCount} files=${result.fileChangeCount} success=${result.success} hasError=${result.hadError}`,
+    );
     return {
       ...result,
       abortReason,
     };
   } finally {
-    clearInterval(watchdog);
+    clearInterval(watchdog!);
   }
 }
 
@@ -884,8 +927,16 @@ async function runMonitorDecision(
   }
 
   const parsed = parseMonitorDecision(response);
-  if (parsed) return parsed;
+  if (parsed) {
+    console.log(
+      `[SessionExecutor] monitor:decision sessionId=${session.id} iteration=${iteration} status=${parsed.status} confidence=${parsed.confidence} rationale=${truncate(parsed.rationale, 100)}`,
+    );
+    return parsed;
+  }
 
+  console.warn(
+    `[SessionExecutor] monitor:invalid sessionId=${session.id} iteration=${iteration} fallback=continue reason="invalid monitor response"`,
+  );
   return {
     status: 'continue',
     confidence: 'low',
@@ -919,8 +970,16 @@ async function runAskUserDecision(
   }
 
   const parsed = parseAskUserDecision(response);
-  if (parsed) return parsed;
+  if (parsed) {
+    console.log(
+      `[SessionExecutor] askuser:decision sessionId=${session.id} shouldAskHuman=${parsed.shouldAskHuman} rationale=${truncate(parsed.rationale, 100)}`,
+    );
+    return parsed;
+  }
 
+  console.warn(
+    `[SessionExecutor] askuser:invalid sessionId=${session.id} fallback=askHuman reason="invalid response"`,
+  );
   return {
     shouldAskHuman: true,
     rationale: 'The monitor could not safely determine whether the question was necessary.',
@@ -1022,6 +1081,9 @@ async function runMonitorLoop(
   goal: string,
   initialResult: WorkerPassResult,
 ): Promise<void> {
+  console.log(
+    `[SessionExecutor] monitor:loop-start sessionId=${session.id} goal=${truncate(goal, 80)}`,
+  );
   let workerResult = initialResult;
   let currentSession = refreshSession(session);
 
@@ -1102,6 +1164,9 @@ async function runMonitorLoop(
         decision.rationale ||
         'The monitor judged the request complete.';
       await handleResultEvent(currentSession.id, createSyntheticResult(true, summary), summary);
+      console.log(
+        `[SessionExecutor] monitor:complete sessionId=${currentSession.id} iteration=${iteration} rationale=${truncate(decision.rationale, 80)}`,
+      );
       return;
     }
 
@@ -1120,6 +1185,9 @@ async function runMonitorLoop(
       await handleAwaitingHuman(currentSession.id, blocker, {
         source: currentSession.provider === 'codex' ? 'codex' : 'claude',
       });
+      console.warn(
+        `[SessionExecutor] monitor:blocked sessionId=${currentSession.id} iteration=${iteration} reason=${truncate(decision.rationale, 80)}`,
+      );
       return;
     }
 
@@ -1172,6 +1240,9 @@ async function runMonitorLoop(
   await handleAwaitingHuman(currentSession.id, limitSummary, {
     source: currentSession.provider === 'codex' ? 'codex' : 'claude',
   });
+  console.warn(
+    `[SessionExecutor] monitor:limit-reached sessionId=${currentSession.id} iterations=${MAX_MONITOR_ITERATIONS}`,
+  );
 }
 
 export async function executeSessionPrompt(
@@ -1180,12 +1251,18 @@ export async function executeSessionPrompt(
   prompt: string | ContentBlock[],
   options: { updateMonitorGoal?: boolean } = {},
 ): Promise<void> {
+  const goalText = extractPromptText(prompt);
+  console.log(
+    `[SessionExecutor] execute:prompt-start sessionId=${session.id} mode=${session.mode} goal=${truncate(goalText, 80)}`,
+  );
   if (session.mode !== 'monitor') {
     await runWorkerPass(session, channel, prompt, 1, 'prompt');
+    console.log(
+      `[SessionExecutor] execute:prompt-end sessionId=${session.id} mode=${session.mode}`,
+    );
     return;
   }
 
-  const goalText = extractPromptText(prompt);
   if ((options.updateMonitorGoal ?? true) && goalText && !session.monitorGoal) {
     sessions.setMonitorGoal(session.id, goalText);
     session = sessions.getSession(session.id) ?? session;
@@ -1194,6 +1271,9 @@ export async function executeSessionPrompt(
   const goal = session.monitorGoal || goalText;
   if (!goal) {
     await runWorkerPass(session, channel, prompt, 1, 'prompt');
+    console.log(
+      `[SessionExecutor] execute:prompt-end sessionId=${session.id} mode=${session.mode} reason="no-goal"`,
+    );
     return;
   }
 
@@ -1203,9 +1283,15 @@ export async function executeSessionPrompt(
     workerResult.abortReason === 'user' ||
     (workerResult.abortReason !== 'watchdog' && isAbortError(workerResult.text))
   ) {
+    console.log(
+      `[SessionExecutor] execute:prompt-end sessionId=${session.id} mode=${session.mode} reason=aborted abortReason=${workerResult.abortReason}`,
+    );
     return;
   }
   await runMonitorLoop(session, channel, goal, workerResult);
+  console.log(
+    `[SessionExecutor] execute:prompt-end sessionId=${session.id} mode=monitor`,
+  );
 }
 
 export async function executeSessionContinue(
@@ -1214,8 +1300,14 @@ export async function executeSessionContinue(
 ): Promise<void> {
   const iteration = Math.max(session.workflowState.iteration, 1);
   let liveSession = refreshSession(session);
+  console.log(
+    `[SessionExecutor] execute:continue-start sessionId=${liveSession.id} mode=${liveSession.mode} iteration=${iteration}`,
+  );
   if (session.mode !== 'monitor') {
     await runWorkerPass(liveSession, channel, null, iteration, 'continue');
+    console.log(
+      `[SessionExecutor] execute:continue-end sessionId=${liveSession.id} mode=${liveSession.mode}`,
+    );
     return;
   }
   const goal = liveSession.monitorGoal;
@@ -1246,6 +1338,9 @@ export async function executeSessionContinue(
     await handleAwaitingHuman(liveSession.id, summary, {
       source: liveSession.provider === 'codex' ? 'codex' : 'claude',
     });
+    console.warn(
+      `[SessionExecutor] execute:continue-end sessionId=${liveSession.id} reason="no-monitor-goal"`,
+    );
     return;
   }
   const nextProofContract = liveSession.workflowState.nextProofContract;
@@ -1277,4 +1372,7 @@ export async function executeSessionContinue(
     : await runWorkerPass(liveSession, channel, null, iteration, 'continue');
   liveSession = refreshSession(liveSession);
   await runMonitorLoop(liveSession, channel, goal, workerResult);
+  console.log(
+    `[SessionExecutor] execute:continue-end sessionId=${liveSession.id} mode=monitor`,
+  );
 }

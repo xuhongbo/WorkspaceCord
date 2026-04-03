@@ -23,8 +23,13 @@ interface TrackedFile {
   hadToolUse: boolean;
   approvalTimer?: NodeJS.Timeout;
   registered: boolean; // 是否已触发注册
+  registering?: boolean; // 是否正在注册
   pollInterval: number; // 当前轮询间隔
   remoteHumanControl?: boolean; // 是否为受管会话
+  subagent?: {
+    parentProviderSessionId: string;
+    depth?: number;
+  };
   bufferSize: number; // 当前缓冲区大小
 }
 
@@ -39,6 +44,7 @@ type RegistrationCallback = (
   providerSessionId: string,
   cwd: string,
   remoteHumanControl?: boolean,
+  subagent?: { parentProviderSessionId: string; depth?: number },
 ) => Promise<boolean>;
 
 export class CodexLogMonitor {
@@ -62,12 +68,13 @@ export class CodexLogMonitor {
 
   start(): void {
     if (this.interval) return;
+    console.log(`[CodexLogMonitor] Starting monitor — base directory: ${this.baseDir}`);
     this.poll();
-    // 使用活跃间隔启动，后续根据活动情况动态调整
     this.interval = setInterval(() => this.poll(), POLL_INTERVAL_ACTIVE_MS);
   }
 
   stop(): void {
+    const trackedCount = this.tracked.size;
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
@@ -76,6 +83,7 @@ export class CodexLogMonitor {
       if (tracked.approvalTimer) clearTimeout(tracked.approvalTimer);
     }
     this.tracked.clear();
+    console.log(`[CodexLogMonitor] Stopped monitor — cleaned up ${trackedCount} tracked file(s)`);
   }
 
   private poll(): void {
@@ -140,6 +148,7 @@ export class CodexLogMonitor {
         partial: '',
         hadToolUse: false,
         registered: false,
+        registering: false,
         pollInterval: POLL_INTERVAL_ACTIVE_MS,
         bufferSize: 0,
       };
@@ -224,28 +233,65 @@ export class CodexLogMonitor {
         const env = payload.env as Record<string, unknown>;
         tracked.remoteHumanControl = env.workspacecord_MANAGED === '1';
       }
+
+      const source =
+        payload.source && typeof payload.source === 'object'
+          ? (payload.source as Record<string, unknown>)
+          : undefined;
+      const subagent =
+        source?.subagent && typeof source.subagent === 'object'
+          ? (source.subagent as Record<string, unknown>)
+          : undefined;
+      const threadSpawn =
+        subagent?.thread_spawn && typeof subagent.thread_spawn === 'object'
+          ? (subagent.thread_spawn as Record<string, unknown>)
+          : undefined;
+      const parentProviderSessionId =
+        typeof threadSpawn?.parent_thread_id === 'string' && threadSpawn.parent_thread_id
+          ? threadSpawn.parent_thread_id
+          : typeof payload.forked_from_id === 'string' && payload.forked_from_id
+            ? payload.forked_from_id
+            : undefined;
+      const depth =
+        typeof threadSpawn?.depth === 'number' && Number.isFinite(threadSpawn.depth)
+          ? threadSpawn.depth
+          : undefined;
+      tracked.subagent = parentProviderSessionId
+        ? {
+            parentProviderSessionId,
+            depth,
+          }
+        : undefined;
     }
 
     // 快速注册：读到首个有效事件时，如果会话未注册且有 cwd，触发注册
-    if (!tracked.registered && tracked.cwd && this.onRegisterSession) {
+    if (!tracked.registered && !tracked.registering && tracked.cwd && this.onRegisterSession) {
       const state = this.mapEventToState(key);
       if (state !== undefined && state !== null) {
-        tracked.registered = true;
+        tracked.registering = true;
         const providerSessionId = tracked.sessionId.replace(/^codex:/, '');
         const registerPromise =
           tracked.remoteHumanControl === undefined
-            ? this.onRegisterSession(providerSessionId, tracked.cwd)
+            ? this.onRegisterSession(providerSessionId, tracked.cwd, undefined, tracked.subagent)
             : this.onRegisterSession(
                 providerSessionId,
                 tracked.cwd,
                 tracked.remoteHumanControl,
+                tracked.subagent,
               );
         void registerPromise.then((success) => {
+          tracked.registered = success;
+          tracked.registering = false;
           if (success) {
             console.log(
               `[CodexLogMonitor] Fast registration triggered for session ${providerSessionId}`,
             );
           }
+        }).catch((err) => {
+          tracked.registering = false;
+          console.error(
+            `[CodexLogMonitor] Registration failed for session ${providerSessionId}: ${(err as Error).message}`,
+          );
         });
       }
     }
@@ -339,6 +385,10 @@ export class CodexLogMonitor {
     for (const [filePath, tracked] of this.tracked) {
       const age = now - tracked.lastEventTime;
       if (age > STALE_CLEANUP_MS) {
+        const ageSec = (age / 1000).toFixed(1);
+        console.log(
+          `[CodexLogMonitor] Cleaning stale file: ${tracked.sessionId} (${ageSec}s since last event) — ${filePath}`,
+        );
         if (tracked.approvalTimer) clearTimeout(tracked.approvalTimer);
         this.onStateChange(tracked.sessionId, 'sleeping', 'stale-cleanup', { cwd: tracked.cwd });
         this.tracked.delete(filePath);

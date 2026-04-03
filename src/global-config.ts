@@ -41,6 +41,7 @@ export const VALID_KEYS = new Set([
   'HEALTH_REPORT_INTERVAL_MS',
   'HEALTH_CHECK_STUCK_THRESHOLD_MS',
   'HEALTH_CHECK_IDLE_THRESHOLD_MS',
+  'HOOK_SECRET',
 ]);
 
 const CODEX_SANDBOX_MODES = new Set(['read-only', 'workspace-write', 'danger-full-access']);
@@ -48,9 +49,41 @@ const CODEX_APPROVAL_POLICIES = new Set(['never', 'on-request', 'on-failure', 'u
 
 let store: Configstore | null = null;
 
+const DEFAULT_TEST_CONFIG_PATH = join(process.cwd(), '.workspacecord-config.json');
+const DEFAULT_TEST_FALLBACK_PATH = join(process.cwd(), '.workspacecord-config-fallback.json');
+
+function isTestEnvironment(): boolean {
+  return process.env.VITEST === 'true' || process.env.NODE_ENV === 'test';
+}
+
+function resolveGlobalConfigPath(): string {
+  if (process.env.WORKSPACECORD_CONFIG_PATH) {
+    return process.env.WORKSPACECORD_CONFIG_PATH;
+  }
+  if (isTestEnvironment()) {
+    return DEFAULT_TEST_CONFIG_PATH;
+  }
+  const baseDir = process.env.WORKSPACECORD_CONFIG_DIR
+    ? process.env.WORKSPACECORD_CONFIG_DIR
+    : join(homedir(), '.config', 'workspacecord');
+  return join(baseDir, 'config.json');
+}
+
+function createConfigStore(path: string): Configstore {
+  try {
+    return new Configstore('workspacecord', {}, { configPath: path });
+  } catch (err) {
+    if (!isTestEnvironment() || path === DEFAULT_TEST_CONFIG_PATH || path === DEFAULT_TEST_FALLBACK_PATH) {
+      throw err;
+    }
+    return new Configstore('workspacecord', {}, { configPath: DEFAULT_TEST_FALLBACK_PATH });
+  }
+}
+
 function getStore(): Configstore {
   if (!store) {
-    store = new Configstore('workspacecord', {}, { globalConfigPath: true });
+    const path = resolveGlobalConfigPath();
+    store = createConfigStore(path);
   }
   return store;
 }

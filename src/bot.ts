@@ -3,10 +3,8 @@ import {
   GatewayIntentBits,
   ActivityType,
   InteractionType,
-  ComponentType,
   ChannelType,
   type TextChannel,
-  type AnyThreadChannel,
   type Interaction,
   type Message,
 } from 'discord.js';
@@ -53,6 +51,7 @@ import { reconcileSessionRecordsWithGuild } from './session-housekeeping.ts';
 import { startPerformanceMonitoring, stopPerformanceMonitoring } from './panel-adapter.ts';
 import { buildDeliveryPlan } from './discord/delivery-policy.ts';
 import { deliver } from './discord/delivery.ts';
+import { ServiceContainer, intervalService } from './service-container.ts';
 
 let client: Client;
 let logChannel: TextChannel | null = null;
@@ -60,7 +59,8 @@ let codexMonitor: CodexLogMonitor | null = null;
 const unmanagedCodexHintedSessions = new Set<string>();
 const logBuffer: string[] = [];
 let logTimer: ReturnType<typeof setTimeout> | null = null;
-let gateHousekeepingTimer: ReturnType<typeof setInterval> | null = null;
+
+let serviceContainer: ServiceContainer | null = null;
 
 export async function routeInteractionCreate(interaction: Interaction): Promise<void> {
   try {
@@ -135,7 +135,6 @@ function acquireLock(): boolean {
     } catch {
       /* stale lock file */
     }
-    // Stale lock — remove it
     try {
       unlinkSync(LOCK_FILE);
     } catch {
@@ -150,7 +149,6 @@ function releaseLock(): void {
   try {
     if (existsSync(LOCK_FILE)) {
       const pid = parseInt(readFileSync(LOCK_FILE, 'utf-8').trim(), 10);
-      // Only delete if it's our lock
       if (pid === process.pid) {
         unlinkSync(LOCK_FILE);
       }
@@ -186,10 +184,10 @@ export async function flushLogs(): Promise<void> {
       files: [],
       mode: 'log',
       policy: {
-        textChunkLimit: config.textChunkLimit ?? 2000,
-        chunkMode: config.chunkMode ?? 'length',
-        replyToMode: config.replyToMode ?? 'first',
-        ackReaction: config.ackReaction ?? '👀',
+        textChunkLimit: config.textChunkLimit,
+        chunkMode: config.chunkMode,
+        replyToMode: config.replyToMode,
+        ackReaction: config.ackReaction,
       },
     });
     await deliver(logChannel, plan);
@@ -211,7 +209,6 @@ async function invalidatePendingGatesOnRestart(client: Client): Promise<void> {
 
   console.log(`[GateInvalidation] Invalidating ${invalidated.length} pending gates on restart`);
 
-  // 更新 Discord 交互卡
   for (const { gateId, discordMessageId } of invalidated) {
     if (!discordMessageId) continue;
 
@@ -228,12 +225,11 @@ async function invalidatePendingGatesOnRestart(client: Client): Promise<void> {
       const message = await channel.messages.fetch(discordMessageId);
       if (!message) continue;
 
-      // 禁用所有按钮并添加失效标注
       await message.edit({
         components: [],
         embeds: message.embeds.map((e) => ({
           ...e,
-          color: 0x808080, // 灰色
+          color: 0x808080,
           footer: {
             text: '⚠️ 守护进程已重启，此审批已失效 - 请在终端直接处理，或重新触发操作'
           },
@@ -306,10 +302,10 @@ async function notifyUnmanagedCodexHint(session: { id: string; channelId: string
       files: [],
       mode: 'system_notice',
       policy: {
-        textChunkLimit: config.textChunkLimit ?? 2000,
-        chunkMode: config.chunkMode ?? 'length',
-        replyToMode: config.replyToMode ?? 'first',
-        ackReaction: config.ackReaction ?? '👀',
+        textChunkLimit: config.textChunkLimit,
+        chunkMode: config.chunkMode,
+        replyToMode: config.replyToMode,
+        ackReaction: config.ackReaction,
       },
     });
     await deliver(channel, plan);
@@ -334,13 +330,9 @@ export async function startBot(): Promise<void> {
 
   setLogger(botLog);
 
-  // Slash command / button interactions
   client.on('interactionCreate', routeInteractionCreate);
-
-  // Messages in session channels (TextChannel) and subagent threads
   client.on('messageCreate', routeMessageCreate);
 
-  // Session channel deleted → end the persistent session
   client.on('channelDelete', (channel) => {
     const session = getSessionByChannel(channel.id);
     if (session && session.type === 'persistent') {
@@ -350,7 +342,6 @@ export async function startBot(): Promise<void> {
     }
   });
 
-  // Subagent thread deleted → end the subagent session
   client.on('threadDelete', (thread) => {
     const session = getSessionByChannel(thread.id);
     if (session && session.type === 'subagent') {
@@ -369,7 +360,7 @@ export async function startBot(): Promise<void> {
     await loadSessions();
     await loadArchived();
 
-    // Find or create #bot-logs channel at the server root (no category)
+    // Find or create #bot-logs channel
     const guild = client.guilds.cache.first();
     if (guild) {
       logChannel =
@@ -399,12 +390,19 @@ export async function startBot(): Promise<void> {
     updatePresence();
     setBotStartTime(Date.now());
 
-    // 重启时失效所有待处理门控（设计文档 11.5.1 节）
     await invalidatePendingGatesOnRestart(client);
 
-    startSync(client);
+    // ─── Register services ─────────────────────────────────────────────
+    serviceContainer = new ServiceContainer();
 
-    // Start Codex log monitor with fast registration callback
+    // Session sync
+    serviceContainer.register({
+      name: 'session-sync',
+      start() { startSync(client); },
+      stop() { stopSync(); },
+    });
+
+    // Codex log monitor
     const codexBaseDir = join(homedir(), '.codex', 'sessions');
     codexMonitor = new CodexLogMonitor(
       codexBaseDir,
@@ -417,11 +415,10 @@ export async function startBot(): Promise<void> {
           extra,
         );
       },
-      async (providerSessionId, cwd, remoteHumanControl) => {
-        // 快速注册回调（设计文档 7.3 节 + 阶段五）
+      async (providerSessionId, cwd, remoteHumanControl, subagent) => {
         const { registerLocalSession } = await import('./thread-manager.ts');
-        const guild = client.guilds.cache.first();
-        if (!guild) return false;
+        const g = client.guilds.cache.first();
+        if (!g) return false;
 
         const result = await registerLocalSession(
           {
@@ -431,58 +428,78 @@ export async function startBot(): Promise<void> {
             discoverySource: 'codex-log',
             labelHint: providerSessionId.slice(0, 12),
             remoteHumanControl,
+            subagent,
           },
-          guild,
+          g,
         );
 
         if (result?.isNewlyCreated && result.session.remoteHumanControl === false) {
-          void notifyUnmanagedCodexHint({
+          notifyUnmanagedCodexHint({
             id: result.session.id,
             channelId: result.session.channelId,
-          });
+          }).catch((err) =>
+            console.error(`Failed to send unmanaged Codex hint for session ${result.session.id}: ${err.message}`),
+          );
         }
 
         return result !== null;
       },
     );
-    codexMonitor.start();
-    botLog('Codex log monitor started');
+    serviceContainer.register({
+      name: 'codex-log-monitor',
+      start() { codexMonitor!.start(); },
+      stop() { codexMonitor?.stop(); codexMonitor = null; },
+    });
 
-    // Start hook server for Claude Code events
-    startHookServer(client);
-    botLog('Hook server started');
-    startHookWatcher(client);
-    botLog('Hook watcher started');
+    // Hook server
+    serviceContainer.register({
+      name: 'hook-server',
+      start() { startHookServer(client); },
+      stop() { stopHookServer(); },
+    });
 
-    // Check hook health and send notification if needed
-    const hookHealth = checkHookHealth();
-    logHookHealthStatus(hookHealth);
-    if (!hookHealth.isHealthy || hookHealth.warnings.length > 0) {
-      await sendHookHealthNotification(client, hookHealth, logChannel?.id);
-    }
+    // Hook watcher
+    serviceContainer.register({
+      name: 'hook-watcher',
+      start() { startHookWatcher(client); },
+      stop() { stopHookWatcher(); },
+    });
 
-    // Start health monitoring
+    // Health monitor
     if (config.healthReportEnabled) {
-      startHealthMonitor(client, botLog);
+      serviceContainer.register({
+        name: 'health-monitor',
+        start() { startHealthMonitor(client, botLog); },
+        stop() { stopHealthMonitor(); },
+      });
     }
 
-    // Start panel performance monitoring
-    startPerformanceMonitoring();
+    // Performance monitoring
+    serviceContainer.register({
+      name: 'performance-monitoring',
+      start() { startPerformanceMonitoring(); },
+      stop() { stopPerformanceMonitoring(); },
+    });
 
-    // Gate housekeeping every minute: expire and archive resolved gates
-    gateHousekeepingTimer = setInterval(() => {
-      const expired = gateCoordinator.cleanupExpired();
-      const archived = gateCoordinator.archiveResolved(100);
-      if (expired > 0 || archived > 0) {
-        console.log(`[GateHousekeeping] expired=${expired}, archived=${archived}`);
-      }
-    }, 60_000);
+    // Gate housekeeping
+    serviceContainer.register(intervalService(
+      'gate-housekeeping',
+      () => {
+        const expired = gateCoordinator.cleanupExpired();
+        const archived = gateCoordinator.archiveResolved(100);
+        if (expired > 0 || archived > 0) {
+          console.log(`[GateHousekeeping] expired=${expired}, archived=${archived}`);
+        }
+      },
+      60_000,
+    ));
 
-    // Presence update every 30s
-    setInterval(updatePresence, 30_000);
+    // Presence update
+    serviceContainer.register(intervalService('presence', updatePresence, 30_000));
 
-    // Subagent watchdog every 5 minutes
-    setInterval(
+    // Subagent watchdog
+    serviceContainer.register(intervalService(
+      'subagent-watchdog',
       () => {
         runSubagentWatchdog((threadId) => {
           const ch = client.channels.cache.get(threadId);
@@ -490,31 +507,71 @@ export async function startBot(): Promise<void> {
         }).catch((err) => console.error(`Subagent watchdog error: ${err.message}`));
       },
       5 * 60 * 1000,
-    );
+    ));
 
-    // Auto-archive check every hour
+    // Auto-archive
     if (config.autoArchiveDays || config.maxActiveSessionsPerProject) {
-      const guild = client.guilds.cache.first();
-      if (guild) {
-        setInterval(
+      const g = client.guilds.cache.first();
+      if (g) {
+        serviceContainer.register(intervalService(
+          'auto-archive',
           () => {
-            checkAutoArchive(guild).catch((err) =>
+            checkAutoArchive(g).catch((err) =>
               console.error(`Auto-archive check error: ${err.message}`),
             );
           },
           60 * 60 * 1000,
-        );
+        ));
       }
     }
 
     // Message cleanup
     if (config.messageRetentionDays) {
       await cleanupOldMessages();
-      setInterval(cleanupOldMessages, 60 * 60 * 1000);
+      serviceContainer.register(intervalService(
+        'message-cleanup',
+        () => { void cleanupOldMessages(); },
+        60 * 60 * 1000,
+      ));
     }
+
+    // Start all services
+    await serviceContainer.startAll();
+
+    // One-shot: hook health notification
+    const hookHealth = checkHookHealth();
+    logHookHealthStatus(hookHealth);
+    if (!hookHealth.isHealthy || hookHealth.warnings.length > 0) {
+      await sendHookHealthNotification(client, hookHealth, logChannel?.id);
+    }
+
+    // Periodic hook health re-check (every 30 minutes)
+    let previousHealthStatus = hookHealth.isHealthy;
+    serviceContainer.register(intervalService(
+      'hook-health-recheck',
+      () => {
+        const currentHealth = checkHookHealth();
+        if (currentHealth.isHealthy !== previousHealthStatus) {
+          const direction = currentHealth.isHealthy ? 'recovered' : 'degraded';
+          console.log(`[Hook Health Re-check] Status changed: ${direction}`);
+          botLog(`Claude 钩子健康状态变化: ${direction === 'recovered' ? '已恢复' : '异常'}`);
+          if (!currentHealth.isHealthy || currentHealth.warnings.length > 0) {
+            sendHookHealthNotification(client, currentHealth, logChannel?.id).catch(
+              (err) => console.error('[Hook Health Re-check] Notification failed:', err),
+            );
+          }
+          previousHealthStatus = currentHealth.isHealthy;
+        }
+      },
+      30 * 60 * 1000,
+    ));
+
+    botLog('Codex log monitor started');
+    botLog('Hook server started');
+    botLog('Hook watcher started');
   });
 
-  // Discord connection error handlers (must be registered before login)
+  // Discord connection error handlers
   client.on('error', (err) => {
     botLog(`Discord client error: ${err.message}`);
     console.error('Discord client error:', err);
@@ -542,11 +599,10 @@ export async function startBot(): Promise<void> {
 
   client.on('shardResume', (shardId, replayedEvents) => {
     botLog(`Shard ${shardId} resumed (${replayedEvents} events replayed).`);
-    // Refresh logChannel reference after reconnect
-    const guild = client.guilds.cache.first();
-    if (guild) {
+    const g = client.guilds.cache.first();
+    if (g) {
       logChannel =
-        (guild.channels.cache.find(
+        (g.channels.cache.find(
           (ch) => ch.name === 'bot-logs' && ch.type === ChannelType.GuildText && !ch.parentId,
         ) as TextChannel | undefined) ?? logChannel;
     }
@@ -555,20 +611,11 @@ export async function startBot(): Promise<void> {
   // Graceful shutdown
   const shutdown = async () => {
     botLog('Shutting down...');
-    if (codexMonitor) {
-      codexMonitor.stop();
-      codexMonitor = null;
+    if (serviceContainer) {
+      await serviceContainer.stopAll();
+      serviceContainer = null;
     }
-    stopHookServer();
-    stopHookWatcher();
     await flushLogs();
-    stopSync();
-    stopHealthMonitor();
-    stopPerformanceMonitoring();
-    if (gateHousekeepingTimer) {
-      clearInterval(gateHousekeepingTimer);
-      gateHousekeepingTimer = null;
-    }
     releaseLock();
     client.destroy();
     process.exit(0);

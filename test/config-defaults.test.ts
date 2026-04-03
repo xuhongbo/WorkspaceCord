@@ -23,6 +23,11 @@ describe('config defaults', () => {
     expect(config.chunkMode).toBe('length');
   });
 
+  it('codex 默认开启联网与 live 搜索', () => {
+    expect(config.codexNetworkAccessEnabled).toBe(true);
+    expect(config.codexWebSearchMode).toBe('live');
+  });
+
   it('命令里的 provider 默认提示为 Codex', () => {
     const defs = getCommandDefinitions();
     const names = new Set<string>();

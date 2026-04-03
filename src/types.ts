@@ -14,6 +14,7 @@ export type ThreadType = SessionType;
 //   'subagent'   → lives in a Thread under the parent session's TextChannel
 
 export type ClaudePermissionMode = 'bypass' | 'normal';
+export type CodexBypassMode = boolean;
 
 export interface ThreadSession {
   id: string; // Internal session ID (sanitized agentLabel + dedup suffix)
@@ -32,6 +33,11 @@ export interface ThreadSession {
   agentPersona?: string; // Agent persona name
   verbose: boolean; // Show tool calls in Discord
   claudePermissionMode?: ClaudePermissionMode; // Claude-specific permission mode
+  codexSandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access';
+  codexApprovalPolicy?: 'never' | 'on-request' | 'on-failure' | 'untrusted';
+  codexBypass?: CodexBypassMode;
+  codexNetworkAccessEnabled?: boolean;
+  codexWebSearchMode?: 'disabled' | 'cached' | 'live';
   monitorGoal?: string;
   monitorProviderSessionId?: string;
   workflowState: SessionWorkflowState;

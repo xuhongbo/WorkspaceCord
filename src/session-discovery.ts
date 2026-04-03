@@ -10,6 +10,12 @@ export interface SessionDiscoveryParams {
   providerSessionId: string;
   cwd: string;
   discoverySource: 'claude-hook' | 'codex-log';
+  subagent?: {
+    parentProviderSessionId: string;
+    depth?: number;
+    agentId?: string;
+    agentType?: string;
+  };
 }
 
 export async function discoverAndRegisterSession(
@@ -30,6 +36,7 @@ export async function discoverAndRegisterSession(
       discoverySource: params.discoverySource,
       labelHint: `${params.provider}-${new Date().toISOString().slice(11, 19).replace(/:/g, '')}`,
       remoteHumanControl: false,
+      subagent: params.subagent,
     },
     guild,
   );
