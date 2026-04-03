@@ -118,6 +118,7 @@ describe('SummaryHandler', () => {
 
     expect(channel.send).toHaveBeenCalledTimes(3);
     expect(channel.messages.delete).toHaveBeenCalledTimes(1);
+    expect(channel.messages.delete).toHaveBeenCalledWith('m1');
   });
 
   it('刷新已有摘要消息时会清空旧正文，避免正文与嵌入重复展示', async () => {
@@ -169,5 +170,4 @@ describe('SummaryHandler', () => {
       }),
     );
   });
-
 });

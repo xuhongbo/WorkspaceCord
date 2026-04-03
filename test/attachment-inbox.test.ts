@@ -109,8 +109,30 @@ describe('attachment-inbox', () => {
       mod.fetchRegisteredAttachments({
         sessionId: 'session-1',
         messageId: 'msg-1',
+        currentSessionId: 'session-1',
       }),
     ).rejects.toThrow('attachmentId');
+  });
+
+  it('未提供 currentSessionId 时拒绝下载', async () => {
+    const mod = await import('../src/discord/attachment-inbox.ts');
+    await mod.registerMessageAttachments('session-1', 'msg-1', [
+      {
+        id: 'att-1',
+        name: 'note.md',
+        contentType: 'text/markdown',
+        size: 12,
+        url: 'https://example.test/note.md',
+      },
+    ]);
+
+    await expect(
+      mod.fetchRegisteredAttachments({
+        sessionId: 'session-1',
+        messageId: 'msg-1',
+        attachmentId: 'att-1',
+      }),
+    ).rejects.toThrow('currentSessionId is required');
   });
 
   it('不允许 currentSessionId 与目标 sessionId 不一致', async () => {
@@ -160,6 +182,7 @@ describe('attachment-inbox', () => {
         sessionId: 'session-3',
         messageId: 'msg-3',
         all: true,
+        currentSessionId: 'session-3',
       }),
     ).rejects.toThrow('Total attachment size exceeds --all limit');
     expect(global.fetch).not.toHaveBeenCalled();
