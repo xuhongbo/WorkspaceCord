@@ -185,6 +185,15 @@ async function main() {
     process.exit(1);
   }
 
+  // Strip any conversational preamble — keep from first '##' heading onward
+  const headingMatch = releaseNotes.match(/^## /m);
+  if (headingMatch) {
+    releaseNotes = releaseNotes.slice(headingMatch.index);
+  }
+
+  // Strip separator lines that Claude sometimes adds
+  releaseNotes = releaseNotes.replace(/^---+\n?/gm, '').trim();
+
   // Step 4: Preview
   console.log('═══════════════════════════════════════════');
   console.log('  Release Notes Preview');
