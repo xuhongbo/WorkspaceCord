@@ -117,11 +117,13 @@ export async function cleanupSessionsById(
         result.deletedChannels += 1;
       } else {
         result.missingChannels += 1;
+        console.warn(`[Housekeeping] Channel ${session.channelId} for session ${sessionId} not found during cleanup`);
       }
 
       await endSession(session.id);
       result.endedSessions += 1;
     } catch (error) {
+      console.error(`[Housekeeping] Failed to cleanup session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
       result.failed.push({
         sessionId: session.id,
         channelId: session.channelId,
@@ -129,6 +131,8 @@ export async function cleanupSessionsById(
       });
     }
   }
+
+  console.log(`[Housekeeping] Cleanup result: ${result.deletedChannels} channels deleted, ${result.missingChannels} missing, ${result.endedSessions} sessions ended, ${result.skippedSessions} skipped, ${result.failed.length} failed`);
 
   return result;
 }
@@ -161,6 +165,7 @@ export async function archiveSessionsById(
       await archiveSession(session, guild, summary);
       result.archivedSessions += 1;
     } catch (error) {
+      console.error(`[Housekeeping] Failed to archive session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
       result.failed.push({
         sessionId: session.id,
         channelId: session.channelId,
@@ -168,6 +173,8 @@ export async function archiveSessionsById(
       });
     }
   }
+
+  console.log(`[Housekeeping] Archive result: ${result.archivedSessions} archived, ${result.skippedGenerating} skipped, ${result.missingSessions} missing, ${result.failed.length} failed`);
 
   return result;
 }
@@ -182,9 +189,12 @@ export async function reconcileSessionRecordsWithGuild(
     const channel = await resolveChannel(guild, session.channelId);
     if (channel) continue;
 
+    console.warn(`[Housekeeping] Session ${session.id} channel ${session.channelId} missing from guild — ending session`);
     await endSession(session.id);
     endedMissingSessions += 1;
   }
+
+  console.log(`[Housekeeping] Reconciliation: checked ${sessions.length} sessions, ended ${endedMissingSessions} with missing channels`);
 
   return {
     checkedSessions: sessions.length,

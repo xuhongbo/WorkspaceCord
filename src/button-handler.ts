@@ -89,6 +89,7 @@ function renderCleanupResultMessage(result: {
 
 export async function handleButton(interaction: ButtonInteraction): Promise<void> {
   if (!isUserAllowed(interaction.user.id, config.allowedUsers, config.allowAllUsers)) {
+    console.warn(`[ButtonHandler] Unauthorized button press by user ${interaction.user.id}: ${interaction.customId}`);
     await interaction.reply({ content: 'Not authorized.', ephemeral: true });
     return;
   }
@@ -99,6 +100,7 @@ export async function handleButton(interaction: ButtonInteraction): Promise<void
   if (customId.startsWith('stop:')) {
     const sessionId = customId.slice(5);
     const stopped = sessions.abortSession(sessionId);
+    console.log(`[ButtonHandler] Stop button pressed by ${interaction.user.tag} — session ${sessionId} ${stopped ? 'stopped' : 'was not generating'}`);
     await interaction.reply({
       content: stopped ? 'Generation stopped.' : 'Session was not generating.',
       ephemeral: true,
@@ -184,6 +186,7 @@ export async function handleButton(interaction: ButtonInteraction): Promise<void
 
     // 根据操作继续或停止
     if (action === 'approve') {
+      console.log(`[ButtonHandler] User ${interaction.user.tag} approved gate for session ${sessionId}`);
       await updateSessionState(sessionId, {
         type: 'human_resolved',
         sessionId,
@@ -202,6 +205,7 @@ export async function handleButton(interaction: ButtonInteraction): Promise<void
         });
       }
     } else {
+      console.log(`[ButtonHandler] User ${interaction.user.tag} rejected gate for session ${sessionId}`);
       await updateSessionState(sessionId, {
         type: 'session_idle',
         sessionId,
@@ -230,12 +234,15 @@ export async function handleButton(interaction: ButtonInteraction): Promise<void
       await interaction.reply({ content: 'Session is already generating.', ephemeral: true });
       return;
     }
+    console.log(`[ButtonHandler] Continue button pressed for session ${sessionId}`);
     await interaction.deferReply();
     try {
       const channel = interaction.channel as SessionChannel;
       await interaction.editReply('Continuing...');
       await executeSessionContinue(session, channel);
+      console.log(`[ButtonHandler] Session ${sessionId} continued successfully`);
     } catch (err: unknown) {
+      console.error(`[ButtonHandler] Error continuing session ${sessionId}: ${(err as Error).message}`);
       await interaction.editReply(`Error: ${(err as Error).message}`);
     }
     return;
@@ -254,38 +261,17 @@ export async function handleButton(interaction: ButtonInteraction): Promise<void
     return;
   }
 
-  // Option buttons (numbered choices) - DEPRECATED: use awaiting_human interaction cards
-  if (customId.startsWith('option:')) {
+  // Deprecated: option, pick, submit-answers, answer, confirm — all replaced by interaction cards
+  if (
+    customId.startsWith('option:') ||
+    customId.startsWith('pick:') ||
+    customId.startsWith('submit-answers:') ||
+    customId.startsWith('answer:') ||
+    customId.startsWith('confirm:')
+  ) {
     await interaction.reply({
       content: '⚠️ 此交互方式已废弃，请使用最新的交互卡',
-      ephemeral: true
-    });
-    return;
-  }
-
-  // Multi-question: collect an answer without submitting - DEPRECATED
-  if (customId.startsWith('pick:')) {
-    await interaction.reply({
-      content: '⚠️ 此交互方式已废弃，请使用最新的交互卡',
-      ephemeral: true
-    });
-    return;
-  }
-
-  // Multi-question: submit all collected answers - DEPRECATED
-  if (customId.startsWith('submit-answers:')) {
-    await interaction.reply({
-      content: '⚠️ 此交互方式已废弃，请使用最新的交互卡',
-      ephemeral: true
-    });
-    return;
-  }
-
-  // AskUserQuestion answer buttons (single question) - DEPRECATED
-  if (customId.startsWith('answer:')) {
-    await interaction.reply({
-      content: '⚠️ 此交互方式已废弃，请使用最新的交互卡',
-      ephemeral: true
+      ephemeral: true,
     });
     return;
   }
@@ -347,6 +333,7 @@ export async function handleButton(interaction: ButtonInteraction): Promise<void
     await interaction.deferUpdate();
 
     try {
+      console.log(`[ButtonHandler] Cleanup confirmed by ${interaction.user.tag} — archiving ${request.candidateSessionIds.length} sessions`);
       const result = await archiveSessionsById(
         interaction.guild,
         request.candidateSessionIds,
@@ -363,15 +350,6 @@ export async function handleButton(interaction: ButtonInteraction): Promise<void
     return;
   }
 
-  // Confirm buttons (yes/no) - DEPRECATED
-  if (customId.startsWith('confirm:')) {
-    await interaction.reply({
-      content: '⚠️ 此交互方式已废弃，请使用最新的交互卡',
-      ephemeral: true
-    });
-    return;
-  }
-
   // Mode switch buttons
   if (customId.startsWith('mode:')) {
     const parts = customId.split(':');
@@ -382,7 +360,9 @@ export async function handleButton(interaction: ButtonInteraction): Promise<void
       await interaction.reply({ content: 'Session not found.', ephemeral: true });
       return;
     }
+    const oldMode = session.mode;
     sessions.setMode(sessionId, newMode);
+    console.log(`[ButtonHandler] Mode switched for session ${sessionId}: ${oldMode} → ${newMode}`);
     const labels: Record<string, string> = {
       auto: '⚡ Auto — full autonomy',
       plan: '📋 Plan — plans before changes',

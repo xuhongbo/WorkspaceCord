@@ -30,6 +30,7 @@ const sessionComponents = new Map<string, {
   summaryHandler: SummaryHandler;
   interactionCard: InteractionCard;
 }>();
+const sessionInitializationPromises = new Map<string, Promise<void>>();
 
 // 会话摘要队列（低频聚合）
 const sessionDigests = new Map<string, DigestItem[]>();
@@ -89,40 +90,57 @@ export async function initializeSessionPanel(
     return;
   }
 
-  const statusCard = new StatusCard(channel);
-  const session = sessions.getSession(sessionId);
-  if (options.statusCardMessageId) {
-    statusCard.adopt(options.statusCardMessageId);
-  }
-  await statusCard.initialize({
-    turn: options.initialTurn ?? 1,
-    phase: options.phase,
-    updatedAt: Date.now(),
-    remoteHumanControl: session?.remoteHumanControl,
-    provider: session?.provider,
-  });
-
-  const summaryHandler = new SummaryHandler(sessionId, channel.id, channel, statusCard);
-  const interactionCard = new InteractionCard(channel);
-
-  sessionComponents.set(sessionId, {
-    channel,
-    statusCard,
-    summaryHandler,
-    interactionCard,
-  });
-
-  sessions.setStatusCardBinding(sessionId, {
-    messageId: statusCard.getMessageId() ?? options.statusCardMessageId,
-  });
-
-  const snapshot = ensureSession(sessionId);
-  if (snapshot.turn <= 0) {
-    stateMachine.updateSession(sessionId, { turn: options.initialTurn ?? 1 });
+  const pendingInitialization = sessionInitializationPromises.get(sessionId);
+  if (pendingInitialization) {
+    await pendingInitialization;
+    performanceTracker.endSessionDiscovery(sessionId, { cached: true });
+    return;
   }
 
-  sessionLastActivity.set(sessionId, Date.now());
-  performanceTracker.endSessionDiscovery(sessionId, { cached: false });
+  const initialization = (async () => {
+    const statusCard = new StatusCard(channel);
+    const session = sessions.getSession(sessionId);
+    if (options.statusCardMessageId) {
+      statusCard.adopt(options.statusCardMessageId);
+    }
+    await statusCard.initialize({
+      turn: options.initialTurn ?? 1,
+      phase: options.phase,
+      updatedAt: Date.now(),
+      remoteHumanControl: session?.remoteHumanControl,
+      provider: session?.provider,
+      permissionsSummary: session ? sessions.getSessionPermissionSummary(session) : undefined,
+    });
+
+    const summaryHandler = new SummaryHandler(sessionId, channel.id, channel, statusCard);
+    const interactionCard = new InteractionCard(channel);
+
+    sessionComponents.set(sessionId, {
+      channel,
+      statusCard,
+      summaryHandler,
+      interactionCard,
+    });
+
+    sessions.setStatusCardBinding(sessionId, {
+      messageId: statusCard.getMessageId() ?? options.statusCardMessageId,
+    });
+
+    const snapshot = ensureSession(sessionId);
+    if (snapshot.turn <= 0) {
+      stateMachine.updateSession(sessionId, { turn: options.initialTurn ?? 1 });
+    }
+
+    sessionLastActivity.set(sessionId, Date.now());
+  })();
+
+  sessionInitializationPromises.set(sessionId, initialization);
+  try {
+    await initialization;
+    performanceTracker.endSessionDiscovery(sessionId, { cached: false });
+  } finally {
+    sessionInitializationPromises.delete(sessionId);
+  }
 }
 
 export async function registerExistingStatusCard(
@@ -164,6 +182,16 @@ export async function updateSessionState(
     return null;
   }
 
+  const session = sessions.getSession(sessionId);
+  if (
+    platformEvent.source === 'codex' &&
+    platformEvent.type === 'completed' &&
+    session?.isGenerating
+  ) {
+    performanceTracker.endStateUpdate(updateKey, { skipped: true });
+    return ensureSession(sessionId);
+  }
+
   const snapshot = stateMachine.applyPlatformEvent(platformEvent);
   sessionLastActivity.set(sessionId, Date.now());
   sessionStateSnapshots.set(sessionId, snapshot);
@@ -185,6 +213,7 @@ export async function updateSessionState(
           phase: snapshot.phase,
           remoteHumanControl: session?.remoteHumanControl,
           provider: session?.provider,
+          permissionsSummary: session ? sessions.getSessionPermissionSummary(session) : undefined,
         });
       } catch (error) {
         // Discord API 限流降级：仅记录错误，不阻塞流程
@@ -272,6 +301,7 @@ export async function handleResultEvent(
       phase: stateMachine.getStateLabel('idle'),
       remoteHumanControl: session?.remoteHumanControl,
       provider: session?.provider,
+      permissionsSummary: session ? sessions.getSessionPermissionSummary(session) : undefined,
     });
     stateMachine.updateSession(sessionId, {
       state: 'idle',
@@ -344,6 +374,61 @@ export async function handleAwaitingHuman(
   });
   sessions.setCurrentInteractionMessage(sessionId, messageId);
   return messageId;
+}
+
+export async function relocateSessionPanelToBottom(
+  sessionId: string,
+  channel?: SessionChannel,
+): Promise<void> {
+  let components = getSessionComponents(sessionId);
+  if (!components && channel) {
+    const session = sessions.getSession(sessionId);
+    await initializeSessionPanel(sessionId, channel, {
+      statusCardMessageId: session?.statusCardMessageId,
+      initialTurn: session?.currentTurn || 1,
+    });
+    components = getSessionComponents(sessionId);
+  }
+  if (!components) return;
+
+  let statusRelocation:
+    | {
+        oldMessageId?: string;
+        newMessageId: string;
+      }
+    | null = null;
+
+  try {
+    statusRelocation = await components.statusCard.recreateAtBottom();
+  } catch (error) {
+    console.warn(`状态消息迁移失败 (${sessionId})：`, error);
+    return;
+  }
+
+  let digestRelocation = { oldMessageIds: [] as string[], newMessageIds: [] as string[] };
+  try {
+    digestRelocation = await components.summaryHandler.relocateDigestToBottom();
+  } catch (error) {
+    console.warn(`摘要消息迁移失败 (${sessionId})：`, error);
+    if (statusRelocation?.oldMessageId && statusRelocation.newMessageId) {
+      components.statusCard.adopt(statusRelocation.oldMessageId);
+      await components.channel.messages.delete(statusRelocation.newMessageId).catch(() => {});
+    }
+    return;
+  }
+
+  if (statusRelocation?.newMessageId) {
+    sessions.setStatusCardBinding(sessionId, {
+      messageId: statusRelocation.newMessageId,
+    });
+  }
+
+  if (statusRelocation?.oldMessageId) {
+    await components.channel.messages.delete(statusRelocation.oldMessageId).catch(() => {});
+  }
+  for (const messageId of digestRelocation.oldMessageIds) {
+    await components.channel.messages.delete(messageId).catch(() => {});
+  }
 }
 
 export function queueDigest(sessionId: string, item: DigestItem): void {

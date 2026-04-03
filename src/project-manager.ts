@@ -116,13 +116,17 @@ export async function bindMountedProjectToCategory(
 export function setHistoryChannelId(categoryId: string, channelId: string): void {
   const project = getRegisteredProjectByCategoryId(categoryId);
   if (!project) return;
-  void setProjectHistoryChannel(project.name, channelId);
+  setProjectHistoryChannel(project.name, channelId).catch((err) =>
+    console.error(`Failed to set history channel for project "${project.name}": ${err.message}`),
+  );
 }
 
 export function setControlChannelId(categoryId: string, channelId: string): void {
   const project = getRegisteredProjectByCategoryId(categoryId);
   if (!project) return;
-  void setProjectControlChannel(project.name, channelId);
+  setProjectControlChannel(project.name, channelId).catch((err) =>
+    console.error(`Failed to set control channel for project "${project.name}": ${err.message}`),
+  );
 }
 
 export function getHistoryChannelId(categoryId: string): string | undefined {
@@ -137,7 +141,9 @@ export function setPersonality(categoryId: string, personality: string): void {
   const project = getRegisteredProjectByCategoryId(categoryId);
   if (!project) return;
   project.personality = personality;
-  void updateProject(project);
+  updateProject(project).catch((err) =>
+    console.error(`Failed to update personality for project "${project.name}": ${err.message}`),
+  );
 }
 
 export function getPersonality(categoryId: string): string | undefined {
@@ -148,21 +154,27 @@ export function clearPersonality(categoryId: string): void {
   const project = getRegisteredProjectByCategoryId(categoryId);
   if (!project) return;
   delete project.personality;
-  void updateProject(project);
+  updateProject(project).catch((err) =>
+    console.error(`Failed to clear personality for project "${project.name}": ${err.message}`),
+  );
 }
 
 export function addSkill(categoryId: string, name: string, prompt: string): void {
   const project = getRegisteredProjectByCategoryId(categoryId);
   if (!project) return;
   project.skills[name] = prompt;
-  void updateProject(project);
+  updateProject(project).catch((err) =>
+    console.error(`Failed to add skill "${name}" for project "${project.name}": ${err.message}`),
+  );
 }
 
 export function removeSkill(categoryId: string, name: string): boolean {
   const project = getRegisteredProjectByCategoryId(categoryId);
   if (!project || !project.skills[name]) return false;
   delete project.skills[name];
-  void updateProject(project);
+  updateProject(project).catch((err) =>
+    console.error(`Failed to remove skill "${name}" for project "${project.name}": ${err.message}`),
+  );
   return true;
 }
 

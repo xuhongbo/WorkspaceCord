@@ -19,7 +19,7 @@ const EVENT_TO_STATE = {
   Stop: 'completed',
   StopFailure: 'errored',
   SubagentStart: 'work_started',
-  SubagentStop: 'work_started',
+  SubagentStop: 'completed',
   PreCompact: 'compaction_started',
   PostCompact: 'completed',
   AskUser: 'awaiting_human',
@@ -53,6 +53,15 @@ if (!platformType || !input.session_id) {
   process.exit(0);
 }
 
+const subagentMetadata =
+  input.agent_id
+    ? {
+        parentProviderSessionId: input.session_id,
+        agentId: input.agent_id,
+        agentType: input.agent_type,
+      }
+    : undefined;
+
 const platformEvent = {
   type: platformType,
   sessionId: input.session_id,
@@ -62,6 +71,7 @@ const platformEvent = {
   metadata: {
     cwd: input.cwd || process.cwd(),
     hookEvent: eventName,
+    ...(subagentMetadata ? { subagent: subagentMetadata } : {}),
   },
 };
 
@@ -73,6 +83,7 @@ const fallbackQueueEvent = {
     cwd: input.cwd || process.cwd(),
     timestamp,
     hookEvent: eventName,
+    ...(subagentMetadata ? { subagent: subagentMetadata } : {}),
   },
 };
 

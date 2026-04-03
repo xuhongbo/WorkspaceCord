@@ -70,5 +70,49 @@ describe('session-discovery', () => {
       isNew: false,
     });
   });
-});
 
+  it('会把 Claude 子代理元数据透传给 registerLocalSession', async () => {
+    const guild = { id: 'g-2' };
+    const client = {
+      guilds: {
+        cache: {
+          first: vi.fn(() => guild),
+        },
+      },
+    };
+    registerLocalSession.mockResolvedValue({
+      session: { id: 'sub-1', channelId: 'thread-1' },
+      isNewlyCreated: true,
+    });
+
+    const result = await discoverAndRegisterSession(client as never, {
+      provider: 'claude',
+      providerSessionId: 'parent-session',
+      cwd: '/repo',
+      discoverySource: 'claude-hook',
+      subagent: {
+        parentProviderSessionId: 'parent-session',
+        agentId: 'agent-1',
+        agentType: 'Explore',
+      },
+    });
+
+    expect(registerLocalSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'claude',
+        providerSessionId: 'parent-session',
+        subagent: {
+          parentProviderSessionId: 'parent-session',
+          agentId: 'agent-1',
+          agentType: 'Explore',
+        },
+      }),
+      guild,
+    );
+    expect(result).toEqual({
+      sessionId: 'sub-1',
+      channelId: 'thread-1',
+      isNew: true,
+    });
+  });
+});

@@ -13,6 +13,15 @@ import { STATE_LABELS, STATE_COLORS } from '../state/types.ts';
 export class StatusCard {
   private messageId: string | null = null;
   private channel: TextChannel | AnyThreadChannel;
+  private lastState: UnifiedState = 'idle';
+  private lastData: {
+    turn: number;
+    updatedAt: number;
+    phase?: string;
+    remoteHumanControl?: boolean;
+    provider?: 'claude' | 'codex';
+    permissionsSummary?: string;
+  } | null = null;
 
   constructor(channel: TextChannel | AnyThreadChannel) {
     this.channel = channel;
@@ -32,6 +41,7 @@ export class StatusCard {
     phase?: string;
     remoteHumanControl?: boolean;
     provider?: 'claude' | 'codex';
+    permissionsSummary?: string;
   } = {}): Promise<void> {
     const payload = {
       turn: data.turn ?? 1,
@@ -39,7 +49,10 @@ export class StatusCard {
       phase: data.phase,
       remoteHumanControl: data.remoteHumanControl,
       provider: data.provider,
+      permissionsSummary: data.permissionsSummary,
     };
+    this.lastState = 'idle';
+    this.lastData = payload;
 
     if (this.messageId) {
       await this.update('idle', payload);
@@ -58,8 +71,11 @@ export class StatusCard {
       phase?: string;
       remoteHumanControl?: boolean;
       provider?: 'claude' | 'codex';
+      permissionsSummary?: string;
     },
   ): Promise<void> {
+    this.lastState = state;
+    this.lastData = { ...data };
     const embed = this.buildEmbed(state, data);
     if (!this.messageId) {
       await this.sendNewMessage(embed);
@@ -68,13 +84,20 @@ export class StatusCard {
     await this.editExistingMessage(embed);
   }
 
+  async recreateAtBottom(): Promise<{ oldMessageId?: string; newMessageId: string } | null> {
+    if (!this.messageId || !this.lastData) return null;
+
+    const oldMessageId = this.messageId;
+    const embed = this.buildEmbed(this.lastState, this.lastData);
+    const msg = await this.channel.send({ embeds: [embed] });
+    this.messageId = msg.id;
+    return { oldMessageId, newMessageId: msg.id };
+  }
+
   private async sendNewMessage(embed: EmbedBuilder): Promise<void> {
     try {
       const msg = await this.channel.send({ embeds: [embed] });
       this.messageId = msg.id;
-      await Promise.resolve(msg.pin?.()).catch(() => {
-        // Pin 失败视为降级，状态卡仍然继续工作
-      });
     } catch (error) {
       console.error('状态卡创建失败:', error);
       throw error;
@@ -94,9 +117,6 @@ export class StatusCard {
         components: [],
       });
       this.messageId = msg.id;
-      await Promise.resolve(msg.pin?.()).catch(() => {
-        // Pin 失败视为降级
-      });
     } catch (error) {
       // 如果消息不存在或无法编辑，降级为创建新消息
       console.warn(`状态卡编辑失败 (${this.messageId}), 创建新消息:`, error);
@@ -112,6 +132,7 @@ export class StatusCard {
       phase?: string;
       remoteHumanControl?: boolean;
       provider?: 'claude' | 'codex';
+      permissionsSummary?: string;
     },
   ): EmbedBuilder {
     const embed = new EmbedBuilder()
@@ -134,6 +155,10 @@ export class StatusCard {
     if (data.phase) {
       this.validate(data.phase);
       embed.addFields({ name: '阶段', value: data.phase, inline: true });
+    }
+
+    if (data.permissionsSummary) {
+      embed.addFields({ name: '权限', value: data.permissionsSummary, inline: false });
     }
 
     return embed;

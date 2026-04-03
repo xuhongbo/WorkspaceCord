@@ -68,7 +68,7 @@ export function isUserAllowed(
   allowAll: boolean,
 ): boolean {
   if (allowAll) return true;
-  if (allowedUsers.length === 0) return true;
+  if (allowedUsers.length === 0) return false;
   return allowedUsers.includes(userId);
 }
 

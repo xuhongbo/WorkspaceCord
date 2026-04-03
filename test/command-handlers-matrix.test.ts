@@ -13,6 +13,10 @@ const config = {
   defaultProvider: 'claude',
   defaultMode: 'auto',
   claudePermissionMode: 'normal',
+  codexSandboxMode: 'workspace-write',
+  codexApprovalPolicy: 'on-failure',
+  codexNetworkAccessEnabled: true,
+  codexWebSearchMode: 'live',
   shellEnabled: true,
   shellAllowedUsers: [],
 };
@@ -32,6 +36,7 @@ const removeMcpServer = vi.fn();
 const getMcpServers = vi.fn();
 
 const createSession = vi.fn();
+const getSession = vi.fn();
 const getSessionByChannel = vi.fn();
 const getSessionsByCategory = vi.fn();
 const abortSession = vi.fn();
@@ -41,8 +46,11 @@ const setMonitorGoal = vi.fn();
 const setAgentPersona = vi.fn();
 const setVerbose = vi.fn();
 const setModel = vi.fn();
+const updateSessionPermissions = vi.fn();
 const setCurrentInteractionMessage = vi.fn();
 const setStatusCardBinding = vi.fn();
+const getSessionPermissionSummary = vi.fn(() => 'normal');
+const getSessionPermissionDetails = vi.fn(() => 'Claude: normal');
 
 const spawnSubagent = vi.fn();
 const getSubagents = vi.fn();
@@ -77,6 +85,7 @@ vi.mock('../src/project-manager.ts', () => ({
 }));
 vi.mock('../src/thread-manager.ts', () => ({
   createSession,
+  getSession,
   getSessionByChannel,
   getSessionsByCategory,
   abortSession,
@@ -86,8 +95,11 @@ vi.mock('../src/thread-manager.ts', () => ({
   setAgentPersona,
   setVerbose,
   setModel,
+  updateSessionPermissions,
   setCurrentInteractionMessage,
   setStatusCardBinding,
+  getSessionPermissionSummary,
+  getSessionPermissionDetails,
 }));
 vi.mock('../src/subagent-manager.ts', () => ({ spawnSubagent, getSubagents }));
 vi.mock('../src/archive-manager.ts', () => ({ archiveSession }));
@@ -157,6 +169,7 @@ beforeEach(() => {
   executeSkill.mockReturnValue('run prompt');
   getMcpServers.mockReturnValue([]);
   getSessionByChannel.mockReturnValue(session);
+  getSession.mockImplementation((id: string) => (id === 'session-1' ? session : undefined));
   getSessionsByCategory.mockReturnValue([]);
   buildProjectCleanupPreview.mockReturnValue({
     categoryId: 'cat-1',
@@ -180,6 +193,9 @@ beforeEach(() => {
     createdAt: 1,
   });
   createSession.mockResolvedValue({ ...session, claudePermissionMode: 'normal' });
+  updateSessionPermissions.mockResolvedValue(undefined);
+  getSessionPermissionSummary.mockReturnValue('normal');
+  getSessionPermissionDetails.mockReturnValue('Claude: normal');
   abortSession.mockReturnValue(true);
   listProcesses.mockReturnValue([]);
   killProcess.mockReturnValue(false);
@@ -290,6 +306,67 @@ describe('agent commands', () => {
     await handleAgent(interaction as never);
     expect(registerExistingStatusCard).toHaveBeenCalledWith('session-1', created, 'msg-1');
     expect(setStatusCardBinding).toHaveBeenCalledWith('session-1', { messageId: 'msg-1' });
+  });
+
+  it('spawn 会把 codex 权限参数写入会话并回显', async () => {
+    const control = makeTextChannel({ id: 'control-1', parentId: 'cat-1', name: 'control' });
+    const statusMessage = { id: 'msg-2', pin: vi.fn(async () => undefined) };
+    const created = makeTextChannel({
+      id: 'created-2',
+      parentId: 'cat-1',
+      name: 'codex-test',
+      send: vi.fn(async () => statusMessage),
+    });
+    const guild = makeGuild({ channels: [control], createImpl: async () => created });
+    createSession.mockResolvedValue({
+      ...session,
+      channelId: 'created-2',
+      provider: 'codex',
+      codexSandboxMode: 'danger-full-access',
+      codexApprovalPolicy: 'never',
+      codexBypass: true,
+      codexNetworkAccessEnabled: true,
+      codexWebSearchMode: 'live',
+    });
+
+    const interaction = makeInteraction({
+      subcommand: 'spawn',
+      values: {
+        label: 'test',
+        provider: 'codex',
+        'codex-sandbox': 'danger-full-access',
+        'codex-approval': 'never',
+        'codex-bypass': 'on',
+      },
+      channel: control,
+      guild,
+    });
+
+    await handleAgent(interaction as never);
+
+    expect(createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'codex',
+        codexSandboxMode: 'danger-full-access',
+        codexApprovalPolicy: 'never',
+        codexBypass: true,
+        codexNetworkAccessEnabled: true,
+        codexWebSearchMode: 'live',
+      }),
+    );
+    expect(interaction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        embeds: [
+          expect.objectContaining({
+            data: expect.objectContaining({
+              fields: expect.arrayContaining([
+                expect.objectContaining({ name: 'Codex 权限' }),
+              ]),
+            }),
+          }),
+        ],
+      }),
+    );
   });
 
   it('spawn 在非 control 频道时重定向', async () => {
@@ -492,6 +569,38 @@ describe('agent commands', () => {
     const interaction = makeInteraction({ subcommand: 'mode', values: { mode: 'plan' }, channel: makeTextChannel({ id: 'session-channel' }) });
     await handleAgent(interaction as never);
     expect(setMode).toHaveBeenCalledWith('session-1', 'plan');
+  });
+
+  it('permissions 会更新当前 codex 会话权限', async () => {
+    getSessionByChannel.mockReturnValue({
+      ...session,
+      provider: 'codex',
+      isGenerating: false,
+    });
+    const interaction = makeInteraction({
+      subcommand: 'permissions',
+      values: {
+        'codex-sandbox': 'danger-full-access',
+        'codex-approval': 'never',
+        'codex-bypass': 'on',
+      },
+      channel: makeTextChannel({ id: 'session-channel' }),
+    });
+
+    await handleAgent(interaction as never);
+
+    expect(updateSessionPermissions).toHaveBeenCalledWith('session-1', {
+      codexSandboxMode: 'danger-full-access',
+      codexApprovalPolicy: 'never',
+      codexBypass: true,
+      codexNetworkAccessEnabled: true,
+      codexWebSearchMode: 'live',
+    });
+    expect(interaction.reply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining('已更新'),
+      }),
+    );
   });
 
   it('goal 设置监督目标', async () => {

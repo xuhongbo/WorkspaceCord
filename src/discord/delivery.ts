@@ -14,6 +14,7 @@ type ReactionCapableMessage = Pick<Message, 'react'>;
 type SessionDeliveryState = {
   recentProgressMessageId?: string;
   recentFinalMessageId?: string;
+  lastUsed?: number;
 };
 
 const sessionState = new Map<string, SessionDeliveryState>();
@@ -22,11 +23,30 @@ function getSessionState(sessionId: string): SessionDeliveryState {
   if (!sessionState.has(sessionId)) {
     sessionState.set(sessionId, {});
   }
-  return sessionState.get(sessionId)!;
+  const state = sessionState.get(sessionId)!;
+  state.lastUsed = Date.now();
+  return state;
 }
 
 export function resetDeliveryState(): void {
   sessionState.clear();
+}
+
+function pruneStaleSessionStates(maxAgeMs = 5 * 60 * 1000): void {
+  const cutoff = Date.now() - maxAgeMs;
+  for (const [sessionId, state] of sessionState) {
+    if (!state.lastUsed || state.lastUsed < cutoff) {
+      sessionState.delete(sessionId);
+    }
+  }
+}
+
+export function cleanupSessionDeliveryState(sessionId: string): void {
+  sessionState.delete(sessionId);
+}
+
+export function cleanupStaleDeliveryStates(ageMs?: number): void {
+  pruneStaleSessionStates(ageMs);
 }
 
 export async function sendTyping(channel: ReplyCapableChannel): Promise<void> {
@@ -79,6 +99,7 @@ export async function deliver(
   channel: ReplyCapableChannel,
   plan: DeliveryPlan,
 ): Promise<string[]> {
+  pruneStaleSessionStates();
   const state = getSessionState(plan.sessionId);
 
   if (plan.mode === 'progress_update') {

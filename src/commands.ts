@@ -119,6 +119,39 @@ const commands = [
             ),
         )
         .addStringOption((opt) =>
+          opt
+            .setName('codex-sandbox')
+            .setDescription('Codex 沙箱模式（仅 Codex provider）')
+            .setRequired(false)
+            .addChoices(
+              { name: '🔒 只读', value: 'read-only' },
+              { name: '🛠️ 工作区可写', value: 'workspace-write' },
+              { name: '⚠️ 完全访问', value: 'danger-full-access' },
+            ),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('codex-approval')
+            .setDescription('Codex 审批策略（仅 Codex provider）')
+            .setRequired(false)
+            .addChoices(
+              { name: '🚫 从不询问', value: 'never' },
+              { name: '🙋 按需询问', value: 'on-request' },
+              { name: '↩️ 失败后询问', value: 'on-failure' },
+              { name: '🧾 非信任命令询问', value: 'untrusted' },
+            ),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('codex-bypass')
+            .setDescription('Codex 一键全开（仅 Codex provider）')
+            .setRequired(false)
+            .addChoices(
+              { name: '关闭', value: 'off' },
+              { name: '开启', value: 'on' },
+            ),
+        )
+        .addStringOption((opt) =>
           opt.setName('directory').setDescription('覆盖默认工作目录').setRequired(false),
         ),
     )
@@ -181,6 +214,54 @@ const commands = [
         .setDescription('设置当前会话的模型覆盖')
         .addStringOption((opt) =>
           opt.setName('model').setDescription('模型名称').setRequired(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('permissions')
+        .setDescription('修改当前会话的权限设置')
+        .addStringOption((opt) =>
+          opt
+            .setName('claude-permissions')
+            .setDescription('Claude 权限模式（仅 Claude provider）')
+            .setRequired(false)
+            .addChoices(
+              { name: '🛡️ 普通：需要用户确认操作', value: 'normal' },
+              { name: '⚡ 绕过：完全自主（高风险）', value: 'bypass' },
+            ),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('codex-sandbox')
+            .setDescription('Codex 沙箱模式（仅 Codex provider）')
+            .setRequired(false)
+            .addChoices(
+              { name: '🔒 只读', value: 'read-only' },
+              { name: '🛠️ 工作区可写', value: 'workspace-write' },
+              { name: '⚠️ 完全访问', value: 'danger-full-access' },
+            ),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('codex-approval')
+            .setDescription('Codex 审批策略（仅 Codex provider）')
+            .setRequired(false)
+            .addChoices(
+              { name: '🚫 从不询问', value: 'never' },
+              { name: '🙋 按需询问', value: 'on-request' },
+              { name: '↩️ 失败后询问', value: 'on-failure' },
+              { name: '🧾 非信任命令询问', value: 'untrusted' },
+            ),
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('codex-bypass')
+            .setDescription('Codex 一键全开（仅 Codex provider）')
+            .setRequired(false)
+            .addChoices(
+              { name: '关闭', value: 'off' },
+              { name: '开启', value: 'on' },
+            ),
         ),
     )
     .addSubcommand((sub) => sub.setName('continue').setDescription('继续当前会话的生成')),
@@ -263,6 +344,39 @@ const commands = [
         .addChoices(
           { name: '🛡️ 普通：需要用户确认操作', value: 'normal' },
           { name: '⚡ 绕过：完全自主（高风险）', value: 'bypass' },
+        ),
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName('codex-sandbox')
+        .setDescription('Codex 沙箱模式（仅 Codex provider）')
+        .setRequired(false)
+        .addChoices(
+          { name: '🔒 只读', value: 'read-only' },
+          { name: '🛠️ 工作区可写', value: 'workspace-write' },
+          { name: '⚠️ 完全访问', value: 'danger-full-access' },
+        ),
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName('codex-approval')
+        .setDescription('Codex 审批策略（仅 Codex provider）')
+        .setRequired(false)
+        .addChoices(
+          { name: '🚫 从不询问', value: 'never' },
+          { name: '🙋 按需询问', value: 'on-request' },
+          { name: '↩️ 失败后询问', value: 'on-failure' },
+          { name: '🧾 非信任命令询问', value: 'untrusted' },
+        ),
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName('codex-bypass')
+        .setDescription('Codex 一键全开（仅 Codex provider）')
+        .setRequired(false)
+        .addChoices(
+          { name: '关闭', value: 'off' },
+          { name: '开启', value: 'on' },
         ),
     )
     .addStringOption((opt) =>

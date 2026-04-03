@@ -16,6 +16,8 @@ const PROJECT_REQUIRED_HOOKS = [
   'PreToolUse',
   'PostToolUse',
   'Stop',
+  'SubagentStart',
+  'SubagentStop',
 ];
 const GLOBAL_REQUIRED_HOOKS = [...PROJECT_REQUIRED_HOOKS, 'AskUser'];
 

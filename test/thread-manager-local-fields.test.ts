@@ -42,6 +42,11 @@ describe('thread-manager 本地感知字段持久化', () => {
       providerSessionId: 'provider-1',
       directory: workDir,
       type: 'persistent',
+      codexSandboxMode: 'danger-full-access',
+      codexApprovalPolicy: 'never',
+      codexBypass: true,
+      codexNetworkAccessEnabled: true,
+      codexWebSearchMode: 'live',
       discoverySource: 'codex-log',
       remoteHumanControl: true,
     });
@@ -60,6 +65,11 @@ describe('thread-manager 本地感知字段持久化', () => {
     const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
     expect(parsed).toHaveLength(1);
     expect(parsed[0]).toMatchObject({
+      codexSandboxMode: 'danger-full-access',
+      codexApprovalPolicy: 'never',
+      codexBypass: true,
+      codexNetworkAccessEnabled: true,
+      codexWebSearchMode: 'live',
       discoverySource: 'codex-log',
       remoteHumanControl: true,
       lastObservedState: 'thinking_started',

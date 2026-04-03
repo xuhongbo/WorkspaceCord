@@ -16,8 +16,9 @@ vi.mock('../src/discord/delivery.ts', () => ({
 const { SummaryHandler } = await import('../src/discord/summary-handler.ts');
 
 function createChannel() {
+  let seq = 0;
   return {
-    send: vi.fn(async () => ({ id: 'm1' })),
+    send: vi.fn(async () => ({ id: `m${++seq}` })),
     messages: {
       edit: vi.fn(async () => undefined),
       delete: vi.fn(async () => undefined),
@@ -89,23 +90,17 @@ describe('SummaryHandler', () => {
   it('摘要首次创建通过统一投递层发送，后续刷新优先复用已有消息', async () => {
     const channel = createChannel();
     const statusCard = { update: vi.fn(async () => undefined) };
-    buildDeliveryPlan.mockImplementation((input) => ({
-      sessionId: input.sessionId,
-      chatId: input.chatId,
-      replyToMessageId: input.replyToMessageId,
-      editTargetMessageId: input.editTargetMessageId,
-      chunks: chunkText(input.text, 1900),
-      filesOnFirstChunk: input.files,
-      mode: input.mode,
-    }));
-    // Each chunk is now sent individually — 2 deliver calls for 2 chunks
-    deliver.mockResolvedValueOnce(['m1']).mockResolvedValueOnce(['m2']);
     const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
 
     await handler.sendDigestSummary('A'.repeat(2500));
-    expect(deliver).toHaveBeenCalledTimes(2);
-    expect(deliver).toHaveBeenCalledWith(channel, expect.objectContaining({ mode: 'log' }));
-    expect(channel.send).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
+    expect(channel.send).toHaveBeenCalledTimes(2);
+    expect(channel.send).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        embeds: expect.any(Array),
+      }),
+    );
 
     await handler.sendDigestSummary('B'.repeat(2500));
     expect(channel.messages.edit).toHaveBeenCalledTimes(2);
@@ -114,32 +109,65 @@ describe('SummaryHandler', () => {
   it('前块编辑失败时仍保持摘要顺序并清理陈旧消息', async () => {
     const channel = createChannel();
     const statusCard = { update: vi.fn(async () => undefined) };
-    buildDeliveryPlan.mockImplementation((input) => ({
-      sessionId: input.sessionId,
-      chatId: input.chatId,
-      replyToMessageId: input.replyToMessageId,
-      editTargetMessageId: input.editTargetMessageId,
-      chunks: chunkText(input.text, 1900),
-      filesOnFirstChunk: input.files,
-      mode: input.mode,
-    }));
-    // First digest: 2 chunks sent individually
-    deliver.mockResolvedValueOnce(['m1']).mockResolvedValueOnce(['m2'])
-    // Second digest: chunk 0 edit fails → re-sent via deliver
-      .mockResolvedValueOnce(['m3']);
     const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
 
     await handler.sendDigestSummary('A'.repeat(2500));
-    // First edit (chunk 0) fails, second edit (chunk 1) succeeds
     channel.messages.edit.mockImplementationOnce(async () => { throw new Error('gone'); }).mockImplementationOnce(async () => undefined);
 
     await handler.sendDigestSummary('B'.repeat(2500));
 
-    // 2 deliver calls for first digest + 1 for failed-edit chunk in second = 3 total
-    expect(deliver).toHaveBeenCalledTimes(3);
-    // Stale message 'm1' should be deleted
+    expect(channel.send).toHaveBeenCalledTimes(3);
     expect(channel.messages.delete).toHaveBeenCalledTimes(1);
     expect(channel.messages.delete).toHaveBeenCalledWith('m1');
   });
 
+  it('刷新已有摘要消息时会清空旧正文，避免正文与嵌入重复展示', async () => {
+    const channel = createChannel();
+    const statusCard = { update: vi.fn(async () => undefined) };
+    const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
+
+    await handler.sendDigestSummary('首次摘要');
+    await handler.sendDigestSummary('更新后的摘要');
+
+    expect(channel.messages.edit).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        content: '',
+        embeds: expect.any(Array),
+      }),
+    );
+  });
+
+  it('可以把当前摘要整组迁移到底部并切换绑定', async () => {
+    const channel = createChannel();
+    const statusCard = { update: vi.fn(async () => undefined) };
+    const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
+
+    await handler.sendDigestSummary('A'.repeat(2500));
+
+    const result = await handler.relocateDigestToBottom();
+
+    expect(result).toEqual({
+      oldMessageIds: ['m1', 'm2'],
+      newMessageIds: ['m3', 'm4'],
+    });
+    expect(channel.send).toHaveBeenCalledTimes(4);
+
+    await handler.sendDigestSummary('B'.repeat(2500));
+
+    expect(channel.messages.edit).toHaveBeenCalledWith(
+      'm3',
+      expect.objectContaining({
+        content: '',
+        embeds: expect.any(Array),
+      }),
+    );
+    expect(channel.messages.edit).toHaveBeenCalledWith(
+      'm4',
+      expect.objectContaining({
+        content: '',
+        embeds: expect.any(Array),
+      }),
+    );
+  });
 });

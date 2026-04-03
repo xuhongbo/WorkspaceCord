@@ -17,6 +17,8 @@
     "node_modules",
     "dist",
     "test",
+    "site",
+    "site/**",
     "src/agent-manager.ts",
     "src/agent-router.ts",
     "src/session-manager.ts",

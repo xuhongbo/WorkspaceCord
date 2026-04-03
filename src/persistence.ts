@@ -4,9 +4,15 @@ import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 
 let dataDirOverride: string | null = null;
+const DEFAULT_TEST_DATA_DIR = join(process.cwd(), '.workspacecord-data');
 
 export function getDataDir(): string {
-  return dataDirOverride ?? join(homedir(), '.workspacecord');
+  if (dataDirOverride) return dataDirOverride;
+  if (process.env.WORKSPACECORD_DATA_DIR) return process.env.WORKSPACECORD_DATA_DIR;
+  if (process.env.VITEST === 'true' || process.env.NODE_ENV === 'test') {
+    return DEFAULT_TEST_DATA_DIR;
+  }
+  return join(homedir(), '.workspacecord');
 }
 
 /** 仅测试时使用，覆盖数据目录 */

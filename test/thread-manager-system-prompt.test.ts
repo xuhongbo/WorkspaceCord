@@ -30,8 +30,8 @@ vi.mock('../src/config.ts', () => ({
     defaultMode: 'auto',
     codexSandboxMode: 'workspace-write',
     codexApprovalPolicy: 'on-failure',
-    codexNetworkAccessEnabled: false,
-    codexWebSearchMode: 'disabled',
+    codexNetworkAccessEnabled: true,
+    codexWebSearchMode: 'live',
     codexReasoningEffort: '',
     claudePermissionMode: 'normal',
   },
@@ -111,6 +111,37 @@ describe('thread-manager system prompt', () => {
     expect(promptText).toContain('Discord');
     expect(promptText).toContain('附件默认不自动下载');
     expect(promptText).toContain('workspacecord attachment fetch');
+  });
+
+  it('codex 会话级权限会覆盖默认 provider 选项，bypass 会强制全开', async () => {
+    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    _setDataDirForTest(dataDir);
+    const threadManager = await import('../src/thread-manager.ts');
+
+    const session = await threadManager.createSession({
+      channelId: 'channel-3',
+      categoryId: 'category-1',
+      projectName: 'demo',
+      agentLabel: 'permission-session',
+      provider: 'codex',
+      directory: workDir,
+      type: 'persistent',
+      codexSandboxMode: 'read-only',
+      codexApprovalPolicy: 'untrusted',
+      codexBypass: true,
+      codexNetworkAccessEnabled: false,
+      codexWebSearchMode: 'disabled',
+    });
+
+    for await (const _event of threadManager.sendPrompt(session.id, 'hello permissions')) {
+      // consume stream
+    }
+
+    const options = sendPromptMock.mock.calls.at(-1)?.[1];
+    expect(options?.sandboxMode).toBe('danger-full-access');
+    expect(options?.approvalPolicy).toBe('never');
+    expect(options?.networkAccessEnabled).toBe(true);
+    expect(options?.webSearchMode).toBe('live');
   });
 
 });

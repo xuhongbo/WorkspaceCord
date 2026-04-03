@@ -7,6 +7,7 @@ import {
 import { config } from './config.ts';
 import { createSession, endSession, getAllSessions } from './thread-manager.ts';
 import type { ThreadSession, ProviderName } from './types.ts';
+import { sendSystemNotice } from './discord/delivery-notices.ts';
 
 // Watchdog: archive idle subagents after 1 hour
 const SUBAGENT_IDLE_TIMEOUT_MS = 60 * 60 * 1000;
@@ -26,6 +27,7 @@ export async function spawnSubagent(
   sessionChannel: TextChannel,
 ): Promise<ThreadSession> {
   if (!canSpawnSubagent(parentSession)) {
+    console.warn(`[SubagentManager] Depth limit hit for session ${parentSession.id} (max depth ${config.maxSubagentDepth})`);
     throw new Error(
       `Max subagent depth (${config.maxSubagentDepth}) reached. Cannot spawn further subagents.`,
     );
@@ -55,6 +57,8 @@ export async function spawnSubagent(
       provider === 'claude' ? parentSession.claudePermissionMode : undefined,
   });
 
+  console.log(`[SubagentManager] Spawned subagent "${label}" session ${session.id} thread ${thread.id} (depth ${session.subagentDepth}, parent ${parentSession.id})`);
+
   return session;
 }
 
@@ -67,23 +71,20 @@ export async function archiveSubagent(
   summary?: string,
 ): Promise<void> {
   if (summary) {
-    try {
-      await thread.send(`*Subagent complete: ${summary}*`);
-    } catch {
-      /* thread may already be archived */
-    }
+    await sendSystemNotice(thread, session.id, `*Subagent complete: ${summary}*`);
   }
 
   try {
     await thread.setArchived(true, 'Subagent task completed');
-  } catch {
-    /* best effort */
+  } catch (error) {
+    console.warn(`[SubagentManager] Failed to archive thread ${thread.id} for subagent ${session.id}: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   try {
     await endSession(session.id);
-  } catch {
-    /* already ended */
+    console.log(`[SubagentManager] Archived subagent ${session.id} thread ${thread.id}${summary ? ` — ${summary}` : ''}`);
+  } catch (error) {
+    console.warn(`[SubagentManager] Failed to end session for subagent ${session.id}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -105,6 +106,8 @@ export async function runSubagentWatchdog(
 ): Promise<void> {
   const now = Date.now();
   const checked = new Set<string>();
+  let archived = 0;
+  let errors = 0;
 
   for (const session of getSubagentSessions()) {
     if (checked.has(session.id)) continue;
@@ -117,11 +120,20 @@ export async function runSubagentWatchdog(
     const thread = getThread(session.channelId);
     if (!thread) {
       await endSession(session.id).catch(() => {});
+      console.log(`[SubagentWatchdog] Ended orphaned subagent ${session.id} — thread ${session.channelId} not found`);
       continue;
     }
 
-    await archiveSubagent(session, thread, 'Idle timeout reached.');
+    try {
+      await archiveSubagent(session, thread, 'Idle timeout reached.');
+      archived += 1;
+    } catch (error) {
+      console.error(`[SubagentWatchdog] Failed to archive idle subagent ${session.id}: ${error instanceof Error ? error.message : String(error)}`);
+      errors += 1;
+    }
   }
+
+  console.log(`[SubagentWatchdog] Watchdog run: checked ${checked.size} subagents, archived ${archived}, errors ${errors}`);
 }
 
 function getSubagentSessions(): ThreadSession[] {

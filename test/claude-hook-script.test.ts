@@ -85,9 +85,28 @@ describe('workspacecord Claude hook script', () => {
       });
     });
 
-    await new Promise<void>((resolve) => {
-      server.listen(0, '127.0.0.1', () => resolve());
+    const canBind = await new Promise<boolean>((resolve, reject) => {
+      let settled = false;
+      server.once('error', (err) => {
+        if (settled) return;
+        settled = true;
+        if ((err as NodeJS.ErrnoException).code === 'EPERM' || (err as NodeJS.ErrnoException).code === 'EACCES') {
+          resolve(false);
+          return;
+        }
+        reject(err);
+      });
+      server.listen(0, '127.0.0.1', () => {
+        if (settled) return;
+        settled = true;
+        resolve(true);
+      });
     });
+    if (!canBind) {
+      server.close(() => {});
+      console.warn('跳过网络受限环境下的守护进程可达测试');
+      return;
+    }
     const address = server.address();
     if (!address || typeof address === 'string') {
       throw new Error('测试服务器端口获取失败');
@@ -142,5 +161,53 @@ describe('workspacecord Claude hook script', () => {
 
     expect(existsSync(queuePath)).toBe(false);
     expect(existsSync(failureLogPath(home))).toBe(false);
+  });
+
+  it('SubagentStop 会携带子代理元数据并映射为 completed', () => {
+    const home = mkdtempSync(join(tmpdir(), 'workspacecord-hook-home-'));
+    tempHomes.push(home);
+
+    const result = spawnSync('node', [scriptPath, 'SubagentStop'], {
+      input: JSON.stringify({
+        session_id: 'claude-parent',
+        cwd: '/repo',
+        agent_id: 'agent-1',
+        agent_type: 'Explore',
+      }),
+      env: {
+        ...process.env,
+        HOME: home,
+        workspacecord_HOOK_URL: 'http://127.0.0.1:65531/hook-event',
+      },
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(0);
+    expect(existsSync(queuePath)).toBe(true);
+
+    const lines = readFileSync(queuePath, 'utf8').trim().split('\n').filter(Boolean);
+    const event = JSON.parse(lines[lines.length - 1]) as {
+      event: string;
+      state: string;
+      sessionId: string;
+      metadata: {
+        cwd: string;
+        subagent?: {
+          parentProviderSessionId: string;
+          agentId: string;
+          agentType?: string;
+        };
+      };
+    };
+
+    expect(event.event).toBe('SubagentStop');
+    expect(event.state).toBe('completed');
+    expect(event.sessionId).toBe('claude-parent');
+    expect(event.metadata.cwd).toBe('/repo');
+    expect(event.metadata.subagent).toEqual({
+      parentProviderSessionId: 'claude-parent',
+      agentId: 'agent-1',
+      agentType: 'Explore',
+    });
   });
 });

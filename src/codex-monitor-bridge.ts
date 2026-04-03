@@ -6,7 +6,10 @@ import { registerExistingStatusCard, updateSessionState } from './panel-adapter.
 type SessionChannel = TextChannel | AnyThreadChannel;
 
 function isSessionChannel(channel: unknown): channel is SessionChannel {
-  return !!channel && typeof channel === 'object' && 'send' in channel && 'messages' in channel;
+  if (!channel || typeof channel !== 'object') return false;
+  const obj = channel as Record<string, unknown>;
+  // All Discord channels have an `id` field; text-like channels have `send` and `messages`
+  return 'id' in obj && 'send' in obj && 'messages' in obj;
 }
 
 export async function handleCodexMonitorStateChange(

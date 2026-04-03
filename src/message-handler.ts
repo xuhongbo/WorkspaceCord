@@ -10,8 +10,10 @@ import { executeSessionPrompt } from './session-executor.ts';
 import { isUserAllowed } from './utils.ts';
 import { sendAckReaction, sendTyping, deliver } from './discord/delivery.ts';
 import { buildDeliveryPlan } from './discord/delivery-policy.ts';
+import { sendSystemNotice } from './discord/delivery-notices.ts';
 import { registerMessageAttachments } from './discord/attachment-inbox.ts';
 import { buildInboundEnvelope } from './discord/inbound-envelope.ts';
+import { relocateSessionPanelToBottom } from './panel-adapter.ts';
 
 type SessionChannel = TextChannel | AnyThreadChannel;
 
@@ -30,12 +32,14 @@ export async function handleMessage(message: Message): Promise<void> {
   if (!isSessionChannel && !isSubagentThread) return;
 
   const session = getSessionByChannel(channel.id);
-  if (!session) return;
+  if (!session) {
+    console.warn(`[MessageHandler] Session not found for channel ${channel.id} — ignoring message`);
+    return;
+  }
 
   if (!isUserAllowed(message.author.id, config.allowedUsers, config.allowAllUsers)) {
-    await (channel as SessionChannel)
-      .send('You are not authorized to use this bot.')
-      .catch(() => {});
+    console.warn(`[MessageHandler] Unauthorized attempt by user ${message.author.id} in channel ${channel.id} (session ${session.id})`);
+    await sendSystemNotice(channel as SessionChannel, session.id, 'You are not authorized to use this bot.');
     return;
   }
 
@@ -46,9 +50,13 @@ export async function handleMessage(message: Message): Promise<void> {
   lastMessageTime.set(rateKey, now);
 
   if (session.isGenerating) {
-    await (channel as SessionChannel)
-      .send('*Agent is already generating. Stop it first with `/agent stop`.*')
-      .catch(() => {});
+    console.log(`[MessageHandler] Already generating in session ${session.id} — ignoring message`);
+    await sendSystemNotice(
+      channel as SessionChannel,
+      session.id,
+      '*Agent is already generating. Stop it first with `/agent stop`.*',
+      message.reference?.messageId ?? undefined,
+    );
     return;
   }
 
@@ -75,7 +83,11 @@ export async function handleMessage(message: Message): Promise<void> {
 
   if (!envelope.text.trim() && envelope.attachments.length === 0) return;
 
+  console.log(`[MessageHandler] Prompt submitted to session ${session.id} (${envelope.text.length} chars)`);
   updateSession(session.id, { lastInboundMessageId: message.id });
+  await Promise.resolve(
+    relocateSessionPanelToBottom(session.id, channel as SessionChannel),
+  ).catch(() => {});
   await executeSessionPrompt(session, channel as SessionChannel, envelope.renderedPrompt);
 
   if (session.type === 'subagent' && session.parentChannelId && message.guild) {
@@ -83,6 +95,7 @@ export async function handleMessage(message: Message): Promise<void> {
       | TextChannel
       | undefined;
     if (parentChannel?.isTextBased() && !parentChannel.isThread()) {
+      console.log(`[MessageHandler] Subagent ${session.id} completed — notifying parent channel ${parentChannel.id}`);
       const plan = buildDeliveryPlan({
         sessionId: session.id,
         chatId: parentChannel.id,

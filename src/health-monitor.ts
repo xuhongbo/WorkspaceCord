@@ -2,6 +2,9 @@ import type { Client } from 'discord.js';
 import { getAllSessions } from './thread-manager.ts';
 import { getAllRegisteredProjects } from './project-registry.ts';
 import { config } from './config.ts';
+import { formatDuration } from './utils.ts';
+import { getSessionSyncStats } from './session-sync.ts';
+import { generatePerformanceReport } from './panel-adapter.ts';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -74,24 +77,6 @@ export function setBotStartTime(time: number): void {
 }
 
 // ─── Utility Functions ────────────────────────────────────────────────────
-
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (days > 0) {
-    return `${days}d ${hours % 24}h`;
-  }
-  if (hours > 0) {
-    return `${hours}h ${minutes % 60}m`;
-  }
-  if (minutes > 0) {
-    return `${minutes}m`;
-  }
-  return `${seconds}s`;
-}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -330,6 +315,26 @@ export function formatStatusReport(metrics: HealthMetrics): string {
       const icon = issue.severity === 'error' ? '❌' : '⚠️';
       report += `${icon} ${issue.message}\n`;
     }
+  }
+
+  // Session sync stats
+  const syncStats = getSessionSyncStats();
+  if (syncStats.runs > 0) {
+    report += '\n**Session Sync**\n';
+    report += `• Runs: ${syncStats.runs} (last: ${formatDuration(Date.now() - (syncStats.lastRunAt || Date.now()))} ago)\n`;
+    report += `• Last run: ${syncStats.lastRunDurationMs ? `${syncStats.lastRunDurationMs}ms` : 'N/A'}\n`;
+    report += `• Scanned: ${syncStats.scanned.claude} Claude + ${syncStats.scanned.codex} Codex\n`;
+    report += `• Created: ${syncStats.createdSessions} sessions\n`;
+    if (syncStats.errors.length > 0) {
+      report += `• Errors: ${syncStats.errors.length} (recent: ${syncStats.errors.slice(-2).join('; ')})\n`;
+    }
+  }
+
+  // Performance
+  const perfReport = generatePerformanceReport();
+  if (perfReport) {
+    report += '\n**Performance**\n';
+    report += perfReport;
   }
 
   return report;

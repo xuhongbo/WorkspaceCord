@@ -2,8 +2,13 @@
 # 设置 workspacecord 健康检查定时任务
 # 使用 launchd (macOS) 每小时执行一次健康检查
 
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PLIST_PATH="$HOME/Library/LaunchAgents/com.workspacecord.health-check.plist"
-SCRIPT_PATH="$HOME/Documents/github/workspacecord/scripts/health-check.sh"
+SCRIPT_PATH="$SCRIPT_DIR/health-check.sh"
+
+mkdir -p "$HOME/Library/LaunchAgents" "$HOME/.workspacecord"
 
 cat > "$PLIST_PATH" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -25,12 +30,18 @@ cat > "$PLIST_PATH" <<EOF
     <string>$HOME/.workspacecord/health-check-cron.log</string>
     <key>StandardErrorPath</key>
     <string>$HOME/.workspacecord/health-check-cron.error.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.npm-global/bin:$HOME/Library/pnpm:/opt/homebrew/bin:/usr/local/bin</string>
+    </dict>
 </dict>
 </plist>
 EOF
 
 # 加载定时任务
 launchctl unload "$PLIST_PATH" 2>/dev/null || true
+launchctl unload "$HOME/Library/LaunchAgents/com.threadcord.health-check.plist" 2>/dev/null || true
 launchctl load "$PLIST_PATH"
 
 echo "✅ Health check cron job installed"

@@ -6,17 +6,39 @@ import { discoverAndRegisterSession } from './session-discovery.ts';
 import { isPlatformEvent } from './state/event-normalizer.ts';
 import type { AnyThreadChannel, Client, TextChannel } from 'discord.js';
 import { gateCoordinator } from './state/gate-coordinator.ts';
+import { config } from './config.ts';
 
 type SessionChannel = TextChannel | AnyThreadChannel;
 
 function isSessionChannel(channel: unknown): channel is SessionChannel {
-  return !!channel && typeof channel === 'object' && 'send' in channel && 'messages' in channel;
+  if (!channel || typeof channel !== 'object') return false;
+  const obj = channel as Record<string, unknown>;
+  // All Discord channels have an `id` field; text-like channels have `send` and `messages`
+  return 'id' in obj && 'send' in obj && 'messages' in obj;
 }
 
 const HOOK_PORT = 23456;
 const REQUEST_TIMEOUT_MS = 5000; // 5 秒超时
 let server: ReturnType<typeof createServer> | null = null;
 let discordClient: Client | null = null;
+
+/**
+ * Validate the Authorization header against the configured hook secret.
+ * Returns true if auth passes (secret not configured or token matches).
+ * Writes a 401 response and returns false on mismatch.
+ */
+function authorizeHookRequest(req: IncomingMessage, res: ServerResponse): boolean {
+  const secret = config.hookSecret;
+  if (!secret) return true; // backwards compatible: no secret = allow all
+
+  const authHeader = req.headers.authorization ?? '';
+  if (!authHeader.startsWith('Bearer ') || authHeader.slice(7) !== secret) {
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Unauthorized' }));
+    return false;
+  }
+  return true;
+}
 
 export function startHookServer(client: Client): void {
   discordClient = client;
@@ -29,8 +51,10 @@ export function startHookServer(client: Client): void {
     });
 
     if (req.method === 'POST' && req.url === '/hook-event') {
+      if (!authorizeHookRequest(req, res)) return;
       await handleHookEvent(req, res);
     } else if (req.method === 'POST' && req.url === '/gate-resolved') {
+      if (!authorizeHookRequest(req, res)) return;
       await handleGateResolved(req, res);
     } else if (req.method === 'GET' && req.url === '/health') {
       // 健康检查端点
@@ -43,6 +67,9 @@ export function startHookServer(client: Client): void {
   });
 
   server.listen(HOOK_PORT, '127.0.0.1', () => {
+    if (!config.hookSecret) {
+      console.warn('[Hook Server] WARNING: HOOK_SECRET is not configured. Any local process can post to the hook server.');
+    }
     console.log(`[Hook Server] Listening on http://127.0.0.1:${HOOK_PORT}`);
   });
 
@@ -80,7 +107,22 @@ async function handleHookEvent(req: IncomingMessage, res: ServerResponse): Promi
       );
 
       // 尝试查找已存在的会话
-      let session = sessions.getSessionByProviderSession(event.source, event.sessionId);
+      const subagent =
+        event.metadata?.subagent && typeof event.metadata.subagent === 'object'
+          ? (event.metadata.subagent as {
+              parentProviderSessionId?: string;
+              agentId?: string;
+              agentType?: string;
+            })
+          : undefined;
+      const subagentProviderSessionId =
+        event.source === 'claude' && subagent?.agentId
+          ? sessions.buildClaudeSubagentProviderSessionId(event.sessionId, subagent.agentId)
+          : undefined;
+      let session =
+        (subagentProviderSessionId
+          ? sessions.getSessionByProviderSession(event.source, subagentProviderSessionId)
+          : undefined) ?? sessions.getSessionByProviderSession(event.source, event.sessionId);
 
       // 如果会话不存在，尝试快速注册
       if (!session && discordClient && event.metadata?.cwd) {
@@ -89,6 +131,14 @@ async function handleHookEvent(req: IncomingMessage, res: ServerResponse): Promi
           providerSessionId: event.sessionId,
           cwd: event.metadata.cwd as string,
           discoverySource: event.source === 'claude' ? 'claude-hook' : 'codex-log',
+          subagent:
+            subagent?.parentProviderSessionId && subagent.agentId
+              ? {
+                  parentProviderSessionId: subagent.parentProviderSessionId,
+                  agentId: subagent.agentId,
+                  agentType: subagent.agentType,
+                }
+              : undefined,
         });
 
         if (registered) {

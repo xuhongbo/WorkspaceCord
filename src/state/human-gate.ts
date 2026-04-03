@@ -2,6 +2,7 @@
 // 参考设计文档：2026-03-31-local-session-realtime-sync-and-human-gates-design.md
 // 第 10.3.1 节：并发安全机制
 
+import { Store } from '../persistence.js';
 import type { ProviderName } from '../types.js';
 
 // ─── 门控类型与状态 ───────────────────────────────────────────────────────────
@@ -48,6 +49,31 @@ export interface CASUpdateResult {
 
 export class HumanGateRegistry {
   private gates: Map<string, HumanGateRecord> = new Map();
+  private store: Store<HumanGateRecord[]>;
+
+  constructor() {
+    this.store = new Store<HumanGateRecord[]>('gates.json');
+  }
+
+  /** Load persisted gates from disk. Call during startup before using the registry. */
+  async init(): Promise<void> {
+    try {
+      const data = await this.store.read();
+      if (data && Array.isArray(data)) {
+        for (const record of data) {
+          this.gates.set(record.id, record);
+        }
+      }
+    } catch (err) {
+      console.error('[HumanGateRegistry] Failed to load persisted gates:', err);
+    }
+  }
+
+  private async _save(): Promise<void> {
+    return this.store.write(Array.from(this.gates.values())).catch((err: unknown) => {
+      console.error('[HumanGateRegistry] Failed to persist gates:', err);
+    });
+  }
 
   // 创建新门控
   create(params: Omit<HumanGateRecord, 'id' | 'version' | 'createdAt' | 'status'>): HumanGateRecord {
@@ -60,6 +86,7 @@ export class HumanGateRegistry {
       status: 'pending',
     };
     this.gates.set(id, record);
+    this._save();
     return record;
   }
 
@@ -120,6 +147,8 @@ export class HumanGateRegistry {
 
     this.gates.set(id, updated);
 
+    this._save();
+
     return {
       success: true,
       record: updated,
@@ -142,12 +171,15 @@ export class HumanGateRegistry {
         count++;
       }
     }
+    this._save();
     return count;
   }
 
   // 删除门控记录
   delete(id: string): boolean {
-    return this.gates.delete(id);
+    const result = this.gates.delete(id);
+    if (result) this._save();
+    return result;
   }
 
   // 清理过期门控（超过指定时间未解决）
@@ -169,6 +201,7 @@ export class HumanGateRegistry {
       }
     }
 
+    this._save();
     return count;
   }
 
@@ -187,6 +220,7 @@ export class HumanGateRegistry {
       this.gates.delete(gate.id);
     }
 
+    this._save();
     return toArchive.length;
   }
 

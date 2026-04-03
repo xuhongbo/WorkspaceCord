@@ -2,20 +2,63 @@
 # workspacecord 健康检查和自动重启脚本
 # 用途：检查 daemon 服务是否存活，如果挂了就自动重启，重启失败则执行完整部署
 
-set -e
+set -euo pipefail
 
-LOG_FILE="$HOME/.workspacecord/health-check.log"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="${WORKSPACECORD_PROJECT_DIR:-$(cd -- "$SCRIPT_DIR/.." && pwd)}"
+DATA_DIR="${WORKSPACECORD_DATA_DIR:-$HOME/.workspacecord}"
+export PATH="${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}:$HOME/.npm-global/bin:$HOME/Library/pnpm:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+LOG_FILE="$DATA_DIR/health-check.log"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+mkdir -p "$DATA_DIR"
 
 log() {
     echo "[$TIMESTAMP] $1" | tee -a "$LOG_FILE"
 }
 
+resolve_cli() {
+    if [ -n "${WORKSPACECORD_CLI:-}" ]; then
+        if [ -x "${WORKSPACECORD_CLI}" ]; then
+            echo "${WORKSPACECORD_CLI}"
+            return 0
+        fi
+        if command -v "${WORKSPACECORD_CLI}" >/dev/null 2>&1; then
+            command -v "${WORKSPACECORD_CLI}"
+            return 0
+        fi
+    fi
+
+    for candidate in workspacecord threadcord; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+resolve_package_name() {
+    if [ ! -f "$PROJECT_DIR/package.json" ]; then
+        return 1
+    fi
+
+    node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).name)" "$PROJECT_DIR/package.json"
+}
+
+PACKAGE_NAME="$(resolve_package_name || true)"
+
 # 检查 daemon 是否在运行
 check_daemon() {
-    if launchctl list | grep -q "com.workspacecord"; then
+    local launchctl_output
+    launchctl_output="$(launchctl list 2>/dev/null || true)"
+
+    if printf '%s\n' "$launchctl_output" | grep -q "com.workspacecord"; then
         # 检查进程是否真的在运行
-        local pid=$(launchctl list | grep com.workspacecord | awk '{print $1}')
+        local pid
+        pid=$(printf '%s\n' "$launchctl_output" | awk '$3 == "com.workspacecord" { print $1; exit }')
         if [ "$pid" != "-" ] && [ -n "$pid" ]; then
             log "✅ Daemon is running (PID: $pid)"
             return 0
@@ -27,7 +70,7 @@ check_daemon() {
 
 # 检查 bot 是否响应（通过检查锁文件和进程）
 check_bot_alive() {
-    local lock_file="$HOME/.workspacecord/bot.lock"
+    local lock_file="$DATA_DIR/bot.lock"
 
     if [ ! -f "$lock_file" ]; then
         log "⚠️  Lock file not found"
@@ -48,14 +91,22 @@ check_bot_alive() {
 restart_service() {
     log "🔄 Attempting to restart service..."
 
+    local cli_bin
+    cli_bin="$(resolve_cli || true)"
+
+    if [ -z "$cli_bin" ]; then
+        log "❌ CLI command not found (tried workspacecord/threadcord)"
+        return 1
+    fi
+
     # 卸载旧的 daemon
-    workspacecord daemon uninstall 2>&1 | tee -a "$LOG_FILE"
+    "$cli_bin" daemon uninstall 2>&1 | tee -a "$LOG_FILE"
 
     # 清理锁文件
-    rm -f "$HOME/.workspacecord/bot.lock"
+    rm -f "$DATA_DIR/bot.lock"
 
     # 重新安装并启动 daemon
-    workspacecord daemon install 2>&1 | tee -a "$LOG_FILE"
+    "$cli_bin" daemon install 2>&1 | tee -a "$LOG_FILE"
 
     # 等待 5 秒让服务启动
     sleep 5
@@ -74,7 +125,7 @@ restart_service() {
 full_deployment() {
     log "🚀 Starting full deployment process..."
 
-    local project_dir="$HOME/Documents/github/workspacecord"
+    local project_dir="$PROJECT_DIR"
 
     # 检查项目目录是否存在
     if [ ! -d "$project_dir" ]; then
@@ -100,6 +151,7 @@ full_deployment() {
 
     # 3. 创建安装包
     log "📦 Creating package..."
+    rm -f "$project_dir"/*.tgz
     if ! pnpm pack 2>&1 | tee -a "$LOG_FILE"; then
         log "❌ Pack failed"
         return 1
@@ -107,7 +159,15 @@ full_deployment() {
 
     # 4. 全局安装
     log "📦 Installing globally..."
-    local tgz_file=$(ls workspacecord-*.tgz 2>/dev/null | head -1)
+    local tgz_file=""
+    if [ -n "$PACKAGE_NAME" ]; then
+        tgz_file=$(find "$project_dir" -maxdepth 1 -type f -name "${PACKAGE_NAME}-*.tgz" -print | head -1)
+        tgz_file="${tgz_file#$project_dir/}"
+    fi
+    if [ -z "$tgz_file" ]; then
+        tgz_file=$(find "$project_dir" -maxdepth 1 -type f -name '*.tgz' -print | head -1)
+        tgz_file="${tgz_file#$project_dir/}"
+    fi
     if [ -z "$tgz_file" ]; then
         log "❌ Package file not found"
         return 1
@@ -124,9 +184,15 @@ full_deployment() {
 
     # 6. 重启 daemon
     log "🔄 Restarting daemon..."
-    workspacecord daemon uninstall 2>&1 | tee -a "$LOG_FILE"
-    rm -f "$HOME/.workspacecord/bot.lock"
-    workspacecord daemon install 2>&1 | tee -a "$LOG_FILE"
+    local cli_bin
+    cli_bin="$(resolve_cli || true)"
+    if [ -z "$cli_bin" ]; then
+        log "❌ CLI command not found (tried workspacecord/threadcord)"
+        return 1
+    fi
+    "$cli_bin" daemon uninstall 2>&1 | tee -a "$LOG_FILE"
+    rm -f "$DATA_DIR/bot.lock"
+    "$cli_bin" daemon install 2>&1 | tee -a "$LOG_FILE"
 
     # 7. 等待并验证
     sleep 5

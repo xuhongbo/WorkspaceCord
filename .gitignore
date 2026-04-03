@@ -155,6 +155,12 @@ Thumbs.db
 
 # Local data
 .discord-friends/
+.workspacecord-data/
+.workspacecord-config.json
+.workspacecord-config-fallback.json
+.playwright-mcp/
+# Temporary files
+tmp/
 
 /bin
 # Local git worktrees

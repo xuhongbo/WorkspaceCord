@@ -15,7 +15,23 @@ describe('commands contract', () => {
     const agent = defs.find((definition) => definition.name === 'agent');
 
     expect(agent?.options?.map((option) => option.name)).toEqual(
-      expect.arrayContaining(['cleanup']),
+      expect.arrayContaining(['cleanup', 'permissions']),
+    );
+  });
+
+  it('agent spawn 暴露 Claude 与 Codex 权限选项', () => {
+    const defs = getCommandDefinitions();
+    const agent = defs.find((definition) => definition.name === 'agent');
+    const spawn = agent?.options?.find((option) => option.name === 'spawn');
+
+    const optionNames = (spawn?.options ?? []).map((option) => option.name);
+    expect(optionNames).toEqual(
+      expect.arrayContaining([
+        'claude-permissions',
+        'codex-sandbox',
+        'codex-approval',
+        'codex-bypass',
+      ]),
     );
   });
 });

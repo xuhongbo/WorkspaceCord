@@ -1,24 +1,35 @@
+// Thread Manager — Provider 委托与本地会话注册
+// 职责：系统提示词构建、Provider 调用、本地会话注册（含 Discord 频道创建）
+
 import { existsSync } from 'node:fs';
 import { sep } from 'node:path';
 import { ensureProvider, type ProviderEvent, type ContentBlock } from './providers/index.ts';
-import { Store } from './persistence.ts';
 import { getAgent } from './agents.ts';
 import { getPersonality } from './project-manager.ts';
-import { sanitizeName, resolvePath, isAbortError } from './utils.ts';
-import type {
-  ThreadSession,
-  SessionPersistData,
-  SessionMode,
-  SessionWorkflowState,
-  ProviderName,
-} from './types.ts';
+import { resolvePath, isAbortError } from './utils.ts';
+import type { ThreadSession, ProviderName } from './types.ts';
 import { config } from './config.ts';
 import type { ProviderCanUseTool } from './providers/types.ts';
 import { buildDiscordSessionMessageContext } from './discord/session-message-context.ts';
+import * as registry from './session-registry.ts';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// Re-export the full registry API for backwards compatibility
+export {
+  loadSessions, createSession, getSession, getSessionByChannel, getSessionByThread,
+  getSessionByCodexId, getSessionByProviderSession, getSessionsByCategory, getAllSessions,
+  findCodexSessionForMonitor, findCodexSessionByProviderSessionId, findCodexSessionByCwd,
+  resolveCodexSessionFromMonitor, updateSession, updateSessionPermissions,
+  resolveEffectiveClaudePermissionMode, resolveEffectiveCodexOptions,
+  getSessionPermissionSummary, getSessionPermissionDetails, setStatusCardBinding,
+  setCurrentInteractionMessage, endSession, setMode, setVerbose, setModel,
+  setAgentPersona, setMonitorGoal, updateWorkflowState, resetWorkflowState,
+  abortSession, abortSessionWithReason, consumeAbortReason,
+} from './session-registry.ts';
+export type { CreateSessionParams } from './session-registry.ts';
 
-const MODE_PROMPTS: Record<SessionMode, string> = {
+// ─── Mode prompts ─────────────────────────────────────────────────────────────
+
+const MODE_PROMPTS: Record<ThreadSession['mode'], string> = {
   auto: '',
   plan: 'You MUST use EnterPlanMode at the start of every task. Present your plan for user approval before making any code changes. Do not write or edit files until the user approves the plan.',
   normal:
@@ -47,553 +58,6 @@ Rules:
 - Use "blocked" only for true blockers the worker cannot resolve autonomously.
 - Never ask the human for optional next steps.
 - Output valid JSON and nothing else.`;
-
-// ─── Storage ──────────────────────────────────────────────────────────────────
-
-const sessionStore = new Store<SessionPersistData[]>('sessions.json');
-
-// channelId (the session's own Discord channel or thread ID) → ThreadSession
-const sessions = new Map<string, ThreadSession>();
-
-// internal session id → channelId
-const idToChannelId = new Map<string, string>();
-
-// categoryId → Set<channelId> (索引，用于快速查找)
-const sessionsByCategory = new Map<string, Set<string>>();
-
-// Session 运行时状态（不持久化）
-const sessionControllers = new Map<string, AbortController>();
-const sessionAbortReasons = new Map<string, 'user' | 'watchdog'>();
-
-let saveQueue: Promise<void> = Promise.resolve();
-let saveTimer: NodeJS.Timeout | null = null;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function createDefaultWorkflowState(): SessionWorkflowState {
-  return {
-    status: 'idle',
-    iteration: 0,
-    updatedAt: Date.now(),
-  };
-}
-
-// ─── Persistence ──────────────────────────────────────────────────────────────
-
-export async function loadSessions(): Promise<void> {
-  const data = await sessionStore.read();
-  if (!data) return;
-
-  let cleaned = false;
-
-  for (const s of data) {
-    if (!s.categoryId) {
-      cleaned = true;
-      console.warn(`Skipping invalid persisted session "${s.id}" (missing categoryId).`);
-      continue;
-    }
-    if (!s.channelId) {
-      cleaned = true;
-      console.warn(`Skipping invalid persisted session "${s.id}" (missing channelId).`);
-      continue;
-    }
-    if (sessions.has(s.channelId)) {
-      cleaned = true;
-      console.warn(
-        `Skipping duplicate persisted session "${s.id}" (channelId ${s.channelId} already loaded).`,
-      );
-      continue;
-    }
-
-    const provider: ProviderName = s.provider ?? 'claude';
-
-    sessions.set(s.channelId, {
-      ...s,
-      provider,
-      verbose: s.verbose ?? false,
-      mode: s.mode ?? 'auto',
-      subagentDepth: s.subagentDepth ?? 0,
-      type: s.type ?? 'persistent',
-      workflowState: s.workflowState ?? createDefaultWorkflowState(),
-      currentTurn: s.currentTurn ?? 0,
-      humanResolved: s.humanResolved ?? false,
-      currentInteractionMessageId: s.currentInteractionMessageId,
-      statusCardMessageId: s.statusCardMessageId,
-      lastInboundMessageId: s.lastInboundMessageId,
-      discoverySource: s.discoverySource ?? 'discord',
-      lastObservedState: s.lastObservedState,
-      lastObservedEventKey: s.lastObservedEventKey,
-      lastObservedAt: s.lastObservedAt,
-      lastObservedCwd: s.lastObservedCwd,
-      remoteHumanControl: s.remoteHumanControl,
-      activeHumanGateId: s.activeHumanGateId,
-      isGenerating: false,
-    });
-    idToChannelId.set(s.id, s.channelId);
-
-    // 维护 category 索引
-    if (!sessionsByCategory.has(s.categoryId)) {
-      sessionsByCategory.set(s.categoryId, new Set());
-    }
-    sessionsByCategory.get(s.categoryId)!.add(s.channelId);
-  }
-
-  if (cleaned) {
-    await saveSessions();
-  }
-
-  console.log(`[session-manager] Restored ${sessions.size} session(s)`);
-}
-
-async function persistSessionsNow(): Promise<void> {
-  const data: SessionPersistData[] = [];
-  for (const [, s] of sessions) {
-    data.push({
-      id: s.id,
-      channelId: s.channelId,
-      categoryId: s.categoryId,
-      projectName: s.projectName,
-      agentLabel: s.agentLabel,
-      provider: s.provider,
-      providerSessionId: s.providerSessionId,
-      model: s.model,
-      type: s.type,
-      parentChannelId: s.parentChannelId,
-      subagentDepth: s.subagentDepth,
-      directory: s.directory,
-      mode: s.mode,
-      agentPersona: s.agentPersona,
-      verbose: s.verbose || false,
-      claudePermissionMode: s.claudePermissionMode,
-      monitorGoal: s.monitorGoal,
-      monitorProviderSessionId: s.monitorProviderSessionId,
-      workflowState: s.workflowState,
-      createdAt: s.createdAt,
-      lastActivity: s.lastActivity,
-      messageCount: s.messageCount,
-      totalCost: s.totalCost,
-      currentTurn: s.currentTurn,
-      humanResolved: s.humanResolved,
-      currentInteractionMessageId: s.currentInteractionMessageId,
-      statusCardMessageId: s.statusCardMessageId,
-      lastInboundMessageId: s.lastInboundMessageId,
-      discoverySource: s.discoverySource,
-      lastObservedState: s.lastObservedState,
-      lastObservedEventKey: s.lastObservedEventKey,
-      lastObservedAt: s.lastObservedAt,
-      lastObservedCwd: s.lastObservedCwd,
-      remoteHumanControl: s.remoteHumanControl,
-      activeHumanGateId: s.activeHumanGateId,
-    });
-  }
-  await sessionStore.write(data);
-}
-
-function saveSessions(): Promise<void> {
-  saveQueue = saveQueue
-    .catch(() => {})
-    .then(async () => {
-      try {
-        await persistSessionsNow();
-      } catch (err: unknown) {
-        console.error(`[session-manager] Failed to persist sessions: ${(err as Error).message}`);
-      }
-    });
-  return saveQueue;
-}
-
-/** 延迟批量保存（1秒内的多次调用会合并） */
-function debouncedSave(): void {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    saveSessions();
-  }, 1000);
-}
-
-/** 立即保存（用于关键操作） */
-function saveSessionsImmediate(): Promise<void> {
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  return saveSessions();
-}
-
-// ─── Create / CRUD ────────────────────────────────────────────────────────────
-
-export interface CreateSessionParams {
-  channelId: string; // Session's own Discord channel (TextChannel) or thread ID
-  categoryId: string; // Parent project category ID
-  projectName: string;
-  agentLabel: string;
-  provider: ProviderName;
-  directory: string;
-  providerSessionId?: string;
-  model?: string;
-  type: 'persistent' | 'subagent';
-  parentChannelId?: string; // For subagents: parent session's TextChannel ID
-  subagentDepth?: number;
-  mode?: SessionMode;
-  claudePermissionMode?: 'bypass' | 'normal';
-  discoverySource?: 'discord' | 'claude-hook' | 'codex-log' | 'sync';
-  remoteHumanControl?: boolean; // 是否为受管会话（阶段五）
-}
-
-export async function createSession(params: CreateSessionParams): Promise<ThreadSession> {
-  const {
-    channelId,
-    categoryId,
-    projectName,
-    agentLabel,
-    provider,
-    providerSessionId,
-    model,
-    type,
-    parentChannelId,
-    subagentDepth = 0,
-    mode = config.defaultMode,
-    claudePermissionMode,
-    discoverySource = 'discord',
-    remoteHumanControl,
-  } = params;
-
-  const resolvedDir = resolvePath(params.directory);
-  if (!existsSync(resolvedDir)) {
-    throw new Error(`Directory does not exist: ${resolvedDir}`);
-  }
-
-  await ensureProvider(provider);
-
-  if (sessions.has(channelId)) {
-    throw new Error(`Session for channelId "${channelId}" already exists`);
-  }
-
-  // Derive a unique internal ID from the agentLabel (auto-deduplicate)
-  let id = sanitizeName(agentLabel);
-  let suffix = 1;
-  while (idToChannelId.has(id)) {
-    suffix++;
-    id = sanitizeName(`${agentLabel}-${suffix}`);
-  }
-
-  const session: ThreadSession = {
-    id,
-    channelId,
-    categoryId,
-    projectName,
-    agentLabel,
-    provider,
-    providerSessionId,
-    model,
-    type,
-    parentChannelId,
-    subagentDepth,
-    directory: resolvedDir,
-    mode,
-    agentPersona: undefined,
-    verbose: false,
-    claudePermissionMode,
-    monitorGoal: undefined,
-    monitorProviderSessionId: undefined,
-    workflowState: createDefaultWorkflowState(),
-    isGenerating: false,
-    createdAt: Date.now(),
-    lastActivity: Date.now(),
-    messageCount: 0,
-    totalCost: 0,
-    currentTurn: 0,
-    humanResolved: false,
-    currentInteractionMessageId: undefined,
-    statusCardMessageId: undefined,
-    lastInboundMessageId: undefined,
-    discoverySource,
-    remoteHumanControl,
-  };
-
-  sessions.set(channelId, session);
-  idToChannelId.set(id, channelId);
-
-  // 维护 category 索引
-  if (!sessionsByCategory.has(categoryId)) {
-    sessionsByCategory.set(categoryId, new Set());
-  }
-  sessionsByCategory.get(categoryId)!.add(channelId);
-
-  await saveSessionsImmediate();
-
-  return session;
-}
-
-export function getSession(id: string): ThreadSession | undefined {
-  const channelId = idToChannelId.get(id);
-  return channelId ? sessions.get(channelId) : undefined;
-}
-
-/** Look up a session by its Discord channel or thread ID. */
-export function getSessionByChannel(channelId: string): ThreadSession | undefined {
-  return sessions.get(channelId);
-}
-
-/** Backward-compat alias (subagent sessions are still threads). */
-export const getSessionByThread = getSessionByChannel;
-
-export function getSessionByCodexId(codexSessionId: string): ThreadSession | undefined {
-  for (const session of sessions.values()) {
-    if (session.provider === 'codex' && session.providerSessionId === codexSessionId) {
-      return session;
-    }
-  }
-  return undefined;
-}
-
-export function getSessionByProviderSession(
-  provider: ProviderName,
-  providerSessionId: string,
-): ThreadSession | undefined {
-  if (!providerSessionId) return undefined;
-  for (const session of sessions.values()) {
-    if (session.provider !== provider) continue;
-    if (session.providerSessionId === providerSessionId) return session;
-  }
-  return undefined;
-}
-
-/** List all sessions under a project category. */
-export function getSessionsByCategory(categoryId: string): ThreadSession[] {
-  const channelIds = sessionsByCategory.get(categoryId);
-  if (!channelIds) return [];
-
-  const result: ThreadSession[] = [];
-  for (const channelId of channelIds) {
-    const session = sessions.get(channelId);
-    if (session) result.push(session);
-  }
-  return result;
-}
-
-export function getAllSessions(): ThreadSession[] {
-  return Array.from(sessions.values());
-}
-
-export function getSessionByProviderSessionId(
-  provider: ProviderName,
-  providerSessionId: string,
-): ThreadSession | undefined {
-  for (const session of sessions.values()) {
-    if (session.provider !== provider) continue;
-    if (!session.providerSessionId) continue;
-    if (session.providerSessionId === providerSessionId) return session;
-  }
-  return undefined;
-}
-
-export function findCodexSessionForMonitor(
-  providerSessionId: string | undefined,
-  cwd: string | undefined,
-): ThreadSession | undefined {
-  if (providerSessionId) {
-    const byProviderId = getSessionByProviderSessionId('codex', providerSessionId);
-    if (byProviderId) return byProviderId;
-  }
-
-  if (!cwd) return undefined;
-  const normalizedCwd = resolvePath(cwd);
-  let matched: ThreadSession | undefined;
-  let matchedLen = -1;
-
-  for (const session of sessions.values()) {
-    if (session.provider !== 'codex') continue;
-    const sessionDir = resolvePath(session.directory);
-    if (normalizedCwd !== sessionDir && !normalizedCwd.startsWith(`${sessionDir}/`)) continue;
-    if (sessionDir.length > matchedLen) {
-      matched = session;
-      matchedLen = sessionDir.length;
-    }
-  }
-
-  return matched;
-}
-
-function stripCodexMonitorPrefix(sessionId: string): string {
-  return sessionId.startsWith('codex:') ? sessionId.slice('codex:'.length) : sessionId;
-}
-
-export function findCodexSessionByProviderSessionId(providerSessionId: string): ThreadSession | undefined {
-  const normalized = stripCodexMonitorPrefix(providerSessionId);
-  for (const session of sessions.values()) {
-    if (session.provider !== 'codex') continue;
-    if (!session.providerSessionId) continue;
-    if (session.providerSessionId === normalized || session.providerSessionId === providerSessionId) {
-      return session;
-    }
-  }
-  return undefined;
-}
-
-export function findCodexSessionByCwd(cwd: string): ThreadSession | undefined {
-  const normalizedCwd = resolvePath(cwd);
-  let best: ThreadSession | undefined;
-  let bestLen = -1;
-
-  for (const session of sessions.values()) {
-    if (session.provider !== 'codex') continue;
-    const dir = resolvePath(session.directory);
-    const isMatch = normalizedCwd === dir || normalizedCwd.startsWith(`${dir}${sep}`);
-    if (!isMatch) continue;
-    if (dir.length > bestLen) {
-      best = session;
-      bestLen = dir.length;
-    }
-  }
-
-  return best;
-}
-
-export function resolveCodexSessionFromMonitor(
-  monitorSessionId: string,
-  cwd?: string,
-): ThreadSession | undefined {
-  const byProviderSessionId = findCodexSessionByProviderSessionId(monitorSessionId);
-  if (byProviderSessionId) return byProviderSessionId;
-  if (cwd) return findCodexSessionByCwd(cwd);
-  return undefined;
-}
-
-export function updateSession(
-  sessionId: string,
-  patch: Partial<ThreadSession>,
-): void {
-  const session = getSession(sessionId);
-  if (!session) return;
-  Object.assign(session, patch);
-  debouncedSave();
-}
-
-export function setStatusCardBinding(
-  sessionId: string,
-  binding: {
-    messageId?: string;
-  },
-): void {
-  const session = getSession(sessionId);
-  if (!session) return;
-  session.statusCardMessageId = binding.messageId;
-  debouncedSave();
-}
-
-export function setCurrentInteractionMessage(
-  sessionId: string,
-  messageId: string | undefined,
-): void {
-  const session = getSession(sessionId);
-  if (!session) return;
-  session.currentInteractionMessageId = messageId;
-  debouncedSave();
-}
-
-export async function endSession(id: string): Promise<void> {
-  const session = getSession(id);
-  if (!session) throw new Error(`Session "${id}" not found`);
-
-  // 清理运行时状态
-  const controller = sessionControllers.get(session.id);
-  if (controller && session.isGenerating) {
-    controller.abort();
-  }
-  sessionControllers.delete(session.id);
-  sessionAbortReasons.delete(session.id);
-
-  // 清理索引
-  idToChannelId.delete(session.id);
-  sessions.delete(session.channelId);
-
-  const categorySet = sessionsByCategory.get(session.categoryId);
-  if (categorySet) {
-    categorySet.delete(session.channelId);
-    if (categorySet.size === 0) {
-      sessionsByCategory.delete(session.categoryId);
-    }
-  }
-
-  await saveSessionsImmediate();
-}
-
-// ─── State management ─────────────────────────────────────────────────────────
-
-export function setMode(sessionId: string, mode: SessionMode): void {
-  const session = getSession(sessionId);
-  if (session) {
-    session.mode = mode;
-    if (mode === 'monitor') {
-      session.monitorProviderSessionId = undefined;
-    }
-    session.workflowState = createDefaultWorkflowState();
-    debouncedSave();
-  }
-}
-
-export function setVerbose(sessionId: string, verbose: boolean): void {
-  const session = getSession(sessionId);
-  if (session) {
-    session.verbose = verbose;
-    debouncedSave();
-  }
-}
-
-export function setModel(sessionId: string, model: string): void {
-  const session = getSession(sessionId);
-  if (session) {
-    session.model = model;
-    debouncedSave();
-  }
-}
-
-export function setAgentPersona(sessionId: string, persona: string | undefined): void {
-  const session = getSession(sessionId);
-  if (session) {
-    session.agentPersona = persona;
-    debouncedSave();
-  }
-}
-
-export function setMonitorGoal(sessionId: string, goal: string | undefined): void {
-  const session = getSession(sessionId);
-  if (session) {
-    session.monitorGoal = goal;
-    if (!goal) {
-      session.monitorProviderSessionId = undefined;
-    }
-    session.workflowState = createDefaultWorkflowState();
-    debouncedSave();
-  }
-}
-
-export function updateWorkflowState(
-  sessionId: string,
-  patch: Partial<SessionWorkflowState> | ((current: SessionWorkflowState) => SessionWorkflowState),
-): void {
-  const session = getSession(sessionId);
-  if (!session) return;
-
-  const next =
-    typeof patch === 'function'
-      ? patch(session.workflowState)
-      : { ...session.workflowState, ...patch };
-
-  session.workflowState = {
-    ...next,
-    updatedAt: Date.now(),
-  };
-  debouncedSave();
-}
-
-export function resetWorkflowState(sessionId: string): void {
-  const session = getSession(sessionId);
-  if (!session) return;
-  session.workflowState = createDefaultWorkflowState();
-  debouncedSave();
-}
 
 // ─── System prompt building ───────────────────────────────────────────────────
 
@@ -633,24 +97,20 @@ function buildProviderOptions(
   session: ThreadSession,
   controller: AbortController,
   isMonitor = false,
-  runtimeOverrides: {
-    canUseTool?: ProviderCanUseTool;
-  } = {},
+  runtimeOverrides: { canUseTool?: ProviderCanUseTool } = {},
 ): import('./providers/types.ts').ProviderSessionOptions {
-  const isAutoMode = session.mode === 'auto';
+  const effectiveCodex = registry.resolveEffectiveCodexOptions(session);
 
   return {
     directory: session.directory,
     providerSessionId: isMonitor ? session.monitorProviderSessionId : session.providerSessionId,
     model: session.model,
-    sandboxMode: config.codexSandboxMode,
-    approvalPolicy: isAutoMode ? 'never' : config.codexApprovalPolicy,
-    networkAccessEnabled: config.codexNetworkAccessEnabled,
-    webSearchMode: config.codexWebSearchMode,
+    sandboxMode: effectiveCodex.sandboxMode,
+    approvalPolicy: effectiveCodex.approvalPolicy,
+    networkAccessEnabled: effectiveCodex.networkAccessEnabled,
+    webSearchMode: effectiveCodex.webSearchMode,
     modelReasoningEffort: config.codexReasoningEffort || undefined,
-    claudePermissionMode: isAutoMode
-      ? 'bypass'
-      : (session.claudePermissionMode ?? config.claudePermissionMode),
+    claudePermissionMode: registry.resolveEffectiveClaudePermissionMode(session),
     systemPromptParts: isMonitor
       ? buildMonitorSystemPromptParts(session)
       : buildSystemPromptParts(session),
@@ -664,36 +124,41 @@ function buildProviderOptions(
 export async function* sendPrompt(
   sessionId: string,
   prompt: string | ContentBlock[],
-  runtimeOverrides: {
-    canUseTool?: ProviderCanUseTool;
-  } = {},
+  runtimeOverrides: { canUseTool?: ProviderCanUseTool } = {},
 ): AsyncGenerator<ProviderEvent> {
-  const session = getSession(sessionId);
+  const session = registry.getSession(sessionId);
   if (!session) throw new Error(`Session "${sessionId}" not found`);
   if (session.isGenerating) throw new Error('Session is already generating');
 
   const controller = new AbortController();
-  sessionControllers.set(session.id, controller);
-  session.isGenerating = true;
-  session.lastActivity = Date.now();
+  registry.setSessionController(session.id, controller);
+  registry.markSessionGenerating(session.id, true);
 
   const provider = await ensureProvider(session.provider);
 
   try {
-    const stream = provider.sendPrompt(prompt, buildProviderOptions(session, controller, false, runtimeOverrides));
+    const stream = provider.sendPrompt(
+      prompt,
+      buildProviderOptions(session, controller, false, runtimeOverrides),
+    );
 
     for await (const event of stream) {
       if (event.type === 'session_init') {
-        session.providerSessionId = event.providerSessionId || undefined;
-        debouncedSave();
+        const s = registry.getSession(sessionId);
+        if (s) {
+          s.providerSessionId = event.providerSessionId || undefined;
+          registry.debouncedSaveSession();
+        }
       }
       if (event.type === 'result') {
-        session.totalCost += event.costUsd;
+        const s = registry.getSession(sessionId);
+        if (s) s.totalCost += event.costUsd;
       }
       yield event;
     }
 
-    session.messageCount++;
+    const s = registry.getSession(sessionId);
+    if (s) s.messageCount++;
   } catch (err: unknown) {
     if (isAbortError(err)) {
       // User cancelled — expected
@@ -701,10 +166,9 @@ export async function* sendPrompt(
       throw err;
     }
   } finally {
-    session.isGenerating = false;
-    session.lastActivity = Date.now();
-    sessionControllers.delete(session.id);
-    await saveSessionsImmediate();
+    registry.markSessionGenerating(sessionId, false);
+    registry.clearSessionController(sessionId);
+    await registry.saveSessionImmediate();
   }
 }
 
@@ -714,18 +178,15 @@ export async function* continueSession(sessionId: string): AsyncGenerator<Provid
 
 export async function* continueSessionWithOverrides(
   sessionId: string,
-  runtimeOverrides: {
-    canUseTool?: ProviderCanUseTool;
-  } = {},
+  runtimeOverrides: { canUseTool?: ProviderCanUseTool } = {},
 ): AsyncGenerator<ProviderEvent> {
-  const session = getSession(sessionId);
+  const session = registry.getSession(sessionId);
   if (!session) throw new Error(`Session "${sessionId}" not found`);
   if (session.isGenerating) throw new Error('Session is already generating');
 
   const controller = new AbortController();
-  sessionControllers.set(session.id, controller);
-  session.isGenerating = true;
-  session.lastActivity = Date.now();
+  registry.setSessionController(session.id, controller);
+  registry.markSessionGenerating(session.id, true);
 
   const provider = await ensureProvider(session.provider);
 
@@ -736,16 +197,21 @@ export async function* continueSessionWithOverrides(
 
     for await (const event of stream) {
       if (event.type === 'session_init') {
-        session.providerSessionId = event.providerSessionId || undefined;
-        debouncedSave();
+        const s = registry.getSession(sessionId);
+        if (s) {
+          s.providerSessionId = event.providerSessionId || undefined;
+          registry.debouncedSaveSession();
+        }
       }
       if (event.type === 'result') {
-        session.totalCost += event.costUsd;
+        const s = registry.getSession(sessionId);
+        if (s) s.totalCost += event.costUsd;
       }
       yield event;
     }
 
-    session.messageCount++;
+    const s = registry.getSession(sessionId);
+    if (s) s.messageCount++;
   } catch (err: unknown) {
     if (isAbortError(err)) {
       // cancelled
@@ -753,10 +219,9 @@ export async function* continueSessionWithOverrides(
       throw err;
     }
   } finally {
-    session.isGenerating = false;
-    session.lastActivity = Date.now();
-    sessionControllers.delete(session.id);
-    await saveSessionsImmediate();
+    registry.markSessionGenerating(sessionId, false);
+    registry.clearSessionController(sessionId);
+    await registry.saveSessionImmediate();
   }
 }
 
@@ -764,66 +229,58 @@ export async function* sendMonitorPrompt(
   sessionId: string,
   prompt: string,
 ): AsyncGenerator<ProviderEvent> {
-  const session = getSession(sessionId);
+  const session = registry.getSession(sessionId);
   if (!session) throw new Error(`Session "${sessionId}" not found`);
 
   const provider = await ensureProvider(session.provider);
-  session.lastActivity = Date.now();
+  const s = registry.getSession(sessionId);
+  if (s) s.lastActivity = Date.now();
 
   const controller = new AbortController();
   const stream = provider.sendPrompt(prompt, buildProviderOptions(session, controller, true));
 
   for await (const event of stream) {
     if (event.type === 'session_init') {
-      session.monitorProviderSessionId = event.providerSessionId || undefined;
-      debouncedSave();
+      const cur = registry.getSession(sessionId);
+      if (cur) {
+        cur.monitorProviderSessionId = event.providerSessionId || undefined;
+        registry.debouncedSaveSession();
+      }
     }
     if (event.type === 'result') {
-      session.totalCost += event.costUsd;
+      const cur = registry.getSession(sessionId);
+      if (cur) cur.totalCost += event.costUsd;
     }
     yield event;
   }
 
-  session.lastActivity = Date.now();
-  debouncedSave();
+  const cur = registry.getSession(sessionId);
+  if (cur) cur.lastActivity = Date.now();
+  registry.debouncedSaveSession();
 }
 
-// ─── Abort management ─────────────────────────────────────────────────────────
+// ─── Local session helpers ────────────────────────────────────────────────────
 
-export function abortSession(sessionId: string): boolean {
-  return abortSessionWithReason(sessionId, 'user');
+export function buildClaudeSubagentProviderSessionId(
+  parentProviderSessionId: string,
+  agentId: string,
+): string {
+  return `subagent:${parentProviderSessionId}:${agentId}`;
 }
 
-export function abortSessionWithReason(sessionId: string, reason: 'user' | 'watchdog'): boolean {
-  const session = getSession(sessionId);
-  if (!session) return false;
-
-  const controller = sessionControllers.get(session.id);
-  sessionAbortReasons.set(session.id, reason);
-
-  if (controller) {
-    controller.abort();
-  }
-
-  if (session.isGenerating) {
-    session.isGenerating = false;
-    sessionControllers.delete(session.id);
-    debouncedSave();
-    return true;
-  }
-
-  return !!controller;
+export function updateLocalObservation(
+  sessionId: string,
+  patch: { discoverySource: 'claude-hook' | 'codex-log' | 'sync'; cwd: string; remoteHumanControl?: boolean },
+): void {
+  registry.updateSession(sessionId, {
+    discoverySource: patch.discoverySource,
+    lastObservedAt: Date.now(),
+    lastObservedCwd: resolvePath(patch.cwd),
+    ...(patch.remoteHumanControl !== undefined ? { remoteHumanControl: patch.remoteHumanControl } : {}),
+  });
 }
 
-export function consumeAbortReason(sessionId: string): 'user' | 'watchdog' | undefined {
-  const session = getSession(sessionId);
-  if (!session) return undefined;
-  const reason = sessionAbortReasons.get(session.id);
-  sessionAbortReasons.delete(session.id);
-  return reason;
-}
-
-// ─── 统一本地会话注册流程 ─────────────────────────────────────────────────────
+// ─── Register local session ───────────────────────────────────────────────────
 
 export interface RegisterLocalSessionParams {
   provider: ProviderName;
@@ -832,34 +289,17 @@ export interface RegisterLocalSessionParams {
   discoverySource: 'claude-hook' | 'codex-log' | 'sync';
   labelHint?: string;
   remoteHumanControl?: boolean;
+  subagent?: {
+    parentProviderSessionId: string;
+    depth?: number;
+    agentId?: string;
+    agentType?: string;
+  };
 }
 
 export interface RegisterLocalSessionResult {
   session: ThreadSession;
   isNewlyCreated: boolean;
-}
-
-interface LocalObservationPatch {
-  discoverySource: 'claude-hook' | 'codex-log' | 'sync';
-  cwd: string;
-  remoteHumanControl?: boolean;
-}
-
-export function updateLocalObservation(
-  sessionId: string,
-  patch: LocalObservationPatch,
-): void {
-  const observationPatch: Partial<ThreadSession> = {
-    discoverySource: patch.discoverySource,
-    lastObservedAt: Date.now(),
-    lastObservedCwd: resolvePath(patch.cwd),
-  };
-
-  if (patch.remoteHumanControl !== undefined) {
-    observationPatch.remoteHumanControl = patch.remoteHumanControl;
-  }
-
-  updateSession(sessionId, observationPatch);
 }
 
 /**
@@ -877,36 +317,45 @@ export async function registerLocalSession(
   params: RegisterLocalSessionParams,
   guild: import('discord.js').Guild,
 ): Promise<RegisterLocalSessionResult | null> {
-  const { provider, providerSessionId, cwd, discoverySource, labelHint, remoteHumanControl } = params;
+  const {
+    provider,
+    providerSessionId,
+    cwd,
+    discoverySource,
+    labelHint,
+    remoteHumanControl,
+    subagent,
+  } = params;
+  const effectiveProviderSessionId =
+    provider === 'claude' && subagent?.parentProviderSessionId && subagent.agentId
+      ? buildClaudeSubagentProviderSessionId(subagent.parentProviderSessionId, subagent.agentId)
+      : providerSessionId;
+  const effectiveAgentLabel =
+    subagent?.agentType || labelHint || effectiveProviderSessionId.slice(0, 12);
 
   const { isArchivedProviderSession } = await import('./archive-manager.ts');
-  if (isArchivedProviderSession(provider, providerSessionId)) {
+  if (isArchivedProviderSession(provider, effectiveProviderSessionId)) {
     console.log(
-      `[registerLocalSession] Skip archived ${provider} session ${providerSessionId} ` +
+      `[registerLocalSession] Skip archived ${provider} session ${effectiveProviderSessionId} ` +
       `(source: ${discoverySource})`
     );
     return null;
   }
 
   // 1. 检查是否已注册
-  const existing = getSessionByProviderSessionId(provider, providerSessionId);
+  const existing = registry.getSessionByProviderSession(provider, effectiveProviderSessionId);
   if (existing) {
-    updateLocalObservation(existing.id, {
-      discoverySource,
-      cwd,
-      remoteHumanControl,
-    });
+    updateLocalObservation(existing.id, { discoverySource, cwd, remoteHumanControl });
     return { session: existing, isNewlyCreated: false };
   }
 
   // 2. 根据 cwd 归属到已挂载项目
   const { getProjectByPath, getAllRegisteredProjects } = await import('./project-registry.ts');
-  const { resolvePath } = await import('./utils.ts');
+  const { ChannelType, ThreadAutoArchiveDuration } = await import('discord.js');
 
   const normalizedCwd = resolvePath(cwd);
   let project = getProjectByPath(normalizedCwd);
 
-  // 如果精确匹配失败，尝试找父目录匹配
   if (!project) {
     const allProjects = getAllRegisteredProjects();
     let bestMatch: (typeof allProjects)[number] | undefined;
@@ -919,7 +368,6 @@ export async function registerLocalSession(
         bestMatchPathLength = projectPath.length;
       }
     }
-
     project = bestMatch;
   }
 
@@ -932,7 +380,6 @@ export async function registerLocalSession(
   }
 
   // 3. 查找或创建 Discord 频道
-  const { ChannelType } = await import('discord.js');
   const category = guild.channels.cache.get(project.discordCategoryId);
   if (!category || category.type !== ChannelType.GuildCategory) {
     console.warn(
@@ -940,6 +387,71 @@ export async function registerLocalSession(
       `category ${project.discordCategoryId} not found`
     );
     return null;
+  }
+
+  if (subagent?.parentProviderSessionId) {
+    const parentSession = registry.getSessionByProviderSession(provider, subagent.parentProviderSessionId);
+    if (!parentSession) {
+      console.warn(
+        `[registerLocalSession] Delaying subagent ${provider} session ${providerSessionId}: ` +
+          `parent provider session ${subagent.parentProviderSessionId} not registered yet`,
+      );
+      return null;
+    }
+
+    const parentChannel = guild.channels.cache.get(parentSession.channelId);
+    const threadHostChannel =
+      parentChannel?.type === ChannelType.GuildText
+        ? parentChannel
+        : parentChannel?.isThread?.() || parentChannel?.type === ChannelType.PublicThread
+          ? parentChannel.parent
+          : undefined;
+    if (threadHostChannel?.type !== ChannelType.GuildText) {
+      console.warn(
+        `[registerLocalSession] Delaying subagent ${provider} session ${providerSessionId}: ` +
+          `parent channel ${parentSession.channelId} is unavailable`,
+      );
+      return null;
+    }
+
+    const normalizedThreadName = `[sub:${provider}] ${effectiveAgentLabel}`.slice(0, 100);
+    const thread = await threadHostChannel.threads.create({
+      name: normalizedThreadName,
+      type: ChannelType.PublicThread,
+      autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
+      reason: `Auto-registered subagent session ${effectiveProviderSessionId}`,
+    });
+
+    const session = await registry.createSession({
+      channelId: thread.id,
+      categoryId: parentSession.categoryId,
+      projectName: parentSession.projectName,
+      agentLabel: effectiveAgentLabel,
+      provider,
+      providerSessionId: effectiveProviderSessionId,
+      directory: normalizedCwd,
+      type: 'subagent',
+      parentChannelId:
+        parentSession.type === 'subagent'
+          ? parentSession.parentChannelId ?? threadHostChannel.id
+          : parentSession.channelId,
+      subagentDepth: Math.max(1, subagent.depth ?? parentSession.subagentDepth + 1),
+      discoverySource,
+      remoteHumanControl: remoteHumanControl ?? false,
+    });
+
+    updateLocalObservation(session.id, {
+      discoverySource,
+      cwd: normalizedCwd,
+      remoteHumanControl: remoteHumanControl ?? false,
+    });
+
+    console.log(
+      `[registerLocalSession] Registered subagent ${provider} session ${effectiveProviderSessionId} ` +
+        `(source: ${discoverySource}, parent: ${parentSession.channelId}, thread: ${thread.id})`,
+    );
+
+    return { session, isNewlyCreated: true };
   }
 
   // 生成频道名称
@@ -950,7 +462,7 @@ export async function registerLocalSession(
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '')
         .slice(0, 60)
-    : providerSessionId.slice(0, 12);
+    : effectiveProviderSessionId.slice(0, 12);
 
   const channelName = `${provider}-${base}`.slice(0, 100);
 
@@ -959,27 +471,26 @@ export async function registerLocalSession(
     (ch) =>
       ch.type === ChannelType.GuildText &&
       typeof ch.topic === 'string' &&
-      ch.topic.includes(`Provider Session: ${providerSessionId}`)
+      ch.topic.includes(`Provider Session: ${effectiveProviderSessionId}`)
   );
 
-  // 如果没有，创建新频道
   if (!channel) {
     channel = await guild.channels.create({
       name: channelName,
       type: ChannelType.GuildText,
       parent: category.id,
-      topic: `${provider} session (local) | Provider Session: ${providerSessionId}`,
+      topic: `${provider} session (local) | Provider Session: ${effectiveProviderSessionId}`,
     });
   }
 
   // 4. 创建 ThreadSession
-  const session = await createSession({
+  const session = await registry.createSession({
     channelId: channel.id,
     categoryId: project.discordCategoryId,
     projectName: project.name,
-    agentLabel: labelHint || providerSessionId.slice(0, 12),
+    agentLabel: effectiveAgentLabel,
     provider,
-    providerSessionId,
+    providerSessionId: effectiveProviderSessionId,
     directory: normalizedCwd,
     type: 'persistent',
     discoverySource,
@@ -993,7 +504,7 @@ export async function registerLocalSession(
   });
 
   console.log(
-    `[registerLocalSession] Registered ${provider} session ${providerSessionId} ` +
+    `[registerLocalSession] Registered ${provider} session ${effectiveProviderSessionId} ` +
     `(source: ${discoverySource}, channel: ${channel.id})`
   );
 

@@ -9,6 +9,8 @@ const PROJECT_REQUIRED_HOOKS = [
   'PreToolUse',
   'PostToolUse',
   'Stop',
+  'SubagentStart',
+  'SubagentStop',
 ];
 
 const originalNodeEnv = process.env.NODE_ENV;
