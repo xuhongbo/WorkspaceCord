@@ -6,7 +6,11 @@ const setHistoryChannelId = vi.fn();
 const setControlChannelId = vi.fn();
 const createSession = vi.fn();
 const getSessionByChannel = vi.fn();
+const getSession = vi.fn();
 const setMode = vi.fn();
+const updateSessionPermissions = vi.fn();
+const getSessionPermissionSummary = vi.fn(() => 'normal');
+const getSessionPermissionDetails = vi.fn(() => 'Claude: normal');
 
 vi.mock('../src/config.ts', () => ({
   config: {
@@ -43,9 +47,13 @@ vi.mock('../src/project-manager.ts', () => ({
 
 vi.mock('../src/thread-manager.ts', () => ({
   createSession,
+  getSession,
   getSessionByChannel,
   getSessionsByCategory: vi.fn(() => []),
   setMode,
+  updateSessionPermissions,
+  getSessionPermissionSummary,
+  getSessionPermissionDetails,
   abortSession: vi.fn(() => false),
   endSession: vi.fn(),
   setMonitorGoal: vi.fn(),

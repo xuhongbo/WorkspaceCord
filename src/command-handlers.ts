@@ -145,6 +145,79 @@ function renderCleanupPreviewMessage(preview: ReturnType<typeof buildProjectClea
   return lines.join('\n');
 }
 
+function parseCodexBypass(value: string | null): boolean | undefined {
+  if (value === 'on') return true;
+  if (value === 'off') return false;
+  return undefined;
+}
+
+function buildSpawnPermissionPatch(
+  interaction: ChatInputCommandInteraction,
+  provider: ProviderName,
+): Partial<Parameters<typeof sessionMgr.createSession>[0]> {
+  if (provider === 'claude') {
+    return {
+      claudePermissionMode: (interaction.options.getString('claude-permissions') ||
+        config.claudePermissionMode) as 'bypass' | 'normal',
+    };
+  }
+
+  return {
+    codexSandboxMode:
+      (interaction.options.getString('codex-sandbox') as
+        | 'read-only'
+        | 'workspace-write'
+        | 'danger-full-access'
+        | null) ?? config.codexSandboxMode,
+    codexApprovalPolicy:
+      (interaction.options.getString('codex-approval') as
+        | 'never'
+        | 'on-request'
+        | 'on-failure'
+        | 'untrusted'
+        | null) ?? config.codexApprovalPolicy,
+    codexBypass: parseCodexBypass(interaction.options.getString('codex-bypass')),
+    codexNetworkAccessEnabled: config.codexNetworkAccessEnabled,
+    codexWebSearchMode: config.codexWebSearchMode,
+  };
+}
+
+function buildPermissionUpdatePatch(
+  interaction: ChatInputCommandInteraction,
+  provider: ProviderName,
+): Partial<import('./types.ts').ThreadSession> {
+  if (provider === 'claude') {
+    const claudePermissionMode = interaction.options.getString('claude-permissions') as
+      | 'bypass'
+      | 'normal'
+      | null;
+    return claudePermissionMode ? { claudePermissionMode } : {};
+  }
+
+  const patch: Partial<import('./types.ts').ThreadSession> = {};
+  const sandbox = interaction.options.getString('codex-sandbox') as
+    | 'read-only'
+    | 'workspace-write'
+    | 'danger-full-access'
+    | null;
+  const approval = interaction.options.getString('codex-approval') as
+    | 'never'
+    | 'on-request'
+    | 'on-failure'
+    | 'untrusted'
+    | null;
+  const bypass = parseCodexBypass(interaction.options.getString('codex-bypass'));
+
+  if (sandbox) patch.codexSandboxMode = sandbox;
+  if (approval) patch.codexApprovalPolicy = approval;
+  if (bypass !== undefined) patch.codexBypass = bypass;
+  if (sandbox || approval || bypass !== undefined) {
+    patch.codexNetworkAccessEnabled = true;
+    patch.codexWebSearchMode = 'live';
+  }
+  return patch;
+}
+
 function assertUserAllowed(interaction: ChatInputCommandInteraction): boolean {
   if (!isUserAllowed(interaction.user.id, config.allowedUsers, config.allowAllUsers)) {
     interaction.reply({ content: 'You are not authorized to use this bot.', ephemeral: true });
@@ -588,6 +661,8 @@ export async function handleAgent(interaction: ChatInputCommandInteraction): Pro
       return handleAgentVerbose(interaction);
     case 'model':
       return handleAgentModel(interaction);
+    case 'permissions':
+      return handleAgentPermissions(interaction);
     case 'continue':
       return handleAgentContinue(interaction);
     default:
@@ -627,9 +702,8 @@ async function handleAgentSpawn(interaction: ChatInputCommandInteraction): Promi
   const provider = (interaction.options.getString('provider') ||
     config.defaultProvider) as ProviderName;
   const mode = (interaction.options.getString('mode') || config.defaultMode) as SessionMode;
-  const claudePermissionMode = (interaction.options.getString('claude-permissions') ||
-    config.claudePermissionMode) as 'bypass' | 'normal';
   const directory = interaction.options.getString('directory') || project.directory;
+  const permissionPatch = buildSpawnPermissionPatch(interaction, provider);
 
   await interaction.deferReply();
 
@@ -679,7 +753,7 @@ async function handleAgentSpawn(interaction: ChatInputCommandInteraction): Promi
       directory,
       type: 'persistent',
       mode,
-      claudePermissionMode: provider === 'claude' ? claudePermissionMode : undefined,
+      ...permissionPatch,
     });
   } catch (err: unknown) {
     // Clean up channel if session creation fails
@@ -695,7 +769,12 @@ async function handleAgentSpawn(interaction: ChatInputCommandInteraction): Promi
   const statusEmbed = new EmbedBuilder()
     .setColor(PROVIDER_COLORS[provider])
     .setTitle('💤 待命')
-    .setDescription('等待首条消息');
+    .setDescription('等待首条消息')
+    .addFields({
+      name: '权限',
+      value: sessionMgr.getSessionPermissionSummary(session),
+      inline: false,
+    });
 
   const statusMessage = await sessionChannel.send({
     embeds: [statusEmbed],
@@ -744,6 +823,12 @@ async function handleAgentSpawn(interaction: ChatInputCommandInteraction): Promi
         ? '⚡ 绕过权限（完全自主）'
         : '🛡️ 普通权限（需要确认）';
     embed.addFields({ name: 'Claude 权限', value: permLabel, inline: true });
+  } else if (provider === 'codex') {
+    embed.addFields({
+      name: 'Codex 权限',
+      value: sessionMgr.getSessionPermissionDetails(session),
+      inline: false,
+    });
   }
 
   await interaction.editReply({ embeds: [embed] });
@@ -988,6 +1073,28 @@ async function handleAgentModel(interaction: ChatInputCommandInteraction): Promi
   const model = interaction.options.getString('model', true);
   sessionMgr.setModel(session.id, model);
   await interaction.reply({ content: `Model set to \`${model}\`.`, ephemeral: true });
+}
+
+async function handleAgentPermissions(interaction: ChatInputCommandInteraction): Promise<void> {
+  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  if (!session) {
+    await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
+    return;
+  }
+
+  const patch = buildPermissionUpdatePatch(interaction, session.provider);
+  if (Object.keys(patch).length === 0) {
+    await interaction.reply({ content: '未提供任何权限变更。', ephemeral: true });
+    return;
+  }
+
+  await sessionMgr.updateSessionPermissions(session.id, patch);
+  const refreshed = sessionMgr.getSession(session.id) ?? { ...session, ...patch };
+  const timing = session.isGenerating ? '已保存，将在下一轮生效。' : '已更新并立即生效。';
+  await interaction.reply({
+    content: `${timing}\n当前权限：${sessionMgr.getSessionPermissionDetails(refreshed as never)}`,
+    ephemeral: true,
+  });
 }
 
 async function handleAgentContinue(interaction: ChatInputCommandInteraction): Promise<void> {
