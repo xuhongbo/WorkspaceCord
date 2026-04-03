@@ -241,4 +241,47 @@ describe('handleOutputStream', () => {
     );
   });
 
+  it('等结果流真正结束后才发送最终总结，避免界面已完成但会话仍在生成', async () => {
+    const channel = createFakeChannel();
+    let yieldedResult = false;
+    let releaseClose!: () => void;
+    const closeGate = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
+
+    async function* delayedCloseStream() {
+      yield { type: 'text_delta', text: 'done' } as ProviderEvent;
+      yieldedResult = true;
+      yield {
+        type: 'result',
+        success: true,
+        costUsd: 0,
+        durationMs: 25,
+        numTurns: 1,
+        errors: [],
+      } as ProviderEvent;
+      await closeGate;
+    }
+
+    const pending = handleOutputStream(
+      delayedCloseStream(),
+      channel as Parameters<typeof handleOutputStream>[1],
+      'session-1',
+    );
+
+    await vi.waitFor(() => expect(yieldedResult).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mocks.handleResultEvent).not.toHaveBeenCalled();
+
+    releaseClose();
+    await pending;
+
+    expect(mocks.handleResultEvent).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ type: 'result' }),
+      'done',
+      [],
+    );
+  });
+
 });

@@ -9,6 +9,8 @@ const sendTyping = vi.fn();
 const sendAckReaction = vi.fn();
 const buildDeliveryPlan = vi.fn();
 const deliver = vi.fn();
+const sendSystemNotice = vi.fn();
+const relocateSessionPanelToBottom = vi.fn();
 
 vi.mock('../src/config.ts', () => ({
   config: {
@@ -22,6 +24,8 @@ vi.mock('../src/thread-manager.ts', () => ({ getSessionByChannel, updateSession 
 vi.mock('../src/session-executor.ts', () => ({ executeSessionPrompt }));
 vi.mock('../src/discord/delivery-policy.ts', () => ({ buildDeliveryPlan }));
 vi.mock('../src/discord/delivery.ts', () => ({ sendTyping, sendAckReaction, deliver }));
+vi.mock('../src/discord/delivery-notices.ts', () => ({ sendSystemNotice }));
+vi.mock('../src/panel-adapter.ts', () => ({ relocateSessionPanelToBottom }));
 vi.mock('../src/utils.ts', () => ({
   isUserAllowed,
   isAbortError: vi.fn(() => false),
@@ -78,6 +82,18 @@ describe('message-handler', () => {
     expect(sendAckReaction).toHaveBeenCalledWith(message, '👀');
   });
 
+  it('进入新一轮执行前会先迁移状态与摘要到底部', async () => {
+    const message = makeMessage();
+
+    await handleMessage(message as never);
+
+    expect(relocateSessionPanelToBottom).toHaveBeenCalledWith('s1', message.channel);
+    expect(executeSessionPrompt).toHaveBeenCalled();
+    expect(relocateSessionPanelToBottom.mock.invocationCallOrder[0]).toBeLessThan(
+      executeSessionPrompt.mock.invocationCallOrder[0],
+    );
+  });
+
 
 
   it('在未授权时发送拒绝消息', async () => {
@@ -92,7 +108,13 @@ describe('message-handler', () => {
 
     await handleMessage(message as never);
 
-    expect(channel.send).toHaveBeenCalledWith('You are not authorized to use this bot.');
+    expect(sendSystemNotice).toHaveBeenCalledWith(
+      channel,
+      's1',
+      'You are not authorized to use this bot.',
+    );
+    expect(relocateSessionPanelToBottom).not.toHaveBeenCalled();
+    expect(channel.send).not.toHaveBeenCalled();
     expect(executeSessionPrompt).not.toHaveBeenCalled();
   });
 
@@ -108,7 +130,14 @@ describe('message-handler', () => {
 
     await handleMessage(message as never);
 
-    expect(channel.send).toHaveBeenCalledWith('*Agent is already generating. Stop it first with `/agent stop`.*');
+    expect(sendSystemNotice).toHaveBeenCalledWith(
+      channel,
+      's1',
+      '*Agent is already generating. Stop it first with `/agent stop`.*',
+      undefined,
+    );
+    expect(relocateSessionPanelToBottom).not.toHaveBeenCalled();
+    expect(channel.send).not.toHaveBeenCalled();
     expect(executeSessionPrompt).not.toHaveBeenCalled();
   });
 

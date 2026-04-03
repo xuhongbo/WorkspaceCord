@@ -4,13 +4,16 @@ const statusInitialize = vi.fn(async () => undefined);
 const statusUpdate = vi.fn(async () => undefined);
 const statusGetMessageId = vi.fn(() => 'status-1');
 const statusAdopt = vi.fn(async () => undefined);
+const statusRecreateAtBottom = vi.fn();
 const sendTurnSummary = vi.fn();
 const sendTurnFailure = vi.fn();
 const sendEndingSummary = vi.fn();
 const sendDigestSummary = vi.fn();
+const relocateDigestToBottom = vi.fn();
 const interactionShow = vi.fn();
 const interactionHide = vi.fn();
 const getSession = vi.fn();
+const getSessionPermissionSummary = vi.fn();
 const updateSession = vi.fn();
 const setStatusCardBinding = vi.fn();
 const setCurrentInteractionMessage = vi.fn();
@@ -23,6 +26,7 @@ vi.mock('../src/discord/status-card.ts', () => ({
     initialize = statusInitialize;
     update = statusUpdate;
     getMessageId = statusGetMessageId;
+    recreateAtBottom = statusRecreateAtBottom;
   },
 }));
 
@@ -32,6 +36,7 @@ vi.mock('../src/discord/summary-handler.ts', () => ({
     sendTurnFailure = sendTurnFailure;
     sendEndingSummary = sendEndingSummary;
     sendDigestSummary = sendDigestSummary;
+    relocateDigestToBottom = relocateDigestToBottom;
   },
 }));
 
@@ -44,6 +49,7 @@ vi.mock('../src/discord/interaction-card.ts', () => ({
 
 vi.mock('../src/thread-manager.ts', () => ({
   getSession,
+  getSessionPermissionSummary,
   updateSession,
   setStatusCardBinding,
   setCurrentInteractionMessage,
@@ -56,7 +62,13 @@ vi.mock('../src/state/gate-coordinator.ts', () => ({
   },
 }));
 
-const { initializeSessionPanel, handleAwaitingHuman, handleResultEvent } = await import('../src/panel-adapter.ts');
+const {
+  initializeSessionPanel,
+  handleAwaitingHuman,
+  handleResultEvent,
+  relocateSessionPanelToBottom,
+  updateSessionState,
+} = await import('../src/panel-adapter.ts');
 
 function createChannel() {
   return {
@@ -83,6 +95,8 @@ describe('panel-adapter', () => {
     statusInitialize.mockResolvedValue(undefined);
     statusUpdate.mockResolvedValue(undefined);
     statusGetMessageId.mockReturnValue('status-1');
+    statusRecreateAtBottom.mockResolvedValue({ oldMessageId: 'status-1', newMessageId: 'status-2' });
+    relocateDigestToBottom.mockResolvedValue({ oldMessageIds: ['digest-1'], newMessageIds: ['digest-2'] });
     interactionShow.mockResolvedValue('interaction-1');
     gateCreate.mockReturnValue({ id: 'gate-1' });
   });
@@ -171,6 +185,163 @@ describe('panel-adapter', () => {
         activeHumanGateId: 'gate-1',
         currentInteractionMessageId: 'interaction-1',
       }),
+    );
+  });
+
+  it('开始新一轮前会把状态与摘要迁移到底部并删除旧消息', async () => {
+    const deleteFn = vi.fn(async () => undefined);
+    const channel = {
+      send: vi.fn(async () => ({ id: 'message-1' })),
+      messages: {
+        edit: vi.fn(async () => undefined),
+        delete: deleteFn,
+      },
+    };
+    await initializeSessionPanel('session-move', channel as never, { initialTurn: 1 });
+
+    await relocateSessionPanelToBottom('session-move');
+
+    expect(statusRecreateAtBottom).toHaveBeenCalled();
+    expect(relocateDigestToBottom).toHaveBeenCalled();
+    expect(setStatusCardBinding).toHaveBeenCalledWith('session-move', { messageId: 'status-2' });
+    expect(deleteFn).toHaveBeenCalledWith('status-1');
+    expect(deleteFn).toHaveBeenCalledWith('digest-1');
+  });
+
+  it('摘要迁移失败时会回滚状态消息迁移', async () => {
+    const deleteFn = vi.fn(async () => undefined);
+    const channel = {
+      send: vi.fn(async () => ({ id: 'message-1' })),
+      messages: {
+        edit: vi.fn(async () => undefined),
+        delete: deleteFn,
+      },
+    };
+    await initializeSessionPanel('session-rollback', channel as never, { initialTurn: 1 });
+
+    vi.clearAllMocks();
+    getSession.mockImplementation((sessionId: string) => ({
+      id: sessionId,
+      provider: 'codex',
+      currentTurn: 1,
+      humanResolved: false,
+      statusCardMessageId: 'status-1',
+      lastInboundMessageId: 'user-msg-1',
+    }));
+    statusRecreateAtBottom.mockResolvedValue({ oldMessageId: 'status-1', newMessageId: 'status-2' });
+    relocateDigestToBottom.mockRejectedValue(new Error('digest failed'));
+
+    await relocateSessionPanelToBottom('session-rollback', channel as never);
+
+    expect(statusAdopt).toHaveBeenCalledWith('status-1');
+    expect(deleteFn).toHaveBeenCalledWith('status-2');
+    expect(deleteFn).not.toHaveBeenCalledWith('status-1');
+    expect(setStatusCardBinding).not.toHaveBeenCalledWith('session-rollback', {
+      messageId: 'status-2',
+    });
+  });
+
+  it('恢复中的会话会先接管旧状态卡再执行下移', async () => {
+    const deleteFn = vi.fn(async () => undefined);
+    const channel = {
+      send: vi.fn(async () => ({ id: 'message-1' })),
+      messages: {
+        edit: vi.fn(async () => undefined),
+        delete: deleteFn,
+      },
+    };
+
+    getSession.mockImplementation((sessionId: string) => ({
+      id: sessionId,
+      provider: 'codex',
+      currentTurn: 3,
+      humanResolved: false,
+      statusCardMessageId: 'legacy-status',
+      lastInboundMessageId: 'user-msg-1',
+    }));
+
+    await relocateSessionPanelToBottom('session-restore', channel as never);
+
+    expect(statusAdopt).toHaveBeenCalledWith('legacy-status');
+    expect(statusRecreateAtBottom).toHaveBeenCalled();
+    expect(setStatusCardBinding).toHaveBeenCalledWith('session-restore', {
+      messageId: 'status-2',
+    });
+  });
+
+  it('并发初始化同一会话时只创建一套面板组件', async () => {
+    const channel = createChannel();
+    let releaseInitialize!: () => void;
+    statusInitialize.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseInitialize = resolve;
+        }),
+    );
+
+    const first = initializeSessionPanel('session-race', channel as never, { initialTurn: 1 });
+    const second = initializeSessionPanel('session-race', channel as never, { initialTurn: 1 });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(statusInitialize).toHaveBeenCalledTimes(1);
+
+    releaseInitialize();
+    await Promise.all([first, second]);
+  });
+
+  it('并发执行中的 codex 会话不会被监控侧过早标记为完成', async () => {
+    const channel = createChannel();
+    getSession.mockImplementation((sessionId: string) => ({
+      id: sessionId,
+      provider: 'codex',
+      currentTurn: 3,
+      humanResolved: false,
+      isGenerating: true,
+      statusCardMessageId: undefined,
+    }));
+
+    await initializeSessionPanel('session-active', channel as never, { initialTurn: 3 });
+
+    await updateSessionState(
+      'session-active',
+      {
+        type: 'work_started',
+        sessionId: 'session-active',
+        source: 'codex',
+        confidence: 'high',
+        timestamp: Date.now(),
+      },
+      { channel: channel as never },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    vi.clearAllMocks();
+    statusUpdate.mockResolvedValue(undefined);
+    getSession.mockImplementation((sessionId: string) => ({
+      id: sessionId,
+      provider: 'codex',
+      currentTurn: 3,
+      humanResolved: false,
+      isGenerating: true,
+      statusCardMessageId: undefined,
+    }));
+
+    await updateSessionState(
+      'session-active',
+      {
+        type: 'completed',
+        sessionId: 'session-active',
+        source: 'codex',
+        confidence: 'high',
+        timestamp: Date.now(),
+      },
+      { channel: channel as never, sourceHint: 'codex' },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    expect(statusUpdate).not.toHaveBeenCalledWith(
+      'completed',
+      expect.anything(),
     );
   });
 

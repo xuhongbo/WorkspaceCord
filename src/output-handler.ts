@@ -27,7 +27,6 @@ import {
   renderCodexTodoListEmbed,
 } from './codex-renderer.ts';
 import { getSession } from './thread-manager.ts';
-import * as sessions from './thread-manager.ts';
 import { buildDeliveryPlan } from './discord/delivery-policy.ts';
 import { deliver } from './discord/delivery.ts';
 import {
@@ -350,7 +349,7 @@ function detectRepetition(text: string): { isRepetitive: boolean; cleanedText: s
   if (maxCount >= 5) {
     // Keep only first 2 occurrences + add warning
     const parts = text.split(mostRepeated);
-    const cleaned = parts.slice(0, 3).join(mostRepeated) + mostRepeated;
+    const cleaned = parts.slice(0, 3).join(mostRepeated);
     return {
       isRepetitive: true,
       cleanedText: cleaned + `\n\n⚠️ *[检测到重复输出,已截断 ${maxCount - 2} 次重复]*`,
@@ -483,6 +482,7 @@ export async function handleOutputStream(
   changedFiles: string[];
 }> {
   const streamer = new MessageStreamer(channel, sessionId);
+  console.log(`[OutputHandler] Stream started for session ${sessionId} (provider: ${_provider}, mode: ${mode}, verbose: ${verbose})`);
   let lastToolName: string | null = null;
   let askedUser = false;
   let askUserQuestionsJson: string | undefined;
@@ -493,8 +493,15 @@ export async function handleOutputStream(
   const recentCommands: string[] = [];
   const changedFiles: string[] = [];
   const pendingAttachments: string[] = [];
+  let deferredResult:
+    | {
+        event: Extract<ProviderEvent, { type: 'result' }>;
+        text: string;
+        attachments: string[];
+      }
+    | undefined;
   let lastDigestFlushAt = Date.now();
-  const session = sessions.getSession(sessionId);
+  const session = getSession(sessionId);
 
   if (session) {
     await initializeSessionPanel(sessionId, channel, {
@@ -521,6 +528,7 @@ export async function handleOutputStream(
         }
 
         case 'ask_user': {
+          console.log(`[OutputHandler] Session ${sessionId}: ask_user event (human input requested)`);
           askedUser = true;
           askUserQuestionsJson = event.questionsJson;
           await streamer.discard();
@@ -689,8 +697,11 @@ export async function handleOutputStream(
                 },
               });
             } else {
-              await flushDigest(sessionId);
-              await handleResultEvent(sessionId, event, lastText, [...pendingAttachments]);
+              deferredResult = {
+                event,
+                text: lastText,
+                attachments: [...pendingAttachments],
+              };
             }
           }
           pendingAttachments.length = 0;
@@ -698,6 +709,7 @@ export async function handleOutputStream(
         }
 
         case 'error': {
+          console.warn(`[OutputHandler] Session ${sessionId}: error event — ${event.message}`);
           hadError = true;
           await streamer.finalize();
           queueDigest(sessionId, { kind: 'error', text: `错误：${truncate(event.message, 120)}` });
@@ -726,10 +738,22 @@ export async function handleOutputStream(
         lastDigestFlushAt = Date.now();
       }
     }
+
+    if (session && mode !== 'monitor' && deferredResult) {
+      console.log(`[OutputHandler] Session ${sessionId}: delivering deferred result (success: ${deferredResult.event.success})`);
+      await flushDigest(sessionId);
+      await handleResultEvent(
+        sessionId,
+        deferredResult.event,
+        deferredResult.text,
+        deferredResult.attachments,
+      );
+    }
   } catch (err: unknown) {
     hadError = true;
     await streamer.finalize();
     if (!isAbortError(err)) {
+      console.error(`[OutputHandler] Session ${sessionId}: unhandled stream error — ${(err as Error).message || ''}`);
       const errMsg = (err as Error).message || '';
       queueDigest(sessionId, { kind: 'error', text: `异常：${truncate(errMsg, 120)}` });
       if (session) {
@@ -748,8 +772,11 @@ export async function handleOutputStream(
     streamer.destroy();
   }
 
+  const finalText = streamer.getText();
+  console.log(`[OutputHandler] Stream ended for session ${sessionId} (text: ${finalText.length} chars, commands: ${commandCount}, files: ${fileChangeCount}, success: ${success}, hadError: ${hadError})`);
+
   return {
-    text: streamer.getText(),
+    text: finalText,
     askedUser,
     askUserQuestionsJson,
     hadError,

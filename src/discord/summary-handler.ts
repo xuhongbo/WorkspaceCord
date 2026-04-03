@@ -1,18 +1,19 @@
 // 总结处理器：区分本轮总结和结束总结
 // 参考设计文档 5.5
 
-import { EmbedBuilder, type TextChannel, type AnyThreadChannel } from 'discord.js';
+import { type TextChannel, type AnyThreadChannel } from 'discord.js';
 import { config } from '../config.ts';
 import type { StatusCard } from './status-card.ts';
-import { buildDeliveryPlan, chunkText } from './delivery-policy.ts';
+import { buildDeliveryPlan } from './delivery-policy.ts';
 import { deliver } from './delivery.ts';
+import { DigestDelivery } from './digest-delivery.ts';
 
 export class SummaryHandler {
   private sessionId: string;
   private chatId: string;
   private channel: TextChannel | AnyThreadChannel;
   private statusCard: StatusCard;
-  private digestMessageIds: string[] = [];
+  private digestDelivery: DigestDelivery;
 
   constructor(
     sessionId: string,
@@ -24,6 +25,7 @@ export class SummaryHandler {
     this.chatId = chatId;
     this.channel = channel;
     this.statusCard = statusCard;
+    this.digestDelivery = new DigestDelivery(channel);
   }
 
   async sendTurnSummary(
@@ -70,74 +72,11 @@ export class SummaryHandler {
   }
 
   async sendDigestSummary(content: string): Promise<void> {
-    const chunks = this.splitIfNeeded(content);
-    if (chunks.length === 0) return;
-
-    const nextMessageIds: string[] = [];
-    const chunksToCreate: string[] = [];
-    const replacedMessageIds: string[] = [];
-
-    for (let i = 0; i < chunks.length; i++) {
-      const existingId = this.digestMessageIds[i];
-      if (existingId) {
-        const embed = this.buildDigestEmbed(chunks[i], i, chunks.length);
-        try {
-          await this.channel.messages.edit(existingId, { embeds: [embed] });
-          nextMessageIds.push(existingId);
-          continue;
-        } catch {
-          replacedMessageIds.push(existingId);
-        }
-      }
-      chunksToCreate.push(chunks[i]);
-    }
-
-    if (chunksToCreate.length > 0) {
-      const text = chunksToCreate
-        .map((chunk, idx) => {
-          const absoluteIndex = nextMessageIds.length + idx;
-          const title = absoluteIndex === 0 ? '📌 最近摘要\n\n' : '';
-          const footer = chunks.length > 1 ? `\n\n-# 第 ${absoluteIndex + 1}/${chunks.length} 部分` : '';
-          return `${title}${chunk}${footer}`.trim();
-        })
-        .join('\n\n');
-      const plan = buildDeliveryPlan({
-        sessionId: this.sessionId,
-        chatId: this.chatId,
-        text,
-        files: [],
-        mode: 'log',
-        policy: {
-          textChunkLimit: config.textChunkLimit,
-          chunkMode: config.chunkMode,
-          replyToMode: config.replyToMode,
-          ackReaction: config.ackReaction,
-        },
-      });
-      const createdIds = await deliver(this.channel, plan);
-      nextMessageIds.push(...createdIds);
-    }
-
-    for (const staleId of [...replacedMessageIds, ...this.digestMessageIds.slice(chunks.length)]) {
-      await this.channel.messages.delete(staleId).catch(() => {});
-    }
-
-    this.digestMessageIds = nextMessageIds;
+    await this.digestDelivery.send(content);
   }
 
-  private buildDigestEmbed(content: string, index: number, total: number): EmbedBuilder {
-    const embed = new EmbedBuilder()
-      .setColor(0x3498db)
-      .setDescription(content)
-      .setTimestamp();
-
-    if (index === 0) embed.setTitle('📌 最近摘要');
-    if (total > 1) {
-      embed.setFooter({ text: `第 ${index + 1}/${total} 部分` });
-    } else {
-      embed.setFooter({ text: `更新于 <t:${Math.floor(Date.now() / 1000)}:R>` });
-    }
-    return embed;
+  async relocateDigestToBottom(): Promise<{ oldMessageIds: string[]; newMessageIds: string[] }> {
+    return await this.digestDelivery.relocateToBottom();
   }
 
   private async sendFinalSummaryMessage(
@@ -163,10 +102,5 @@ export class SummaryHandler {
       },
     });
     await deliver(this.channel, plan);
-  }
-
-  private splitIfNeeded(content: string): string[] {
-    if (!content.trim()) return [];
-    return chunkText(content, 1900, 'length');
   }
 }

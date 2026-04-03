@@ -15,7 +15,7 @@ function createChannel(overrides: Partial<Record<'send' | 'edit', any>> = {}) {
 }
 
 describe('StatusCard', () => {
-  it('adopt 后再次 initialize 会清空组件并重新 pin', async () => {
+  it('adopt 后再次 initialize 会清空组件且不再重新 pin', async () => {
     const { channel, pinStub } = createChannel();
     const card = new StatusCard(channel as never);
 
@@ -27,10 +27,10 @@ describe('StatusCard', () => {
       'legacy',
       expect.objectContaining({ components: [] }),
     );
-    expect(pinStub).toHaveBeenCalled();
+    expect(pinStub).not.toHaveBeenCalled();
   });
 
-  it('编辑失败时回落到新消息且保持 pin', async () => {
+  it('编辑失败时回落到新消息且不再 pin', async () => {
     const sendPin = vi.fn(async () => undefined);
     const sendFn = vi.fn(async () => ({ id: 'fallback', pin: sendPin }));
     const editFn = vi.fn(async () => {
@@ -46,8 +46,30 @@ describe('StatusCard', () => {
     await card.update('idle', { turn: 2, updatedAt: Date.now(), phase: 'phase2' });
 
     expect(sendFn).toHaveBeenCalled();
-    expect(sendPin).toHaveBeenCalled();
+    expect(sendPin).not.toHaveBeenCalled();
     expect(card.getMessageId()).toBe('fallback');
+  });
+
+  it('可以把当前状态消息重建到频道底部并切换绑定', async () => {
+    const sendFn = vi
+      .fn()
+      .mockResolvedValueOnce({ id: 'initial' })
+      .mockResolvedValueOnce({ id: 'bottom' });
+    const channel = {
+      send: sendFn,
+      messages: {
+        edit: vi.fn(async () => undefined),
+      },
+    } as never;
+
+    const card = new StatusCard(channel);
+    await card.initialize({ turn: 1, updatedAt: 1, phase: '待命' });
+
+    const result = await card.recreateAtBottom();
+
+    expect(result).toEqual({ oldMessageId: 'initial', newMessageId: 'bottom' });
+    expect(sendFn).toHaveBeenCalledTimes(2);
+    expect(card.getMessageId()).toBe('bottom');
   });
 
   it('validate 会拒绝过长文本', () => {
@@ -79,5 +101,29 @@ describe('StatusCard', () => {
     const { channel } = createChannel();
     const card = new StatusCard(channel as never);
     expect(() => card.validate('这一轮正在等待人工审批')).not.toThrow();
+  });
+
+  it('状态卡可以展示权限摘要', async () => {
+    const sendFn = vi.fn(async (payload) => payload);
+    const channel = {
+      send: sendFn,
+      messages: {
+        edit: vi.fn(async () => undefined),
+      },
+    } as never;
+
+    const card = new StatusCard(channel);
+    await card.initialize({
+      turn: 1,
+      updatedAt: 1,
+      phase: '待命',
+      provider: 'codex',
+      permissionsSummary: 'bypass',
+    });
+
+    const embed = sendFn.mock.calls[0]?.[0]?.embeds?.[0];
+    expect(embed?.data?.fields).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: '权限', value: 'bypass' })]),
+    );
   });
 });
