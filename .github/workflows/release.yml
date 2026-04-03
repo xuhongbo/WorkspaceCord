@@ -5,6 +5,12 @@ on:
     tags:
       - 'v*'
       - '*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (leave blank to read from package.json)'
+        required: false
+        default: ''
 
 jobs:
   publish:
@@ -15,6 +21,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v5
@@ -27,6 +35,28 @@ jobs:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing version: $VERSION"
+
+      - name: Create and push tag (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Release $VERSION" || echo "Tag already exists"
+          git push origin "$VERSION" || echo "Tag already pushed"
 
       - name: Install dependencies
         run: pnpm install
@@ -48,4 +78,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.VERSION }}
           generate_release_notes: true
