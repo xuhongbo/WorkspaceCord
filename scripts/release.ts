@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 /**
- * Release script for workspacecord
+ * Interactive release script for workspacecord
  *
  * Usage:
- *   node --experimental-strip-types scripts/release.ts          # auto-increment patch
- *   node --experimental-strip-types scripts/release.ts 1.1.0   # explicit version
+ *   pnpm release              # interactive mode
+ *   pnpm release patch        # skip prompt, auto bump patch
+ *   pnpm release minor        # skip prompt, auto bump minor
+ *   pnpm release major        # skip prompt, auto bump major
+ *   pnpm release 1.2.3        # explicit version
  *
  * Steps:
- *   1. Collect commits since last tag
- *   2. Generate release notes via `claude -p` (stdin piping)
- *   3. Preview & confirm
- *   4. Bump version in package.json
- *   5. Commit, tag, push
+ *   1. Check working tree is clean
+ *   2. Collect commits since last tag
+ *   3. Generate release notes via `claude -p`
+ *   4. Preview & confirm
+ *   5. Bump version, commit, tag, push
  *   6. Create GitHub Release
  */
 
@@ -20,7 +23,7 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { confirm } from '@clack/prompts';
+import { confirm, select, text, intro, outro, isCancel } from '@clack/prompts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
@@ -44,9 +47,17 @@ function getCurrentVersion(): string {
   return pkg.version;
 }
 
-function bumpVersion(current: string): string {
+function bumpVersion(current: string, type: 'patch' | 'minor' | 'major' | string): string {
   const [major, minor, patch] = current.split('.').map(Number);
-  return `${major}.${minor}.${patch + 1}`;
+  switch (type) {
+    case 'major':
+      return `${major + 1}.0.0`;
+    case 'minor':
+      return `${major}.${minor + 1}.0`;
+    case 'patch':
+    default:
+      return `${major}.${minor}.${patch + 1}`;
+  }
 }
 
 function collectCommits(since: string): string {
@@ -73,14 +84,58 @@ function claudeGenerate(prompt: string): string {
 
 async function main() {
   const args = process.argv.slice(2);
-  const explicitVersion = args[0];
+  const explicitArg = args[0];
+
+  intro('📦 workspacecord release');
 
   const currentVersion = getCurrentVersion();
-  const newVersion = explicitVersion ?? bumpVersion(currentVersion);
+  let newVersion: string;
 
-  console.log(`\n📦 workspacecord release\n`);
-  console.log(`  Current version: ${currentVersion}`);
-  console.log(`  New version:     ${newVersion}`);
+  // Version selection
+  if (explicitArg && ['patch', 'minor', 'major'].includes(explicitArg)) {
+    newVersion = bumpVersion(currentVersion, explicitArg);
+  } else if (explicitArg && /\d+\.\d+\.\d+/.test(explicitArg)) {
+    newVersion = explicitArg;
+  } else {
+    const bumpType = await select({
+      message: `Current version: ${currentVersion}. What type of release is this?`,
+      options: [
+        { value: 'patch', label: 'Patch', hint: `${bumpVersion(currentVersion, 'patch')} — bug fixes, small improvements` },
+        { value: 'minor', label: 'Minor', hint: `${bumpVersion(currentVersion, 'minor')} — new features, backwards compatible` },
+        { value: 'major', label: 'Major', hint: `${bumpVersion(currentVersion, 'major')} — breaking changes` },
+        { value: 'custom', label: 'Custom', hint: 'Enter a specific version number' },
+      ],
+    });
+
+    if (isCancel(bumpType)) {
+      outro('Release cancelled.');
+      process.exit(0);
+    }
+
+    if (bumpType === 'custom') {
+      const customVersion = await text({
+        message: 'Enter version number:',
+        placeholder: currentVersion,
+        validate: (value) => {
+          if (!/^\d+\.\d+\.\d+$/.test(value)) {
+            return 'Version must be in format X.Y.Z (e.g., 1.2.3)';
+          }
+          return undefined;
+        },
+      });
+
+      if (isCancel(customVersion)) {
+        outro('Release cancelled.');
+        process.exit(0);
+      }
+
+      newVersion = customVersion;
+    } else {
+      newVersion = bumpVersion(currentVersion, bumpType);
+    }
+  }
+
+  console.log(`\n  Target version: ${newVersion}\n`);
 
   // Step 1: Check working tree
   try {
@@ -96,22 +151,24 @@ async function main() {
 
   // Step 2: Collect commits
   const lastTag = getLatestTag();
-  console.log(`\n📝 Collecting commits since ${lastTag || 'beginning'}...`);
+  console.log(`📝 Collecting commits since ${lastTag || 'beginning'}...`);
 
   const commitLog = collectCommits(lastTag);
+  const commitCount = commitLog ? commitLog.split('\n').length : 0;
+  console.log(`  Found ${commitCount} commit(s)\n`);
+
   if (!commitLog) {
-    console.log('  No new commits since last tag.');
     const shouldContinue = await confirm({
-      message: 'No new commits found. Continue anyway?',
+      message: 'No new commits since last tag. Continue anyway?',
     });
     if (!shouldContinue) {
-      console.log('  Aborted.');
+      outro('Release cancelled.');
       process.exit(0);
     }
   }
 
   // Step 3: Generate release notes via claude -p
-  console.log('\n🤖 Generating release notes with Claude...\n');
+  console.log('🤖 Generating release notes with Claude...\n');
 
   const prompt = buildReleaseNotesPrompt(commitLog, newVersion);
   let releaseNotes: string;
@@ -137,25 +194,23 @@ async function main() {
 
   const confirmed = await confirm({ message: 'Proceed with release?' });
   if (!confirmed) {
-    console.log('  Aborted.');
+    outro('Release cancelled.');
     process.exit(0);
   }
 
-  // Step 5: Bump version
+  // Step 5: Execute release
   console.log('\n📝 Bumping version in package.json...');
   const pkgPath = join(root, 'package.json');
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
   pkg.version = newVersion;
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 
-  // Step 6: Commit & tag
-  console.log(`\n📌 Committing & tagging ${newVersion}...`);
+  console.log(`📌 Committing & tagging ${newVersion}...`);
   run(`git add package.json`);
   run(`git commit -m "chore: release ${newVersion}"`);
   run(`git tag ${newVersion}`);
 
-  // Step 7: Push (with rebase if remote has new commits)
-  console.log('\n🚀 Pushing to remote...');
+  console.log('🚀 Pushing to remote...');
   try {
     run('git push');
     run('git push --tags');
@@ -166,8 +221,7 @@ async function main() {
     run('git push --tags');
   }
 
-  // Step 8: Create GitHub Release
-  console.log('\n📢 Creating GitHub Release...');
+  console.log('📢 Creating GitHub Release...');
   const tmpDir = mkdtempSync(join(tmpdir(), 'wsc-release-'));
   const notesFile = join(tmpDir, 'RELEASE_NOTES.md');
   writeFileSync(notesFile, releaseNotes + '\n');
@@ -175,7 +229,6 @@ async function main() {
   try {
     run(`gh release create ${newVersion} --title "Release ${newVersion}" --notes-file "${notesFile}"`);
   } catch {
-    // Tag already exists (e.g. from a previous failed run), update instead
     console.log('  Release already exists, updating notes...');
     run(`gh release edit ${newVersion} --notes-file "${notesFile}"`);
   } finally {
@@ -186,7 +239,7 @@ async function main() {
     }
   }
 
-  console.log(`\n🎉 Release ${newVersion} complete!\n`);
+  outro(`🎉 Release ${newVersion} complete!`);
 }
 
 function buildReleaseNotesPrompt(commits: string, version: string): string {
