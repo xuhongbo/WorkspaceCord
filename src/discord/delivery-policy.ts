@@ -1,3 +1,5 @@
+import { existsSync, statSync } from 'node:fs';
+
 export type ChunkMode = 'length' | 'newline';
 export type ReplyToMode = 'off' | 'first' | 'all';
 export type DeliveryMode =
@@ -38,6 +40,7 @@ export type BuildDeliveryPlanInput = {
 
 const MAX_CHUNK_LIMIT = 2000;
 const MAX_ATTACHMENTS = 10;
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 export function clampChunkLimit(limit: number): number {
   if (!Number.isFinite(limit)) return MAX_CHUNK_LIMIT;
@@ -65,7 +68,27 @@ export function chunkText(text: string, limit: number, mode: ChunkMode): string[
   return out;
 }
 
+function validateOutboundAttachments(files: string[]): void {
+  if (files.length > MAX_ATTACHMENTS) {
+    throw new Error(`最多只能发送 ${MAX_ATTACHMENTS} 个附件`);
+  }
+  for (const filePath of files) {
+    if (!filePath.trim()) {
+      throw new Error('附件路径无效');
+    }
+    if (!existsSync(filePath)) continue;
+    const stats = statSync(filePath);
+    if (stats.isDirectory()) {
+      throw new Error(`附件路径不能是目录: ${filePath}`);
+    }
+    if (stats.size > MAX_ATTACHMENT_BYTES) {
+      throw new Error(`附件 ${filePath} 大小超过 ${MAX_ATTACHMENT_BYTES} bytes`);
+    }
+  }
+}
+
 export function buildDeliveryPlan(input: BuildDeliveryPlanInput): DeliveryPlan {
+  validateOutboundAttachments(input.files);
   const chunks = chunkText(input.text, input.policy.textChunkLimit, input.policy.chunkMode);
   const filesOnFirstChunk = input.files.slice(0, MAX_ATTACHMENTS);
   const replyToMode = input.policy.replyToMode;

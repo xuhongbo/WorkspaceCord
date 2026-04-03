@@ -86,4 +86,42 @@ describe('delivery-policy', () => {
       }).replyToMessageId,
     ).toBeUndefined();
   });
+
+  it('超过附件数量限制会报错', async () => {
+    const mod = await import('../src/discord/delivery-policy.ts');
+    expect(() =>
+      mod.buildDeliveryPlan({
+        sessionId: 'session-1',
+        chatId: 'chat-1',
+        text: 'A',
+        files: new Array(11).fill('/tmp/file.png'),
+        mode: 'user_reply',
+        policy: {
+          textChunkLimit: 2000,
+          chunkMode: 'length',
+          replyToMode: 'first',
+          ackReaction: '👀',
+        },
+      }),
+    ).toThrow('最多只能发送 10 个附件');
+  });
+
+  it('空附件路径会报错', async () => {
+    const mod = await import('../src/discord/delivery-policy.ts');
+    expect(() =>
+      mod.buildDeliveryPlan({
+        sessionId: 'session-1',
+        chatId: 'chat-1',
+        text: 'A',
+        files: [''],
+        mode: 'user_reply',
+        policy: {
+          textChunkLimit: 2000,
+          chunkMode: 'length',
+          replyToMode: 'first',
+          ackReaction: '👀',
+        },
+      }),
+    ).toThrow('附件路径无效');
+  });
 });
