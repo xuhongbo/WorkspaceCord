@@ -162,6 +162,12 @@ Thumbs.db
 # Temporary files
 tmp/
 
+# Local workspacecord data
+.playwright-mcp/
+.workspacecord-config.json
+.workspacecord-data/
+tmp/
+
 /bin
 # Local git worktrees
 .worktrees/
