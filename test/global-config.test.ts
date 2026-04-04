@@ -57,6 +57,7 @@ describe('VALID_KEYS and SENSITIVE_KEYS', () => {
     expect(VALID_KEYS.has('REPLY_TO_MODE')).toBe(true);
     expect(VALID_KEYS.has('TEXT_CHUNK_LIMIT')).toBe(true);
     expect(VALID_KEYS.has('CHUNK_MODE')).toBe(true);
+    expect(VALID_KEYS.has('IPC_SOCKET_PATH')).toBe(true);
   });
 
   it('marks DISCORD_TOKEN as sensitive', () => {
@@ -102,11 +103,13 @@ describe('validateConfigValue', () => {
     expect(validateConfigValue('ALLOW_ALL_USERS', 'yes')).not.toBeNull();
   });
 
-  it('validates ACK_REACTION / REPLY_TO_MODE / TEXT_CHUNK_LIMIT / CHUNK_MODE', () => {
+  it('validates ACK_REACTION / REPLY_TO_MODE / TEXT_CHUNK_LIMIT / CHUNK_MODE / IPC_SOCKET_PATH', () => {
     expect(validateConfigValue('ACK_REACTION', '👀')).toBeNull();
     expect(validateConfigValue('ACK_REACTION', '')).toBeNull();
     expect(validateConfigValue('ACK_REACTION', '<:wave:123>')).toBeNull();
     expect(validateConfigValue('ACK_REACTION', 'bad value')).not.toBeNull();
+    expect(validateConfigValue('IPC_SOCKET_PATH', '/tmp/workspacecord.sock')).toBeNull();
+    expect(validateConfigValue('IPC_SOCKET_PATH', '   ')).not.toBeNull();
     expect(validateConfigValue('REPLY_TO_MODE', 'first')).toBeNull();
     expect(validateConfigValue('REPLY_TO_MODE', 'off')).toBeNull();
     expect(validateConfigValue('REPLY_TO_MODE', 'weird')).not.toBeNull();

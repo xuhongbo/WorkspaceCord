@@ -21,6 +21,7 @@ describe('config defaults', () => {
     expect(config.replyToMode).toBe('first');
     expect(config.textChunkLimit).toBe(2000);
     expect(config.chunkMode).toBe('length');
+    expect(config.socketPath).toBe('/tmp/workspacecord.sock');
   });
 
   it('codex 默认开启联网与 live 搜索', () => {

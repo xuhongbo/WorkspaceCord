@@ -8,10 +8,9 @@ import { discoverAndRegisterSession } from './session-discovery.ts';
 import { gateCoordinator } from './state/gate-coordinator.ts';
 import type { PlatformEvent } from './state/types.ts';
 
-const SOCKET_PATH = '/tmp/workspacecord.sock';
-
 let server: ReturnType<typeof createServer> | null = null;
 let discordClient: Client | null = null;
+let activeSocketPath: string | null = null;
 
 type SessionChannel = TextChannel | AnyThreadChannel;
 
@@ -29,10 +28,12 @@ interface IpcMessage {
 
 export function startIpcServer(client: Client): void {
   discordClient = client;
+  const socketPath = config.socketPath;
+  activeSocketPath = socketPath;
 
   // Clean up stale socket file
-  if (existsSync(SOCKET_PATH)) {
-    try { unlinkSync(SOCKET_PATH); } catch { /* ignore */ }
+  if (existsSync(socketPath)) {
+    try { unlinkSync(socketPath); } catch { /* ignore */ }
   }
 
   server = createServer((socket: Socket) => {
@@ -68,8 +69,8 @@ export function startIpcServer(client: Client): void {
     });
   });
 
-  server.listen(SOCKET_PATH, () => {
-    console.log(`[IpcServer] Listening on ${SOCKET_PATH}`);
+  server.listen(socketPath, () => {
+    console.log(`[IpcServer] Listening on ${socketPath}`);
   });
 
   server.on('error', (err) => {
@@ -82,9 +83,10 @@ export function stopIpcServer(): void {
     server.close();
     server = null;
   }
-  if (existsSync(SOCKET_PATH)) {
-    try { unlinkSync(SOCKET_PATH); } catch { /* ignore */ }
+  if (activeSocketPath && existsSync(activeSocketPath)) {
+    try { unlinkSync(activeSocketPath); } catch { /* ignore */ }
   }
+  activeSocketPath = null;
   discordClient = null;
 }
 

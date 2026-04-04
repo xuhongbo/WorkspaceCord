@@ -9,6 +9,7 @@ const SOCKET_PATH = '/tmp/workspacecord-test.sock';
 const scriptPath = join(process.cwd(), '.claude', 'hooks', 'workspacecord-hook.cjs');
 const failureLogPath = (home: string) => join(home, '.workspacecord', 'hook-failures.log');
 const queuePath = (home: string) => join(home, '.workspacecord', 'hook-queue.jsonl');
+const configPath = (home: string) => join(home, '.config', 'workspacecord', 'config.json');
 
 const tempHomes: string[] = [];
 
@@ -116,6 +117,55 @@ describe('workspacecord Claude hook script', () => {
     expect(payload.payload.metadata?.hookEvent).toBe('SessionStart');
 
     expect(existsSync(failureLogPath(home))).toBe(false);
+  });
+
+  it('未显式传入 socket 环境变量时读取 workspacecord 配置中的 socketPath', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'workspacecord-hook-home-'));
+    tempHomes.push(home);
+
+    const configuredSocketPath = join(tmpdir(), `workspacecord-hook-config-${Date.now()}.sock`);
+    const cfgPath = configPath(home);
+    mkdirSync(join(home, '.config', 'workspacecord'), { recursive: true });
+    writeFileSync(cfgPath, JSON.stringify({ IPC_SOCKET_PATH: configuredSocketPath }), 'utf8');
+
+    const messages: string[] = [];
+    const server = createServer((socket) => {
+      socket.on('data', (data) => {
+        messages.push(data.toString().trim());
+      });
+      socket.on('end', () => socket.end());
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(configuredSocketPath, () => resolve());
+    });
+
+    const child = spawn('node', [scriptPath, 'SessionStart'], {
+      env: {
+        ...process.env,
+        HOME: home,
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    child.stdin.write(
+      JSON.stringify({
+        session_id: 'claude-session-config',
+        cwd: '/repo-config',
+      }),
+    );
+    child.stdin.end();
+
+    const result = await new Promise<{ code: number | null }>((resolve) => {
+      child.on('close', (code) => resolve({ code }));
+    });
+
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+
+    expect(result.code).toBe(0);
+    expect(messages.length).toBe(1);
   });
 
   it('SubagentStop 会携带子代理元数据', async () => {

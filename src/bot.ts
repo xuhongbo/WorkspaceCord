@@ -48,18 +48,18 @@ export async function routeInteractionCreate(interaction: Interaction): Promise<
   try {
     if (interaction.type === InteractionType.ApplicationCommand && interaction.isChatInputCommand()) {
       switch (interaction.commandName) {
-        case 'project': return await handleProject(interaction as never);
-        case 'agent': return await handleAgent(interaction as never);
-        case 'subagent': return await handleSubagent(interaction as never);
-        case 'shell': return await handleShell(interaction as never);
-        case 'spawn': return await handleSpawnShortcut(interaction as never);
-        case 'stop': return await handleStopShortcut(interaction as never);
-        case 'end': return await handleEndShortcut(interaction as never);
-        case 'run': return await handleRunShortcut(interaction as never);
+        case 'project': return await handleProject(interaction);
+        case 'agent': return await handleAgent(interaction);
+        case 'subagent': return await handleSubagent(interaction);
+        case 'shell': return await handleShell(interaction);
+        case 'spawn': return await handleSpawnShortcut(interaction);
+        case 'stop': return await handleStopShortcut(interaction);
+        case 'end': return await handleEndShortcut(interaction);
+        case 'run': return await handleRunShortcut(interaction);
       }
     }
-    if (interaction.isButton()) return await handleButton(interaction as never);
-    if (interaction.isStringSelectMenu()) return await handleSelectMenu(interaction as never);
+    if (interaction.isButton()) return await handleButton(interaction);
+    if (interaction.isStringSelectMenu()) return await handleSelectMenu(interaction);
   } catch (err) {
     console.error('Interaction error:', err);
     try {

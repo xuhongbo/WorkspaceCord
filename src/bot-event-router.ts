@@ -1,16 +1,23 @@
-import { InteractionType, type Interaction, type Message } from 'discord.js';
+import {
+  InteractionType,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+  type Interaction,
+  type Message,
+  type StringSelectMenuInteraction,
+} from 'discord.js';
 
 export interface CommandHandlers {
-  handleProject: (interaction: never) => Promise<void>;
-  handleAgent: (interaction: never) => Promise<void>;
-  handleSubagent: (interaction: never) => Promise<void>;
-  handleShell: (interaction: never) => Promise<void>;
-  handleSpawnShortcut: (interaction: never) => Promise<void>;
-  handleStopShortcut: (interaction: never) => Promise<void>;
-  handleEndShortcut: (interaction: never) => Promise<void>;
-  handleRunShortcut: (interaction: never) => Promise<void>;
-  handleButton: (interaction: never) => Promise<void>;
-  handleSelectMenu: (interaction: never) => Promise<void>;
+  handleProject: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  handleAgent: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  handleSubagent: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  handleShell: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  handleSpawnShortcut: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  handleStopShortcut: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  handleEndShortcut: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  handleRunShortcut: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  handleButton: (interaction: ButtonInteraction) => Promise<void>;
+  handleSelectMenu: (interaction: StringSelectMenuInteraction) => Promise<void>;
   handleMessage: (message: Message) => Promise<void>;
 }
 
@@ -22,18 +29,18 @@ export class BotEventRouter {
       if (interaction.type === InteractionType.ApplicationCommand && interaction.isChatInputCommand()) {
         const h = this.handlers;
         switch (interaction.commandName) {
-          case 'project': return await h.handleProject(interaction as never);
-          case 'agent': return await h.handleAgent(interaction as never);
-          case 'subagent': return await h.handleSubagent(interaction as never);
-          case 'shell': return await h.handleShell(interaction as never);
-          case 'spawn': return await h.handleSpawnShortcut(interaction as never);
-          case 'stop': return await h.handleStopShortcut(interaction as never);
-          case 'end': return await h.handleEndShortcut(interaction as never);
-          case 'run': return await h.handleRunShortcut(interaction as never);
+          case 'project': return await h.handleProject(interaction);
+          case 'agent': return await h.handleAgent(interaction);
+          case 'subagent': return await h.handleSubagent(interaction);
+          case 'shell': return await h.handleShell(interaction);
+          case 'spawn': return await h.handleSpawnShortcut(interaction);
+          case 'stop': return await h.handleStopShortcut(interaction);
+          case 'end': return await h.handleEndShortcut(interaction);
+          case 'run': return await h.handleRunShortcut(interaction);
         }
       }
-      if (interaction.isButton()) return await this.handlers.handleButton(interaction as never);
-      if (interaction.isStringSelectMenu()) return await this.handlers.handleSelectMenu(interaction as never);
+      if (interaction.isButton()) return await this.handlers.handleButton(interaction);
+      if (interaction.isStringSelectMenu()) return await this.handlers.handleSelectMenu(interaction);
     } catch (err) {
       console.error('Interaction error:', err);
       try {

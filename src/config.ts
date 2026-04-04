@@ -76,6 +76,7 @@ export const config = {
   replyToMode: optionalEnum('REPLY_TO_MODE', 'first', ['off', 'first', 'all']),
   textChunkLimit: Math.max(1, Math.min(optionalInt('TEXT_CHUNK_LIMIT', 2000), 2000)),
   chunkMode: optionalEnum('CHUNK_MODE', 'length', ['length', 'newline']),
+  socketPath: optional('IPC_SOCKET_PATH', '/tmp/workspacecord.sock'),
 
   shellEnabled: optionalBool('SHELL_ENABLED', false),
   shellAllowedUsers: optionalList('SHELL_ALLOWED_USERS'),

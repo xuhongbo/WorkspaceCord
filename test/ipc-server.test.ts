@@ -3,7 +3,10 @@ import { createConnection } from 'node:net';
 import { existsSync, unlinkSync } from 'node:fs';
 
 // Mutable config -- vi.mock below captures a reference to this object
-const testConfig = { hookSecret: '' };
+const testConfig = {
+  hookSecret: '',
+  socketPath: '/tmp/workspacecord.sock',
+};
 
 vi.mock('../src/config.ts', () => ({
   get config() { return testConfig; },
@@ -22,7 +25,7 @@ async function restartServer(): Promise<{ socketPath: string; stopIpcServer: () 
   const { startIpcServer, stopIpcServer } = await import('../src/ipc-server.ts');
   stopIpcServer();
 
-  const socketPath = '/tmp/workspacecord.sock';
+  const socketPath = testConfig.socketPath;
   if (existsSync(socketPath)) {
     try { unlinkSync(socketPath); } catch { /* ignore */ }
   }
@@ -46,6 +49,8 @@ function sendIpcMessage(socketPath: string, msg: object): Promise<void> {
 
 describe('IPC server authentication', () => {
   beforeEach(() => {
+    testConfig.hookSecret = '';
+    testConfig.socketPath = '/tmp/workspacecord.sock';
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
@@ -57,10 +62,18 @@ describe('IPC server authentication', () => {
       const { stopIpcServer } = await import('../src/ipc-server.ts');
       stopIpcServer();
     } catch { /* module may not be loaded */ }
-    const socketPath = '/tmp/workspacecord.sock';
+    const socketPath = testConfig.socketPath;
     if (existsSync(socketPath)) {
       try { unlinkSync(socketPath); } catch { /* ignore */ }
     }
+  });
+
+  it('listens on the configured socket path', async () => {
+    testConfig.socketPath = '/tmp/workspacecord-custom.sock';
+    const { socketPath } = await restartServer();
+
+    expect(socketPath).toBe('/tmp/workspacecord-custom.sock');
+    expect(existsSync(socketPath)).toBe(true);
   });
 
   it('rejects messages with wrong secret', async () => {

@@ -5,7 +5,6 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 
-const SOCKET_PATH = process.env.workspacecord_HOOK_SOCKET || '/tmp/workspacecord.sock';
 const REQUEST_TIMEOUT_MS = 2000;
 const HOME_DIR = os.homedir();
 const WS_DIR = path.join(HOME_DIR, '.workspacecord');
@@ -13,6 +12,7 @@ const FAILURE_LOG = path.join(WS_DIR, 'hook-failures.log');
 const QUEUE_FILE = path.join(WS_DIR, 'hook-queue.jsonl');
 const MAX_RETRY = 3;
 const DRAIN_BATCH = 10;
+const DEFAULT_SOCKET_PATH = '/tmp/workspacecord.sock';
 
 const EVENT_TO_STATE = {
   SessionStart: 'session_started',
@@ -31,6 +31,34 @@ const EVENT_TO_STATE = {
 };
 
 const eventName = process.argv[2];
+
+function resolveWorkspacecordConfigPath() {
+  if (process.env.WORKSPACECORD_CONFIG_PATH) {
+    return process.env.WORKSPACECORD_CONFIG_PATH;
+  }
+  const baseDir = process.env.WORKSPACECORD_CONFIG_DIR
+    ? process.env.WORKSPACECORD_CONFIG_DIR
+    : path.join(HOME_DIR, '.config', 'workspacecord');
+  return path.join(baseDir, 'config.json');
+}
+
+function resolveSocketPath() {
+  if (process.env.workspacecord_HOOK_SOCKET) {
+    return process.env.workspacecord_HOOK_SOCKET;
+  }
+
+  const configPath = resolveWorkspacecordConfigPath();
+  try {
+    if (!fs.existsSync(configPath)) {
+      return DEFAULT_SOCKET_PATH;
+    }
+    const content = fs.readFileSync(configPath, 'utf8');
+    const config = JSON.parse(content);
+    return config.IPC_SOCKET_PATH || DEFAULT_SOCKET_PATH;
+  } catch {
+    return DEFAULT_SOCKET_PATH;
+  }
+}
 
 // --drain 模式: 跳过 stdin 读取和事件解析,直接处理队列
 if (eventName === '--drain') {
@@ -136,7 +164,7 @@ function spawnDrain() {
 
 function postToSocket(payload) {
   return new Promise((resolve, reject) => {
-    const socket = net.connect(SOCKET_PATH, () => {
+    const socket = net.connect(resolveSocketPath(), () => {
       const message = { type: 'hook-event', payload };
       if (process.env.workspacecord_HOOK_SECRET) {
         message.secret = process.env.workspacecord_HOOK_SECRET;
