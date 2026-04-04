@@ -98,7 +98,7 @@ export const quickStartSteps = [
 ] as const;
 
 export const finalCta = {
-  title: '现在，把 Discord 变成你的多智能体工作台。',
+  title: '把 Discord 变成你的多智能体开发控制台',
   description: '一个服务器，多个代理，全部在控。',
   primary: {
     label: '快速开始',

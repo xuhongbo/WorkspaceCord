@@ -45,10 +45,17 @@ select {
 
 .topbar,
 .hero-layout,
-.section-shell,
-.final-cta {
+.section-shell {
   width: min(1240px, calc(100% - 40px));
   margin: 0 auto;
+}
+
+.final-cta {
+  display: grid;
+  gap: 24px;
+  text-align: center;
+  justify-items: center;
+  margin-bottom: 56px;
 }
 
 .topbar {
@@ -77,8 +84,14 @@ select {
 .topbar nav {
   display: flex;
   gap: 20px;
-  color: rgba(226, 232, 255, 0.72);
-  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.8rem;
+  color: #a8a4a0;
+}
+
+.topbar nav a:hover {
+  color: #6ee7b7;
 }
 
 .hero-section {
@@ -107,10 +120,11 @@ select {
 .hero-eyebrow,
 .section-eyebrow {
   margin: 0 0 16px;
-  color: #8f93b5;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
+  color: #6ee7b7;
+  font-weight: 500;
 }
 
 .hero-copy h1 {
@@ -1345,8 +1359,8 @@ main {
   }
 
   .final-cta {
-    align-items: flex-start;
-    flex-direction: column;
+    justify-items: start;
+    text-align: left;
   }
 }
 
@@ -1464,4 +1478,14 @@ main {
     flex-direction: column;
     align-items: center;
   }
+}
+
+.workflow-timeline-line {
+  display: none;
+}
+
+.desktop-glow,
+.desktop-glow-left,
+.desktop-glow-right {
+  display: none;
 }
