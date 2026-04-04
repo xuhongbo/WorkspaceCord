@@ -32,23 +32,23 @@ export const problemCards = [
 export const howItWorksSteps = [
   {
     id: 'mount',
-    title: '挂载本地项目',
-    body: '在本地终端运行初始化命令，把真实工程绑定到 Discord 服务器。',
+    title: 'workspacecord project init',
+    body: '挂载项目到全局配置，绑定本地工程到 Discord 服务器。',
   },
   {
-    id: 'spawn',
-    title: '启动主代理会话',
-    body: '从控制频道创建主会话，让每个任务都有清晰入口和上下文。',
+    id: 'start',
+    title: 'workspacecord start',
+    body: '启动后台守护进程，Discord 自动创建 Category 结构。',
   },
   {
-    id: 'dispatch',
-    title: '派发子代理线程',
-    body: '在主会话下并行展开分析、修复、验证等子任务。',
+    id: 'session',
+    title: '/session start',
+    body: '展开 Session 线程，主代理规划，子代理执行。',
   },
   {
     id: 'archive',
-    title: '归档执行历史',
-    body: '把结果收进 #history，方便回看、追踪与复盘。',
+    title: '#history',
+    body: '会话自动归档到历史频道，全流程可追溯。',
   },
 ] as const;
 

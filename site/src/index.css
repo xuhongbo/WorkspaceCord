@@ -303,7 +303,6 @@ select {
 }
 
 .status-pill i,
-.flow-index,
 .quickstart-index {
   flex-shrink: 0;
 }
@@ -544,7 +543,6 @@ select {
 .section-title,
 .final-cta h2,
 .quickstart-meta h3,
-.flow-step h3,
 .reason-item span {
   margin: 0;
   letter-spacing: -0.04em;
@@ -1116,18 +1114,11 @@ main {
   margin: 14px 0 0;
 }
 
-.flow-grid,
 .reasons-grid {
   display: grid;
   gap: 18px;
 }
 
-.flow-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 28px;
-}
-
-.flow-step,
 .reason-item,
 .quickstart-row {
   position: relative;
@@ -1136,34 +1127,6 @@ main {
   background: rgba(10, 13, 20, 0.78);
 }
 
-.flow-step {
-  min-height: auto;
-  padding: 20px 8px 0 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.flow-index {
-  display: inline-flex;
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  align-items: center;
-  justify-content: center;
-  color: #0b0e17;
-  font-weight: 700;
-  background: linear-gradient(135deg, #8d74ff, #6af3c1);
-}
-
-.flow-line {
-  width: 100%;
-  height: 1px;
-  margin: 16px 0 16px;
-  background: linear-gradient(90deg, rgba(141, 116, 255, 0.8), rgba(106, 243, 193, 0.1));
-}
-
-.flow-step p,
 .reason-item p,
 .quickstart-row code,
 .final-cta p {
@@ -1270,9 +1233,70 @@ main {
   line-height: 1.6;
 }
 
+.workflow-timeline-v2 {
+  display: grid;
+  gap: 0;
+  position: relative;
+  padding-left: 32px;
+}
+
+.workflow-timeline-v2::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #6ee7b7;
+  border-radius: 1px;
+}
+
+.timeline-item {
+  position: relative;
+  padding-bottom: 32px;
+}
+
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.timeline-marker {
+  position: absolute;
+  left: -32px;
+  top: 0;
+}
+
+.timeline-marker-index {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #6ee7b7;
+  color: #1a1a1a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: 'SFMono-Regular', 'JetBrains Mono', monospace;
+}
+
+.timeline-content h3 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+  font-family: 'SFMono-Regular', 'JetBrains Mono', monospace;
+  color: #f5f2ed;
+}
+
+.timeline-content p {
+  margin: 0;
+  color: #a8a4a0;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
 @media (max-width: 1120px) {
   .hero-layout,
-  .flow-grid,
   .reasons-grid,
   .final-cta {
     grid-template-columns: 1fr;

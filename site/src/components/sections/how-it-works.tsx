@@ -4,21 +4,22 @@ import { SectionShell } from '../ui/section-shell';
 export function HowItWorksSection() {
   return (
     <SectionShell
-      id="how-it-works"
-      eyebrow="How it works"
-      title="从频道到线程，把开发流程接进 Discord"
-      description="不是把机器人塞进聊天窗口，而是把整个多智能体工作流映射成你熟悉的服务器结构。"
+      id="workflow"
+      eyebrow="The Workflow"
+      title="解决方案"
+      description="从终端到 Discord，一条工作流串联所有步骤。"
     >
-      <div className="flow-grid">
+      <div className="workflow-timeline-v2">
         {howItWorksSteps.map((step, index) => (
-          <article key={step.id} className="flow-step">
-            <div className="flow-index">0{index + 1}</div>
-            <div className="flow-line" aria-hidden="true" />
-            <div>
+          <div key={step.id} className="timeline-item">
+            <div className="timeline-marker">
+              <span className="timeline-marker-index">0{index + 1}</span>
+            </div>
+            <div className="timeline-content">
               <h3>{step.title}</h3>
               <p>{step.body}</p>
             </div>
-          </article>
+          </div>
         ))}
       </div>
     </SectionShell>
