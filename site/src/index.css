@@ -115,9 +115,9 @@ select {
 
 .hero-copy h1 {
   margin: 0;
-  font-size: clamp(3rem, 5.6vw, 5.2rem);
-  line-height: 0.97;
-  letter-spacing: -0.06em;
+  font-size: clamp(2.4rem, 4.8vw, 4rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
   text-wrap: balance;
 }
 
@@ -132,13 +132,7 @@ select {
 .hero-description {
   max-width: 42rem;
   margin: 22px 0 0;
-}
-
-.hero-supporting {
-  margin: 12px 0 0;
-  max-width: 36rem;
-  color: rgba(203, 212, 248, 0.84);
-  line-height: 1.72;
+  color: #a8a4a0;
 }
 
 .cta-group {
@@ -1085,7 +1079,6 @@ select {
 .hero-copy .hero-eyebrow,
 .hero-copy h1,
 .hero-copy .hero-description,
-.hero-copy .hero-supporting,
 .hero-copy .cta-group,
 .hero-copy .hero-stats {
   max-width: 760px;

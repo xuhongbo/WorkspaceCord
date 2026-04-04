@@ -1,8 +1,8 @@
 export const heroContent = {
   eyebrow: 'workspacecord',
-  title: '把 Discord 变成你的多智能体开发控制台',
+  title: '你的终端，不该这么乱',
   description:
-    '把本地项目、主代理会话、子代理线程和历史归档，接进同一个运行中的工作流。',
+    '把本地项目、AI 代理会话和 Discord 频道接进同一个运行中的工作流。',
   primaryCta: {
     label: '快速开始',
     href: '#quick-start',
