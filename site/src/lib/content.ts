@@ -52,22 +52,30 @@ export const howItWorksSteps = [
   },
 ] as const;
 
-export const reasons = [
+export const developerScenes = [
   {
-    title: 'Discord Native',
-    body: '直接使用频道、线程和归档这些原生结构，不需要重新学习一套系统。',
+    tag: 'FOCUS',
+    title: '收进 Dock，不再切窗口',
+    terminal: '5 terminal windows → 1 Discord channel',
+    body: '所有 session 统一进入 Discord 频道，不再在终端窗口间来回切换。',
   },
   {
-    title: 'Local-first',
-    body: '绑定的是你自己的本地项目，命令、文件和上下文都在你的机器上完成。',
+    tag: 'PARALLEL',
+    title: '同时推进 3 条线',
+    terminal: 'main: planning → sub-1: coding → sub-2: docs',
+    body: '主代理规划方向，子代理并行执行，互不阻塞。',
   },
   {
-    title: 'Multi-agent by Design',
-    body: '主代理与子代理天然分层，适合拆任务、并行推进和集中调度。',
+    tag: 'TRACK',
+    title: '谁改了什么，一清二楚',
+    terminal: '#history: auth-rollout → summary posted',
+    body: '每个 session 的结果自动归档到 #history，可随时回看。',
   },
   {
-    title: 'Traceable by Default',
-    body: '从启动到归档，全流程可追踪，不再丢失会话上下文和执行历史。',
+    tag: 'TEAM',
+    title: '队友加入只需一个命令',
+    terminal: 'workspacecord project init --name my-project',
+    body: '项目配置共享，新成员一条命令就能接入完整工作流。',
   },
 ] as const;
 
