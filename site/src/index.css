@@ -1240,6 +1240,36 @@ main {
   line-height: 1;
 }
 
+.problem-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.problem-card {
+  padding: 24px;
+  border-radius: 12px;
+  background: #141312;
+  border: 1px solid rgba(214, 235, 253, 0.12);
+}
+
+.problem-card code {
+  display: block;
+  font-family: 'SFMono-Regular', 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.875rem;
+  color: #6ee7b7;
+  margin-bottom: 12px;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.problem-card p {
+  margin: 0;
+  color: #a8a4a0;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
 @media (max-width: 1120px) {
   .hero-layout,
   .flow-grid,
@@ -1330,6 +1360,10 @@ main {
   .workflow-timeline {
     grid-template-columns: 1fr;
     gap: 16px;
+  }
+
+  .problem-grid {
+    grid-template-columns: 1fr;
   }
 
   .workflow-timeline-line {

@@ -14,6 +14,21 @@ export const heroContent = {
   stats: ['本地优先', '多代理调度', 'Discord 原生结构'],
 } as const;
 
+export const problemCards = [
+  {
+    terminal: 'terminal: session-1 | session-2 | session-3 | session-4 | session-5',
+    body: '5 个 session，5 个终端窗口来回切换',
+  },
+  {
+    terminal: 'discord: 37 unread messages in #general',
+    body: '有用的对话淹没在噪音中',
+  },
+  {
+    terminal: 'git: where did that fix come from?',
+    body: '无法追踪谁做了什么、改了哪里',
+  },
+] as const;
+
 export const howItWorksSteps = [
   {
     id: 'mount',
