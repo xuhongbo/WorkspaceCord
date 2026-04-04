@@ -81,20 +81,19 @@ export const developerScenes = [
 
 export const quickStartSteps = [
   {
-    title: '配置全局凭据',
-    command: 'workspacecord config setup',
+    step: '01',
+    command: 'pnpm add -g workspacecord',
+    label: '安装',
   },
   {
-    title: '挂载本地项目',
-    command: 'workspacecord project init --name my-project',
+    step: '02',
+    command: 'workspacecord project init',
+    label: '挂载项目',
   },
   {
-    title: '启动服务',
-    command: 'workspacecord',
-  },
-  {
-    title: '绑定 Discord 频道',
-    command: '/project setup project:my-project',
+    step: '03',
+    command: 'workspacecord start',
+    label: '开始工作',
   },
 ] as const;
 
