@@ -8,7 +8,6 @@ import { WhyGeeksLikeItSection } from './components/sections/why-geeks-like-it';
 export default function App() {
   return (
     <div id="top" className="page-shell">
-      <div className="page-noise" aria-hidden="true" />
       <HeroSection />
       <main>
         <TheProblemSection />

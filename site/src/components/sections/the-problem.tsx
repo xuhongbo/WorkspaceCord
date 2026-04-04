@@ -6,8 +6,9 @@ export function TheProblemSection() {
     <SectionShell
       id="the-problem"
       eyebrow="The Problem"
-      title="你的一天是这样的"
-      description="终端塞满窗口，Discord 消息乱飞，上下文在切换中丢失。"
+      title="远程协作，不该这么难"
+      description="现有的 AI 编码工具要么本地受限，要么远程要付费，要么没有统一工作台。"
+      boxed
     >
       <div className="problem-grid">
         {problemCards.map((card) => (

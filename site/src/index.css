@@ -50,14 +50,6 @@ select {
   margin: 0 auto;
 }
 
-.final-cta {
-  display: grid;
-  gap: 24px;
-  text-align: center;
-  justify-items: center;
-  margin-bottom: 56px;
-}
-
 .topbar {
   display: flex;
   align-items: center;
@@ -100,10 +92,10 @@ select {
 
 .hero-layout {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 30px;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 56px;
+  align-items: center;
   min-height: calc(100svh - 88px);
-  align-content: start;
   padding-top: 18px;
 }
 
@@ -114,7 +106,7 @@ select {
 
 .hero-copy {
   display: grid;
-  max-width: 920px;
+  max-width: 540px;
 }
 
 .hero-eyebrow,
@@ -286,8 +278,16 @@ select {
 
 .workflow-panel {
   position: relative;
-  border-radius: 32px;
-  padding: 20px;
+  border-radius: 28px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.workflow-cinematic {
+  overflow: hidden;
+  border-radius: 28px;
   background:
     linear-gradient(180deg, rgba(21, 24, 36, 0.9), rgba(9, 11, 19, 0.88));
   border: 1px solid rgba(143, 152, 214, 0.16);
@@ -301,9 +301,10 @@ select {
   justify-content: space-between;
   gap: 12px;
   align-items: center;
-  margin-bottom: 16px;
+  padding: 14px 18px 0;
+  margin-bottom: 8px;
   color: #bbc4f2;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
 }
 
 .status-pill {
@@ -598,8 +599,8 @@ select {
 .terminal-window {
   top: 56px;
   left: 42px;
-  width: min(520px, calc(100% - 430px));
-  min-height: 322px;
+  width: min(460px, 60%);
+  min-height: 300px;
   transform-origin: left bottom;
   z-index: 2;
 }
@@ -630,8 +631,8 @@ select {
 .discord-window {
   top: 34px;
   right: 36px;
-  width: min(860px, calc(100% - 180px));
-  min-height: 500px;
+  width: min(780px, 88%);
+  min-height: 460px;
   z-index: 3;
 }
 
@@ -1022,7 +1023,7 @@ select {
 
 main {
   display: grid;
-  gap: 28px;
+  gap: 64px;
   padding-bottom: 56px;
 }
 
@@ -1031,14 +1032,36 @@ main {
   position: relative;
   padding: 38px clamp(20px, 3vw, 40px);
   border-radius: 32px;
+  background: transparent;
+  border: 1px solid transparent;
+  backdrop-filter: blur(14px);
+}
+
+.section-shell + .section-shell,
+.section-shell + .final-cta,
+.final-cta + .section-shell {
+  padding-top: 48px;
+  border-top: 1px solid rgba(214, 235, 253, 0.08);
+}
+
+.section-shell.has-box {
   background: #242322;
   border: 1px solid rgba(214, 235, 253, 0.12);
-  backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px 0 rgba(110, 231, 183, 0.15);
+  border-top: 1px solid rgba(214, 235, 253, 0.12);
 }
 
 .section-shell {
   display: grid;
   gap: 26px;
+  margin-bottom: 96px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(214, 235, 253, 0.06);
+}
+
+.section-shell.has-box {
+  border-top: none;
+  margin-bottom: 96px;
 }
 
 .section-title {
@@ -1250,9 +1273,15 @@ main {
 }
 
 @media (max-width: 1120px) {
-  .hero-layout,
-  .final-cta {
+  .hero-layout {
     grid-template-columns: 1fr;
+    gap: 30px;
+  }
+
+  .final-cta {
+    flex-direction: column;
+    text-align: center;
+    align-items: center;
   }
 
   .workflow-timeline {
@@ -1283,8 +1312,9 @@ main {
   }
 
   .final-cta {
-    justify-items: start;
-    text-align: left;
+    flex-direction: column;
+    text-align: center;
+    align-items: center;
   }
 }
 
@@ -1402,14 +1432,4 @@ main {
     flex-direction: column;
     align-items: center;
   }
-}
-
-.workflow-timeline-line {
-  display: none;
-}
-
-.desktop-glow,
-.desktop-glow-left,
-.desktop-glow-right {
-  display: none;
 }

@@ -127,16 +127,16 @@ export function WorkflowDemo() {
                     </div>
 
                     <div className="discord-sidebar-group">
-                      <p className="discord-sidebar-label">项目</p>
+                      <p className="discord-sidebar-label">分类 = 项目</p>
                       <ul className="project-tree cinematic-project-tree">
-                        {scene.discord.projects.map((project) => (
+                        {scene.discord.categories.map((project) => (
                           <li
                             key={project.id}
                             className={`project-row is-${project.state}`}
                           >
                             <div>
-                              <strong>{project.name}</strong>
-                              <small>{project.rootPath}</small>
+                              <strong>{project.categoryLabel ?? project.name}</strong>
+                              <small>{project.name}</small>
                             </div>
                           </li>
                         ))}

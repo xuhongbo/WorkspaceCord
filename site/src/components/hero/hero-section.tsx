@@ -32,7 +32,7 @@ export function HeroSection() {
             transition={{ duration: 0.65, ease: 'easeOut' }}
           >
             <p className="hero-eyebrow">
-              本地终端启动 → 收进 Dock → 拉起 Discord → 展开线程 → 收束 #history
+              远程受限 → Discord 工作台 → 分类=项目 → 频道=session
             </p>
             <h1>{heroContent.title}</h1>
             <p className="hero-description">{heroContent.description}</p>

@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 const fs = require('fs');
-const http = require('http');
+const net = require('net');
 const os = require('os');
 const path = require('path');
+const { spawn } = require('child_process');
 
-const EVENT_QUEUE = '/tmp/workspacecord-hook-events.jsonl';
-const HOOK_ENDPOINT = process.env.workspacecord_HOOK_URL || 'http://127.0.0.1:23456/hook-event';
+const SOCKET_PATH = process.env.workspacecord_HOOK_SOCKET || '/tmp/workspacecord.sock';
 const REQUEST_TIMEOUT_MS = 2000;
-const FAILURE_LOG = path.join(os.homedir(), '.workspacecord', 'hook-failures.log');
+const HOME_DIR = os.homedir();
+const WS_DIR = path.join(HOME_DIR, '.workspacecord');
+const FAILURE_LOG = path.join(WS_DIR, 'hook-failures.log');
+const QUEUE_FILE = path.join(WS_DIR, 'hook-queue.jsonl');
+const MAX_RETRY = 3;
+const DRAIN_BATCH = 10;
 
 const EVENT_TO_STATE = {
   SessionStart: 'session_started',
@@ -26,6 +31,13 @@ const EVENT_TO_STATE = {
 };
 
 const eventName = process.argv[2];
+
+// --drain 模式: 跳过 stdin 读取和事件解析,直接处理队列
+if (eventName === '--drain') {
+  drainQueue().catch(() => {});
+  return;
+}
+
 let inputJson = process.argv[3];
 
 if (!inputJson) {
@@ -75,22 +87,13 @@ const platformEvent = {
   },
 };
 
-const fallbackQueueEvent = {
-  event: eventName,
-  state: platformType,
-  sessionId: input.session_id,
-  metadata: {
-    cwd: input.cwd || process.cwd(),
-    timestamp,
-    hookEvent: eventName,
-    ...(subagentMetadata ? { subagent: subagentMetadata } : {}),
-  },
-};
+function ensureDir() {
+  fs.mkdirSync(WS_DIR, { recursive: true });
+}
 
 function appendFailureLog(errorMessage) {
   try {
-    const dir = path.dirname(FAILURE_LOG);
-    fs.mkdirSync(dir, { recursive: true });
+    ensureDir();
     fs.appendFileSync(
       FAILURE_LOG,
       JSON.stringify({
@@ -108,61 +111,105 @@ function appendFailureLog(errorMessage) {
   }
 }
 
-function appendQueueFallback() {
+function writeToQueue(event) {
   try {
-    fs.appendFileSync(EVENT_QUEUE, JSON.stringify(fallbackQueueEvent) + '\n', 'utf8');
+    ensureDir();
+    fs.appendFileSync(QUEUE_FILE, JSON.stringify(event) + '\n', 'utf8');
   } catch {
-    // 静默失败，不影响 Claude Code 运行
+    // 队列写入失败则降级到纯失败日志
+    appendFailureLog('QUEUE_WRITE_FAILED');
   }
 }
 
-function postToHookServer(payload) {
-  return new Promise((resolve, reject) => {
-    let url;
-    try {
-      url = new URL(HOOK_ENDPOINT);
-    } catch {
-      reject(new Error('INVALID_HOOK_ENDPOINT'));
-      return;
-    }
-
-    const req = http.request(
-      {
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: `${url.pathname}${url.search}`,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(JSON.stringify(payload)),
-        },
-      },
-      (res) => {
-        res.resume();
-        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-          resolve();
-          return;
-        }
-        reject(new Error(`HOOK_HTTP_${res.statusCode || 0}`));
-      },
+function spawnDrain() {
+  try {
+    const child = spawn(
+      process.execPath,
+      [__filename, '--drain'],
+      { detached: true, stdio: 'ignore', env: { ...process.env } }
     );
+    child.unref();
+  } catch {
+    // 衍生失败不影响主流程
+  }
+}
 
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      req.destroy(new Error('HOOK_TIMEOUT'));
+function postToSocket(payload) {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(SOCKET_PATH, () => {
+      const message = { type: 'hook-event', payload };
+      if (process.env.workspacecord_HOOK_SECRET) {
+        message.secret = process.env.workspacecord_HOOK_SECRET;
+      }
+      socket.write(JSON.stringify(message) + '\n');
+      socket.end();
     });
-
-    req.on('error', (err) => reject(err));
-    req.write(JSON.stringify(payload));
-    req.end();
+    socket.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      socket.destroy();
+      reject(new Error('IPC_TIMEOUT'));
+    });
+    socket.on('error', (err) => reject(err));
+    socket.on('end', resolve);
   });
 }
 
-async function main() {
+async function drainQueue() {
+  if (!fs.existsSync(QUEUE_FILE)) return;
+  let lines;
   try {
-    await postToHookServer(platformEvent);
+    lines = fs.readFileSync(QUEUE_FILE, 'utf8').trim().split('\n').filter(Boolean);
+  } catch {
+    return;
+  }
+  if (lines.length === 0) return;
+
+  const remaining = [];
+  let sent = 0;
+  for (const line of lines) {
+    if (sent >= DRAIN_BATCH) {
+      remaining.push(line);
+      continue;
+    }
+    let entry;
+    try { entry = JSON.parse(line); } catch { continue; }
+    if ((entry.retry_count || 0) >= MAX_RETRY) continue;
+
+    try {
+      await postToSocket(entry);
+      sent++;
+    } catch {
+      entry.retry_count = (entry.retry_count || 0) + 1;
+      remaining.push(JSON.stringify(entry));
+    }
+  }
+
+  if (remaining.length === 0) {
+    try { fs.unlinkSync(QUEUE_FILE); } catch { /* ignore */ }
+  } else {
+    fs.writeFileSync(QUEUE_FILE, remaining.join('\n') + '\n', 'utf8');
+  }
+}
+
+async function main() {
+  // 尝试发送当前事件
+  let queued = false;
+  try {
+    await postToSocket(platformEvent);
   } catch (err) {
-    appendFailureLog(err && err.message ? err.message : 'HOOK_POST_FAILED');
-    appendQueueFallback();
+    // 入队以便后续重试
+    const queueEntry = {
+      ...platformEvent,
+      retry_count: 0,
+      queued_at: Date.now(),
+    };
+    writeToQueue(queueEntry);
+    appendFailureLog(err && err.message ? err.message : 'IPC_POST_FAILED');
+    queued = true;
+  }
+
+  // 如果当前事件入队了，衍生后台进程排空队列（非阻塞）
+  if (queued) {
+    spawnDrain();
   }
 }
 

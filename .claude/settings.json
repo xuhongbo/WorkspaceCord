@@ -1,8 +1,4 @@
 {
-  "enabledPlugins": {
-    "total-recall@total-recall": true,
-    "typescript-lsp@claude-plugins-official": true
-  },
   "hooks": {
     "SessionStart": [
       {
@@ -74,5 +70,8 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true
   }
 }

@@ -1,31 +1,31 @@
 export type WorkflowStepId =
-  | 'terminal-boot'
-  | 'dock-handoff'
+  | 'local-limit'
   | 'discord-launch'
-  | 'project-map'
-  | 'session-expand'
+  | 'category-project'
+  | 'channel-session'
+  | 'subagent-threads'
   | 'history-archive';
 
-export type DesktopFocus = 'terminal' | 'dock' | 'discord';
-export type WindowState = 'hidden' | 'foreground' | 'background' | 'launching' | 'docked';
+export type DesktopFocus = 'terminal' | 'discord';
+export type WindowState = 'hidden' | 'foreground' | 'background' | 'docked';
 
 export type WorkflowProject = {
   id: string;
   name: string;
-  rootPath: string;
+  categoryLabel: string;
   state: 'hidden' | 'mapped' | 'focused' | 'dimmed';
 };
 
 export type WorkflowSession = {
   id: string;
   title: string;
+  channel: string;
   state: 'hidden' | 'active' | 'archived';
 };
 
 export type WorkflowThread = {
   id: string;
   title: string;
-  parentSessionId: string;
   state: 'hidden' | 'running' | 'queued' | 'synced';
 };
 
@@ -57,8 +57,8 @@ export type WorkflowScene = {
   discord: {
     windowState: WindowState;
     serverName: string;
-    projects: WorkflowProject[];
-    selectedProjectId: string | null;
+    categories: WorkflowProject[];
+    selectedCategoryId: string | null;
     mainSession: WorkflowSession | null;
     threads: WorkflowThread[];
     messages: WorkflowDiscordMessage[];
@@ -79,27 +79,30 @@ export type WorkflowStep = {
   scene: WorkflowScene;
 };
 
+/* ---- Data pool ---- */
+
 const projectPoolBase = [
   {
     id: 'gateway',
     name: 'api-gateway',
-    rootPath: '~/workspace/api-gateway',
+    categoryLabel: 'CATEGORY / api-gateway',
   },
   {
     id: 'billing',
     name: 'billing-service',
-    rootPath: '~/workspace/billing-service',
+    categoryLabel: 'CATEGORY / billing-service',
   },
   {
     id: 'console',
     name: 'admin-console',
-    rootPath: '~/workspace/admin-console',
+    categoryLabel: 'CATEGORY / admin-console',
   },
 ] as const;
 
 const focusSession: WorkflowSession = {
   id: 'session-auth-rollout',
   title: 'session / auth-rollout',
+  channel: '#auth-rollout',
   state: 'active',
 };
 
@@ -107,30 +110,27 @@ const focusThreads: WorkflowThread[] = [
   {
     id: 'thread-analysis',
     title: 'thread / 分析鉴权链路',
-    parentSessionId: focusSession.id,
     state: 'running',
   },
   {
     id: 'thread-migration',
-    title: 'thread / 回归迁移脚本',
-    parentSessionId: focusSession.id,
+    title: 'thread / 迁移脚本回归',
     state: 'queued',
   },
   {
     id: 'thread-verify',
     title: 'thread / 验证灰度日志',
-    parentSessionId: focusSession.id,
     state: 'running',
   },
 ];
 
-function createProjects(selectedProjectId: string | null): WorkflowProject[] {
+function createCategories(selectedCategoryId: string | null): WorkflowProject[] {
   return projectPoolBase.map((project) => ({
     ...project,
     state:
-      selectedProjectId === null
+      selectedCategoryId === null
         ? 'mapped'
-        : project.id === selectedProjectId
+        : project.id === selectedCategoryId
           ? 'focused'
           : 'dimmed',
   }));
@@ -151,25 +151,27 @@ function createDock(activeApp: WorkflowDockApp['id'] | null): WorkflowDockApp[] 
   ];
 }
 
+/* ---- Six scenes: remote limitation → Discord workbench → Category=Project → Channel=Session → Threads → History ---- */
+
 export const workflowSteps: WorkflowStep[] = [
   {
-    id: 'terminal-boot',
+    id: 'local-limit',
     shortLabel: '01',
-    title: '本地命令行挂载多个项目',
-    body: '先在本地启动命令行守护进程，把多个项目接入同一条工作流。',
-    status: 'Local terminal booting',
+    title: '本地工具，远程受限',
+    body: 'Claude Code 只能本地，Codex 远程要订阅。你想在任何地方编程？缺一个免费的工作台。',
+    status: 'Local tools, remote limited',
     scene: {
       desktopFocus: 'terminal',
       terminal: {
         windowState: 'foreground',
-        title: 'WorkspaceCord CLI',
+        title: 'The Problem',
         lines: [
-          '$ workspacecord project init --batch api-gateway,billing-service,admin-console',
-          '✓ mounted api-gateway',
-          '✓ mounted billing-service',
-          '✓ mounted admin-console',
-          '$ workspacecord',
-          '• daemon ready',
+          '$ claude-code --remote',
+          '✗ error: local only — remote access not available',
+          '$ codex --remote-session',
+          '✗ error: remote sessions require paid subscription',
+          '',
+          '• 没有免费的远程编程工作台',
         ],
       },
       dock: {
@@ -179,51 +181,9 @@ export const workflowSteps: WorkflowStep[] = [
       },
       discord: {
         windowState: 'hidden',
-        serverName: 'workspace-hub',
-        projects: [],
-        selectedProjectId: null,
-        mainSession: null,
-        threads: [],
-        messages: [],
-        history: {
-          channel: '#history',
-          highlighted: false,
-          summary: null,
-        },
-      },
-    },
-  },
-  {
-    id: 'dock-handoff',
-    shortLabel: '02',
-    title: '命令行缩入 Dock，准备切到 Discord',
-    body: '本地守护进程就绪后，焦点向 Dock 交接，提示协作界面即将拉起。',
-    status: 'Dock handoff ready',
-    scene: {
-      desktopFocus: 'dock',
-      terminal: {
-        windowState: 'docked',
-        title: 'WorkspaceCord CLI',
-        lines: [
-          '$ workspacecord project init --batch api-gateway,billing-service,admin-console',
-          '✓ mounted api-gateway',
-          '✓ mounted billing-service',
-          '✓ mounted admin-console',
-          '$ workspacecord',
-          '• daemon ready',
-          '• handoff prepared for Discord',
-        ],
-      },
-      dock: {
-        activeApp: 'discord',
-        presentation: 'handoff',
-        apps: createDock('discord'),
-      },
-      discord: {
-        windowState: 'hidden',
-        serverName: 'workspace-hub',
-        projects: [],
-        selectedProjectId: null,
+        serverName: '',
+        categories: [],
+        selectedCategoryId: null,
         mainSession: null,
         threads: [],
         messages: [],
@@ -237,38 +197,39 @@ export const workflowSteps: WorkflowStep[] = [
   },
   {
     id: 'discord-launch',
-    shortLabel: '03',
-    title: '拉起 Discord 窗口',
-    body: 'Dock 激活 Discord，桌面焦点切到服务器视图，准备承接项目映射。',
-    status: 'Discord window launched',
+    shortLabel: '02',
+    title: 'Discord 工作台出现',
+    body: 'workspacecord 用 Discord 作为远程编程工作台。一个服务器，承载所有项目。',
+    status: 'Discord workbench launching',
     scene: {
       desktopFocus: 'discord',
       terminal: {
-        windowState: 'background',
+        windowState: 'docked',
         title: 'WorkspaceCord CLI',
         lines: [
-          '$ workspacecord',
-          '• daemon ready',
-          '• handoff prepared for Discord',
+          '$ workspacecord start',
+          '✓ daemon running',
+          '✓ connected to Discord',
+          '• workbench ready',
         ],
       },
       dock: {
         activeApp: 'discord',
-        presentation: 'ambient',
+        presentation: 'handoff',
         apps: createDock('discord'),
       },
       discord: {
         windowState: 'foreground',
         serverName: 'workspace-hub',
-        projects: [],
-        selectedProjectId: null,
+        categories: [],
+        selectedCategoryId: null,
         mainSession: null,
         threads: [],
         messages: [
           {
             id: 'launch-control',
-            author: 'control channel',
-            body: 'WorkspaceCord 已连接本地守护进程，正在准备映射服务器结构。',
+            author: 'workspacecord',
+            body: 'Discord 工作台已连接。分类=项目，频道=session，一切井井有条。',
             tone: 'neutral',
           },
         ],
@@ -281,17 +242,22 @@ export const workflowSteps: WorkflowStep[] = [
     },
   },
   {
-    id: 'project-map',
-    shortLabel: '04',
-    title: '多个项目映射进 Discord 服务器',
-    body: '同一个服务器下出现多个本地项目，先建立总览关系，再进入单项目执行。',
-    status: 'Projects mapped into Discord',
+    id: 'category-project',
+    shortLabel: '03',
+    title: '分类=项目',
+    body: '每个 Category 对应一个项目，Discord 服务器结构清晰映射你的代码库。',
+    status: 'Categories forming for projects',
     scene: {
       desktopFocus: 'discord',
       terminal: {
         windowState: 'background',
         title: 'WorkspaceCord CLI',
-        lines: ['$ workspacecord', '• daemon ready', '• Discord sync active'],
+        lines: [
+          '$ workspacecord project init --batch api-gateway,billing-service,admin-console',
+          '✓ api-gateway → CATEGORY / api-gateway',
+          '✓ billing-service → CATEGORY / billing-service',
+          '✓ admin-console → CATEGORY / admin-console',
+        ],
       },
       dock: {
         activeApp: 'discord',
@@ -301,21 +267,66 @@ export const workflowSteps: WorkflowStep[] = [
       discord: {
         windowState: 'foreground',
         serverName: 'workspace-hub',
-        projects: createProjects(null),
-        selectedProjectId: null,
+        categories: createCategories(null),
+        selectedCategoryId: null,
         mainSession: null,
         threads: [],
         messages: [
           {
-            id: 'map-control',
-            author: 'control channel',
-            body: '检测到 3 个本地项目，正在映射到 workspace-hub。',
+            id: 'cat-control',
+            author: 'workspacecord',
+            body: '3 个项目已映射，每个 Category = 一个项目。',
+            tone: 'active',
+          },
+        ],
+        history: {
+          channel: '#history',
+          highlighted: false,
+          summary: null,
+        },
+      },
+    },
+  },
+  {
+    id: 'channel-session',
+    shortLabel: '04',
+    title: '频道=session',
+    body: '每个 Category 下出现频道，#control 是主会话频道，每个频道对应一个 session。',
+    status: 'Channels forming sessions',
+    scene: {
+      desktopFocus: 'discord',
+      terminal: {
+        windowState: 'background',
+        title: 'WorkspaceCord CLI',
+        lines: [
+          '/agent spawn label:auth-rollout',
+          '✓ session created in #auth-rollout',
+          '• provider: claude-code',
+        ],
+      },
+      dock: {
+        activeApp: 'discord',
+        presentation: 'ambient',
+        apps: createDock('discord'),
+      },
+      discord: {
+        windowState: 'foreground',
+        serverName: 'workspace-hub',
+        categories: createCategories('gateway'),
+        selectedCategoryId: 'gateway',
+        mainSession: focusSession,
+        threads: [],
+        messages: [
+          {
+            id: 'session-control',
+            author: '#auth-rollout',
+            body: 'session auth-rollout 已启动，provider: Claude Code，模式: auto',
             tone: 'active',
           },
           {
-            id: 'map-success',
-            author: 'discord bridge',
-            body: '项目总览已建立，现在可以聚焦单项目继续派生会话。',
+            id: 'session-state',
+            author: 'workspacecord',
+            body: '频道 = session，结构清晰，一目了然。',
             tone: 'success',
           },
         ],
@@ -328,17 +339,21 @@ export const workflowSteps: WorkflowStep[] = [
     },
   },
   {
-    id: 'session-expand',
+    id: 'subagent-threads',
     shortLabel: '05',
-    title: '展开项目会话与线程',
-    body: '聚焦 api-gateway 后，主会话先出现，再继续派生多个执行线程。',
-    status: 'Session threads expanding',
+    title: '子线程并发',
+    body: '主会话下派生子线程（/subagent run），多个任务并发执行，互不阻塞。',
+    status: 'Subagent threads running',
     scene: {
       desktopFocus: 'discord',
       terminal: {
         windowState: 'background',
         title: 'WorkspaceCord CLI',
-        lines: ['$ workspacecord', '• daemon ready', '• streaming project updates'],
+        lines: [
+          '/subagent run label:分析鉴权链路',
+          '/subagent run label:验证灰度日志',
+          '✓ 2 subagents dispatched',
+        ],
       },
       dock: {
         activeApp: 'discord',
@@ -348,27 +363,27 @@ export const workflowSteps: WorkflowStep[] = [
       discord: {
         windowState: 'foreground',
         serverName: 'workspace-hub',
-        projects: createProjects('gateway'),
-        selectedProjectId: 'gateway',
+        categories: createCategories('gateway'),
+        selectedCategoryId: 'gateway',
         mainSession: focusSession,
         threads: focusThreads,
         messages: [
           {
-            id: 'session-main',
-            author: 'main session',
-            body: '拆解 auth rollout，先确认鉴权链路与灰度验证。',
+            id: 'thread-main',
+            author: '#auth-rollout',
+            body: '拆解 auth rollout，派生两个子任务并发执行。',
             tone: 'active',
           },
           {
-            id: 'session-thread-analysis',
+            id: 'thread-analysis',
             author: 'thread / 分析鉴权链路',
             body: '已定位主入口与回调节点，正在整理风险面。',
             tone: 'neutral',
           },
           {
-            id: 'session-thread-verify',
+            id: 'thread-verify',
             author: 'thread / 验证灰度日志',
-            body: '灰度日志采样中，等待与主会话同步结论。',
+            body: '灰度日志采样中，等待与主会话同步。',
             tone: 'active',
           },
         ],
@@ -383,15 +398,19 @@ export const workflowSteps: WorkflowStep[] = [
   {
     id: 'history-archive',
     shortLabel: '06',
-    title: '结果收束到 #history',
-    body: '执行完成后，所有线程的结果汇总到 #history，形成可回看的审计轨迹。',
+    title: '#history 全流程可追溯',
+    body: '会话完成后自动归档到 #history，团队任何人可随时回看追溯。',
     status: 'History archive synced',
     scene: {
       desktopFocus: 'discord',
       terminal: {
         windowState: 'background',
         title: 'WorkspaceCord CLI',
-        lines: ['$ workspacecord', '• daemon ready', '• archive sync complete'],
+        lines: [
+          '/end session:auth-rollout',
+          '✓ session closed',
+          '✓ archived to #history',
+        ],
       },
       dock: {
         activeApp: 'discord',
@@ -401,8 +420,8 @@ export const workflowSteps: WorkflowStep[] = [
       discord: {
         windowState: 'foreground',
         serverName: 'workspace-hub',
-        projects: createProjects('gateway'),
-        selectedProjectId: 'gateway',
+        categories: createCategories('gateway'),
+        selectedCategoryId: 'gateway',
         mainSession: {
           ...focusSession,
           state: 'archived',
@@ -414,21 +433,21 @@ export const workflowSteps: WorkflowStep[] = [
         messages: [
           {
             id: 'history-main',
-            author: 'main session',
-            body: 'auth-rollout 已关闭，正在把结果同步到历史频道。',
+            author: '#auth-rollout',
+            body: 'session 已完成，结果归档到 #history。',
             tone: 'neutral',
           },
           {
             id: 'history-sync',
-            author: 'history summary',
-            body: 'summary posted / follow-up ready',
+            author: '#history',
+            body: 'archive complete / full trace available',
             tone: 'success',
           },
         ],
         history: {
           channel: '#history',
           highlighted: true,
-          summary: 'auth-rollout closed / summary posted / follow-up ready',
+          summary: 'auth-rollout archived / full trace / team-readable',
         },
       },
     },

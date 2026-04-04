@@ -1,10 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, existsSync, unlinkSync } from 'node:fs';
 
-const startHookServer = vi.fn();
-const stopHookServer = vi.fn();
-const startHookWatcher = vi.fn();
-const stopHookWatcher = vi.fn();
+const startIpcServer = vi.fn();
+const stopIpcServer = vi.fn();
 const registerCommands = vi.fn();
 const loadProjects = vi.fn();
 const loadSessions = vi.fn();
@@ -124,8 +122,7 @@ vi.mock('../src/health-monitor.ts', () => ({
   setBotStartTime,
 }));
 vi.mock('../src/session-housekeeping.ts', () => ({ reconcileSessionRecordsWithGuild }));
-vi.mock('../src/hook-server.ts', () => ({ startHookServer, stopHookServer }));
-vi.mock('../src/hook-watcher.ts', () => ({ startHookWatcher, stopHookWatcher }));
+vi.mock('../src/ipc-server.ts', () => ({ startIpcServer, stopIpcServer }));
 vi.mock('../src/hook-health-check.ts', () => ({
   checkHookHealth,
   logHookHealthStatus,
@@ -188,11 +185,10 @@ describe('bot startup', () => {
     expect(reconcileSessionRecordsWithGuild).toHaveBeenCalledWith(mockGuild);
   });
 
-  it('启动时会同时启动 hook server 与 hook watcher', async () => {
+  it('启动时会启动 ipc server', async () => {
     await startBot();
 
-    expect(startHookServer).toHaveBeenCalledTimes(1);
-    expect(startHookWatcher).toHaveBeenCalledTimes(1);
+    expect(startIpcServer).toHaveBeenCalledTimes(1);
   });
 
 
