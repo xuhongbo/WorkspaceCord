@@ -14,8 +14,9 @@ vi.mock('../src/discord/delivery-policy.ts', () => ({
   buildDeliveryPlan: vi.fn(() => ({ plan: 'mock' })),
 }));
 
+const mockDeliver = vi.fn();
 vi.mock('../src/discord/delivery.ts', () => ({
-  deliver: vi.fn(),
+  get deliver() { return mockDeliver; },
 }));
 
 describe('LogBuffer', () => {
@@ -38,19 +39,32 @@ describe('LogBuffer', () => {
   });
 
   describe('log', () => {
-    it('adds message to buffer', () => {
+    it('adds message to buffer and schedules flush timer', () => {
       buffer.setChannel(mockChannel);
       buffer.log('test message');
 
-      // Message logged to console (verify separately)
+      // Timer should be scheduled, delivery not yet called
+      expect(mockDeliver).not.toHaveBeenCalled();
+
+      // Advance timer to trigger the scheduled flush
+      vi.advanceTimersByTime(2000);
+      vi.advanceTimersToNextTimer();
+
+      expect(mockDeliver).toHaveBeenCalledOnce();
     });
 
-    it('schedules flush after debounce', () => {
+    it('dedupes multiple logs into single flush', () => {
       buffer.setChannel(mockChannel);
       buffer.log('msg1');
       buffer.log('msg2');
+      buffer.log('msg3');
 
-      // No immediate flush
+      expect(mockDeliver).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(2000);
+      vi.advanceTimersToNextTimer();
+
+      expect(mockDeliver).toHaveBeenCalledOnce();
     });
   });
 
@@ -58,31 +72,36 @@ describe('LogBuffer', () => {
     it('does nothing without channel', async () => {
       buffer.log('msg');
       await buffer.flush();
-      // Should not throw
+      expect(mockDeliver).not.toHaveBeenCalled();
     });
 
     it('does nothing with empty buffer', async () => {
       buffer.setChannel(mockChannel);
       await buffer.flush();
+      expect(mockDeliver).not.toHaveBeenCalled();
     });
 
-    it('sends all buffered messages to channel', async () => {
+    it('delivers all buffered messages in one call', async () => {
       buffer.setChannel(mockChannel);
       buffer.log('msg1');
       buffer.log('msg2');
 
       await buffer.flush();
 
-      // Messages are flushed via delivery pipeline
+      expect(mockDeliver).toHaveBeenCalledOnce();
     });
 
-    it('clears buffer after flush', async () => {
+    it('clears buffer after flush so second flush is empty', async () => {
       buffer.setChannel(mockChannel);
       buffer.log('msg');
       await buffer.flush();
 
-      // Second flush should be empty
+      expect(mockDeliver).toHaveBeenCalledOnce();
+
+      mockDeliver.mockClear();
       await buffer.flush();
+
+      expect(mockDeliver).not.toHaveBeenCalled();
     });
   });
 });

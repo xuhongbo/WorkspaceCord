@@ -186,4 +186,148 @@ describe('StateMachine', () => {
       expect(sm.getStateColor('idle')).toBe(0x808080);
     });
   });
+
+  describe('applyPlatformEvent', () => {
+    it('maps session_started to idle state and increments turn', () => {
+      const event = {
+        type: 'session_started' as const,
+        sessionId: 'sess-1',
+        source: 'claude' as const,
+        stateSource: 'formal' as const,
+        confidence: 'high' as const,
+        timestamp: Date.now(),
+      };
+
+      const snap = sm.applyPlatformEvent(event);
+
+      expect(snap.state).toBe('idle');
+      expect(snap.turn).toBe(1);
+    });
+
+    it('maps thinking_started to thinking state', () => {
+      const event = {
+        type: 'thinking_started' as const,
+        sessionId: 'sess-1',
+        source: 'claude' as const,
+        stateSource: 'formal' as const,
+        confidence: 'high' as const,
+        timestamp: Date.now(),
+      };
+
+      const snap = sm.applyPlatformEvent(event);
+      expect(snap.state).toBe('thinking');
+    });
+
+    it('maps awaiting_human and sets isWaitingHuman', () => {
+      const event = {
+        type: 'awaiting_human' as const,
+        sessionId: 'sess-1',
+        source: 'claude' as const,
+        stateSource: 'formal' as const,
+        confidence: 'high' as const,
+        timestamp: Date.now(),
+      };
+
+      const snap = sm.applyPlatformEvent(event);
+      expect(snap.state).toBe('awaiting_human');
+      expect(snap.isWaitingHuman).toBe(true);
+    });
+
+    it('maps completed and sets isCompleted', () => {
+      const event = {
+        type: 'completed' as const,
+        sessionId: 'sess-1',
+        source: 'claude' as const,
+        stateSource: 'formal' as const,
+        confidence: 'high' as const,
+        timestamp: Date.now(),
+      };
+
+      const snap = sm.applyPlatformEvent(event);
+      expect(snap.state).toBe('completed');
+      expect(snap.isCompleted).toBe(true);
+    });
+
+    it('maps errored and sets isError', () => {
+      const event = {
+        type: 'errored' as const,
+        sessionId: 'sess-1',
+        source: 'claude' as const,
+        stateSource: 'formal' as const,
+        confidence: 'high' as const,
+        timestamp: Date.now(),
+      };
+
+      const snap = sm.applyPlatformEvent(event);
+      expect(snap.state).toBe('error');
+      expect(snap.isError).toBe(true);
+    });
+
+    it('clears isWaitingHuman on session_ended', () => {
+      sm.applyPlatformEvent({
+        type: 'awaiting_human' as const, sessionId: 'sess-1', source: 'claude',
+        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
+      });
+
+      sm.applyPlatformEvent({
+        type: 'session_ended' as const, sessionId: 'sess-1', source: 'claude',
+        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
+      });
+
+      const snap = sm.getSession('sess-1');
+      expect(snap?.isWaitingHuman).toBe(false);
+    });
+
+    it('respects token validation for session_idle — rejects mismatched token', () => {
+      // First set to completed to establish a timer token
+      sm.applyPlatformEvent({
+        type: 'completed' as const, sessionId: 'sess-1', source: 'claude',
+        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
+      });
+
+      // Try to transition to session_idle with wrong token
+      const snap = sm.applyPlatformEvent({
+        type: 'session_idle' as const, sessionId: 'sess-1', source: 'claude',
+        stateSource: 'formal' as const, confidence: 'high' as const,
+        timestamp: Date.now(), metadata: { idleTimerToken: 999, turn: 0 },
+      });
+
+      // Should remain completed because token doesn't match
+      expect(snap.state).toBe('completed');
+    });
+
+    it('respects turn validation for session_idle — rejects mismatched turn', () => {
+      // Set to completed
+      sm.applyPlatformEvent({
+        type: 'completed' as const, sessionId: 'sess-1', source: 'claude',
+        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
+      });
+      const snap = sm.getSession('sess-1');
+      const activeToken = (sm as any).completedTimerTokens.get('sess-1');
+
+      // session_idle with matching token but wrong turn
+      const result = sm.applyPlatformEvent({
+        type: 'session_idle' as const, sessionId: 'sess-1', source: 'claude',
+        stateSource: 'formal' as const, confidence: 'high' as const,
+        timestamp: Date.now(), metadata: { idleTimerToken: activeToken, turn: 999 },
+      });
+
+      expect(result.state).toBe('completed');
+    });
+
+    it('does not increment turn on session_started when turn already > 0', () => {
+      const event = {
+        type: 'session_started' as const, sessionId: 'sess-1', source: 'claude',
+        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
+      };
+      sm.applyPlatformEvent(event);
+      sm.applyPlatformEvent({
+        type: 'session_started' as const, sessionId: 'sess-1', source: 'claude',
+        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
+      });
+
+      const snap = sm.getSession('sess-1');
+      expect(snap?.turn).toBe(1); // Only incremented once
+    });
+  });
 });
