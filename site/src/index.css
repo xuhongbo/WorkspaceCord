@@ -6,11 +6,8 @@
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif;
-  background:
-    radial-gradient(circle at top, rgba(106, 72, 255, 0.18), transparent 30%),
-    radial-gradient(circle at 80% 20%, rgba(64, 224, 170, 0.14), transparent 22%),
-    #06070b;
-  color: #f5f7ff;
+  background: #1c1b1a;
+  color: #f5f2ed;
 }
 
 * {
@@ -28,18 +25,6 @@ body {
   color: #f5f7ff;
 }
 
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 72px 72px;
-  mask-image: radial-gradient(circle at center, black 35%, transparent 80%);
-  opacity: 0.18;
-}
 
  a {
   color: inherit;
@@ -56,17 +41,6 @@ select {
 .page-shell {
   position: relative;
   overflow: clip;
-}
-
-.page-noise {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.12;
-  background-image:
-    radial-gradient(rgba(255, 255, 255, 0.4) 0.45px, transparent 0.45px);
-  background-size: 8px 8px;
-  mix-blend-mode: soft-light;
 }
 
 .topbar,
@@ -193,15 +167,19 @@ select {
 }
 
 .button-primary {
-  background: linear-gradient(135deg, #8e74ff, #695bff);
-  color: #fff;
-  box-shadow: 0 16px 48px rgba(88, 74, 255, 0.28);
+  background: #6ee7b7;
+  color: #1a1a1a;
+  box-shadow: 0 16px 48px rgba(110, 231, 183, 0.2);
+}
+
+.button-primary:hover {
+  background: #a7f3d0;
 }
 
 .button-secondary {
-  border: 1px solid rgba(181, 188, 255, 0.2);
-  background: rgba(10, 12, 18, 0.48);
-  color: #dfe5ff;
+  border: 1px solid rgba(214, 235, 253, 0.25);
+  background: transparent;
+  color: #f5f2ed;
 }
 
 .hero-stats {
@@ -1124,8 +1102,8 @@ main {
   position: relative;
   padding: 38px clamp(20px, 3vw, 40px);
   border-radius: 32px;
-  background: rgba(9, 11, 18, 0.66);
-  border: 1px solid rgba(133, 141, 192, 0.14);
+  background: #242322;
+  border: 1px solid rgba(214, 235, 253, 0.12);
   backdrop-filter: blur(14px);
 }
 
