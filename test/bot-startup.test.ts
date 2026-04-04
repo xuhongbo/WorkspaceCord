@@ -22,6 +22,7 @@ const deliver = vi.fn();
 const startPerformanceMonitoring = vi.fn();
 const stopPerformanceMonitoring = vi.fn();
 const reconcileSessionRecordsWithGuild = vi.fn(async () => ({ checkedSessions: 0, endedMissingSessions: 0 }));
+const mockSetLogger = vi.fn();
 
 let readyHandler: (() => Promise<void> | void) | undefined;
 
@@ -140,7 +141,7 @@ vi.mock('../src/command-handlers.ts', () => ({
   handleStopShortcut: vi.fn(),
   handleEndShortcut: vi.fn(),
   handleRunShortcut: vi.fn(),
-  setLogger: vi.fn(),
+  setLogger: mockSetLogger,
 }));
 vi.mock('../src/monitors/codex-log-monitor.ts', () => ({
   CodexLogMonitor: class {
@@ -189,6 +190,11 @@ describe('bot startup', () => {
     await startBot();
 
     expect(startIpcServer).toHaveBeenCalledTimes(1);
+  });
+
+  it('启动时会将 botLog 注入命令处理日志链路', async () => {
+    await startBot();
+    expect(mockSetLogger).toHaveBeenCalledTimes(1);
   });
 
 

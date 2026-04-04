@@ -21,6 +21,7 @@ import {
   handleStopShortcut,
   handleEndShortcut,
   handleRunShortcut,
+  setLogger,
 } from './command-handlers.ts';
 import { handleMessage } from './message-handler.ts';
 import { handleButton, handleSelectMenu } from './button-handler.ts';
@@ -92,6 +93,8 @@ export async function startBot(): Promise<void> {
       GatewayIntentBits.GuildMessageTyping,
     ],
   });
+
+  setLogger(botLog);
 
   // Set up event handlers before ready
   client.on('interactionCreate', routeInteractionCreate);

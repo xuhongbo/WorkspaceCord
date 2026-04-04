@@ -34,10 +34,10 @@ describe('workflow steps', () => {
     expect(dockStep?.scene.terminal.windowState).toBe('docked');
     expect(discordStep?.scene.discord.windowState).toBe('foreground');
 
-    expect(projectStep?.scene.discord.projects.length).toBeGreaterThan(1);
-    expect(projectStep?.scene.discord.selectedProjectId).toBeNull();
+    expect(projectStep?.scene.discord.categories.length).toBeGreaterThan(1);
+    expect(projectStep?.scene.discord.selectedCategoryId).toBeNull();
 
-    expect(sessionStep?.scene.discord.selectedProjectId).toBeTruthy();
+    expect(sessionStep?.scene.discord.selectedCategoryId).toBeTruthy();
     expect(sessionStep?.scene.discord.mainSession).toBeTruthy();
     expect(sessionStep?.scene.discord.threads.length).toBeGreaterThan(1);
 
