@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -207,7 +207,7 @@ describe('workspacecord Claude hook script', () => {
 
     // Pre-populate queue with 2 entries
     const wsDir = join(home, '.workspacecord');
-    require('fs').mkdirSync(wsDir, { recursive: true });
+    mkdirSync(wsDir, { recursive: true });
     const qFile = queuePath(home);
     writeFileSync(qFile, [
       JSON.stringify({ type: 'session_started', sessionId: 's1', source: 'claude', confidence: 'high', timestamp: 1, retry_count: 0 }),
@@ -258,7 +258,7 @@ describe('workspacecord Claude hook script', () => {
     tempHomes.push(home);
 
     const wsDir = join(home, '.workspacecord');
-    require('fs').mkdirSync(wsDir, { recursive: true });
+    mkdirSync(wsDir, { recursive: true });
     const qFile = queuePath(home);
     // One entry that will fail (no socket)
     writeFileSync(qFile, [
@@ -285,7 +285,7 @@ describe('workspacecord Claude hook script', () => {
     tempHomes.push(home);
 
     const wsDir = join(home, '.workspacecord');
-    require('fs').mkdirSync(wsDir, { recursive: true });
+    mkdirSync(wsDir, { recursive: true });
     const qFile = queuePath(home);
     writeFileSync(qFile, [
       JSON.stringify({ type: 'session_started', sessionId: 's4', source: 'claude', confidence: 'high', timestamp: 4, retry_count: 3 }),

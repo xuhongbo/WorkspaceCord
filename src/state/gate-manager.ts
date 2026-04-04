@@ -1,6 +1,7 @@
 import { HumanGateRegistry, type HumanGateRecord } from './human-gate.ts';
 import { EventBus } from '../core/event-bus.ts';
 import type { ProviderName } from '../types.ts';
+import type { EventType } from '../core/events.ts';
 
 export interface CreateGateParams {
   sessionId: string;
@@ -32,6 +33,16 @@ export class GateManager {
   #eventBus: EventBus;
   #receiptHandles = new Map<string, ReceiptHandle>();
   #receiptTimeouts = new Map<string, NodeJS.Timeout>();
+  readonly #gateCreatedEvent = 'gate.created' as EventType<{
+    gate: HumanGateRecord;
+    gateId: string;
+  }>;
+  readonly #gateResolvedEvent = 'gate.resolved' as EventType<{
+    gateId: string;
+    status: 'approved' | 'rejected';
+    resolvedBy: 'discord';
+    resolvedAction: 'approve' | 'reject';
+  }>;
 
   constructor(registry: HumanGateRegistry, eventBus: EventBus) {
     this.#registry = registry;
@@ -51,7 +62,7 @@ export class GateManager {
       turn: params.turn,
     });
 
-    this.#eventBus.emit('gate.created' as any, { gate, gateId: gate.id }, 'gate-manager');
+    this.#eventBus.emit(this.#gateCreatedEvent, { gate, gateId: gate.id }, 'gate-manager');
     return gate;
   }
 
@@ -92,7 +103,7 @@ export class GateManager {
       return { success: false, message: result.message };
     }
 
-    this.#eventBus.emit('gate.resolved' as any, {
+    this.#eventBus.emit(this.#gateResolvedEvent, {
       gateId,
       status,
       resolvedBy: 'discord',

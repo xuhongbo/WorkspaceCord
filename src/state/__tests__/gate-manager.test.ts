@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GateManager } from '../gate-manager.ts';
 import { HumanGateRegistry } from '../human-gate.ts';
 import { EventBus } from '../../core/event-bus.ts';
+import type { EventType } from '../../core/events.ts';
 
 vi.mock('../../persistence.ts', () => ({
   Store: class {
@@ -39,7 +40,7 @@ describe('GateManager', () => {
 
     it('emits gate.created event', () => {
       const handler = vi.fn();
-      eventBus.on('gate.created' as any, handler);
+      eventBus.on('gate.created' as EventType<{ gateId: string }>, handler);
 
       gateManager.createGate({
         sessionId: 'sess-1',
@@ -133,7 +134,7 @@ describe('GateManager', () => {
 
     it('emits gate.resolved event', async () => {
       const handler = vi.fn();
-      eventBus.on('gate.resolved' as any, handler);
+      eventBus.on('gate.resolved' as EventType<{ gateId: string }>, handler);
 
       const gate = gateManager.createGate({
         sessionId: 'sess-1',

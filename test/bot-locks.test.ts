@@ -21,7 +21,7 @@ describe('bot-locks', () => {
   });
 
   afterEach(() => {
-    try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+    try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 
   it('acquires lock when no lock file exists', async () => {

@@ -6,6 +6,7 @@ import { updateSessionState } from './panel-adapter.ts';
 import * as sessions from './thread-manager.ts';
 import { discoverAndRegisterSession } from './session-discovery.ts';
 import { gateCoordinator } from './state/gate-coordinator.ts';
+import type { PlatformEvent } from './state/types.ts';
 
 const SOCKET_PATH = '/tmp/workspacecord.sock';
 
@@ -140,7 +141,7 @@ async function handleHookEvent(payload: Record<string, unknown>): Promise<void> 
   const channel = discordClient?.channels.cache.get(session.channelId);
   if (!isSessionChannel(channel)) return;
 
-  await updateSessionState(session.id, event as any, {
+  await updateSessionState(session.id, event as unknown as PlatformEvent, {
     sourceHint: event.source as 'claude' | 'codex',
     channel,
   });

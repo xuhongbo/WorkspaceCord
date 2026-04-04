@@ -522,6 +522,10 @@ describe('CodexProvider', () => {
     ac.abort();
     runStreamedMock.mockResolvedValue({
       events: (async function* () {
+        const shouldNeverYield = Date.now() < 0;
+        if (shouldNeverYield) {
+          yield { type: 'thread.started', thread_id: 'never' };
+        }
         throw new Error('should be suppressed');
       })(),
     });
