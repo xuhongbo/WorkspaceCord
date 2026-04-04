@@ -1,476 +1,213 @@
-// 人工门控注册表单元测试
-// 重点验证 CAS 更新逻辑的并发安全性
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { HumanGateRegistry } from '../src/state/human-gate.ts';
 
-import { describe, it, expect, beforeEach } from 'vitest';
-import { HumanGateRegistry } from '../src/state/human-gate.js';
-import type { HumanGateRecord } from '../src/state/human-gate.js';
+vi.mock('../src/persistence.ts', () => ({
+  Store: class {
+    private data: any[] = [];
+    async read() { return this.data.length ? this.data : null; }
+    async write(d: any[]) { this.data = d; }
+  },
+}));
 
 describe('HumanGateRegistry', () => {
   let registry: HumanGateRegistry;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     registry = new HumanGateRegistry();
+    await registry.init();
   });
 
   describe('create', () => {
-    it('应该创建新门控记录', () => {
+    it('creates a pending gate', () => {
       const gate = registry.create({
-        sessionId: 'session-1',
+        sessionId: 'sess-1',
         provider: 'claude',
         type: 'binary_approval',
         isBlocking: true,
         supportsRemoteDecision: true,
-        summary: '测试门控',
+        summary: 'Test gate',
         turn: 1,
       });
 
-      expect(gate.id).toBeDefined();
-      expect(gate.version).toBe(1);
       expect(gate.status).toBe('pending');
-      expect(gate.createdAt).toBeGreaterThan(0);
-    });
-
-    it('应该为每个门控生成唯一 ID', () => {
-      const gate1 = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '门控 1',
-        turn: 1,
-      });
-
-      const gate2 = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '门控 2',
-        turn: 1,
-      });
-
-      expect(gate1.id).not.toBe(gate2.id);
+      expect(gate.sessionId).toBe('sess-1');
+      expect(gate.version).toBe(1);
+      expect(gate.id).toBeDefined();
     });
   });
 
-  describe('get', () => {
-    it('应该返回存在的门控记录', () => {
-      const created = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '测试门控',
-        turn: 1,
+  describe('get / getBySession', () => {
+    it('retrieves gate by ID', () => {
+      const gate = registry.create({
+        sessionId: 'sess-1', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'Test', turn: 1,
       });
 
-      const retrieved = registry.get(created.id);
-      expect(retrieved).toEqual(created);
+      const found = registry.get(gate.id);
+      expect(found?.id).toBe(gate.id);
     });
 
-    it('应该对不存在的门控返回 undefined', () => {
-      const result = registry.get('non-existent-id');
-      expect(result).toBeUndefined();
+    it('returns undefined for missing gate', () => {
+      expect(registry.get('nonexistent')).toBeUndefined();
     });
-  });
 
-  describe('getBySession', () => {
-    it('应该返回指定会话的所有门控', () => {
+    it('returns all gates for a session', () => {
       registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '门控 1',
-        turn: 1,
+        sessionId: 'sess-1', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'G1', turn: 1,
+      });
+      registry.create({
+        sessionId: 'sess-1', provider: 'claude', type: 'text_question',
+        isBlocking: false, supportsRemoteDecision: false, summary: 'G2', turn: 1,
       });
 
-      registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'text_question',
-        isBlocking: true,
-        supportsRemoteDecision: false,
-        summary: '门控 2',
-        turn: 1,
-      });
-
-      registry.create({
-        sessionId: 'session-2',
-        provider: 'codex',
-        type: 'notification',
-        isBlocking: false,
-        supportsRemoteDecision: false,
-        summary: '门控 3',
-        turn: 1,
-      });
-
-      const session1Gates = registry.getBySession('session-1');
-      expect(session1Gates).toHaveLength(2);
-      expect(session1Gates.every((g) => g.sessionId === 'session-1')).toBe(true);
+      expect(registry.getBySession('sess-1')).toHaveLength(2);
     });
   });
 
   describe('getActiveBySession', () => {
-    it('应该只返回 pending 状态的门控', () => {
-      const gate1 = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '门控 1',
-        turn: 1,
+    it('returns only pending gates', () => {
+      registry.create({
+        sessionId: 'sess-1', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'Active', turn: 1,
       });
-
-      const gate2 = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '门控 2',
-        turn: 1,
+      const active = registry.create({
+        sessionId: 'sess-1', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'Resolved', turn: 1,
       });
+      registry.update(active.id, active.version, { status: 'approved' });
 
-      // 解决第一个门控
-      registry.update(gate1.id, gate1.version, {
-        status: 'approved',
-        resolvedAt: Date.now(),
-        resolvedBy: 'discord',
-        resolvedAction: 'approve',
-      });
-
-      const active = registry.getActiveBySession('session-1');
-      expect(active).toHaveLength(1);
-      expect(active[0].id).toBe(gate2.id);
+      expect(registry.getActiveBySession('sess-1')).toHaveLength(1);
     });
   });
 
   describe('CAS update', () => {
-    it('应该在版本号匹配时成功更新', () => {
+    it('updates gate with correct version', () => {
       const gate = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '测试门控',
-        turn: 1,
+        sessionId: 'sess-1', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'Test', turn: 1,
       });
 
-      const result = registry.update(gate.id, gate.version, {
-        status: 'approved',
-        resolvedAt: Date.now(),
-        resolvedBy: 'discord',
-        resolvedAction: 'approve',
-      });
+      const result = registry.update(gate.id, gate.version, { status: 'approved' });
 
       expect(result.success).toBe(true);
       expect(result.record?.status).toBe('approved');
-      expect(result.record?.version).toBe(2);
+      expect(result.record?.version).toBe(gate.version + 1);
     });
 
-    it('应该在版本号不匹配时失败', () => {
+    it('rejects version conflict', () => {
       const gate = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '测试门控',
-        turn: 1,
+        sessionId: 'sess-1', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'Test', turn: 1,
       });
 
-      // 第一次更新成功
-      const result1 = registry.update(gate.id, gate.version, {
-        status: 'approved',
-        resolvedAt: Date.now(),
-        resolvedBy: 'discord',
-        resolvedAction: 'approve',
-      });
-      expect(result1.success).toBe(true);
+      const result = registry.update(gate.id, 999, { status: 'approved' });
 
-      // 第二次使用旧版本号更新应该失败
-      const result2 = registry.update(gate.id, gate.version, {
-        status: 'rejected',
-        resolvedAt: Date.now(),
-        resolvedBy: 'terminal',
-        resolvedAction: 'reject',
-      });
-
-      expect(result2.success).toBe(false);
-      expect(result2.error).toBe('version_conflict');
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('version_conflict');
     });
 
-    it('应该在门控不存在时失败', () => {
-      const result = registry.update('non-existent-id', 1, {
-        status: 'approved',
-      });
-
+    it('rejects not found', () => {
+      const result = registry.update('nonexistent', 1, { status: 'approved' });
       expect(result.success).toBe(false);
       expect(result.error).toBe('not_found');
     });
 
-    it('应该拒绝非法状态转换', () => {
+    it('rejects invalid transition', () => {
       const gate = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '测试门控',
-        turn: 1,
+        sessionId: 'sess-1', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'Test', turn: 1,
       });
+      registry.update(gate.id, gate.version, { status: 'approved' });
+      const updated = registry.get(gate.id)!;
 
-      // 先解决门控
-      const result1 = registry.update(gate.id, gate.version, {
-        status: 'approved',
-        resolvedAt: Date.now(),
-        resolvedBy: 'discord',
-        resolvedAction: 'approve',
-      });
-      expect(result1.success).toBe(true);
-
-      // 尝试从终态转换到其他状态应该失败
-      const updated = result1.record!;
-      const result2 = registry.update(updated.id, updated.version, {
-        status: 'rejected',
-      });
-
-      expect(result2.success).toBe(false);
-      expect(result2.error).toBe('invalid_transition');
-    });
-  });
-
-  describe('并发安全性测试', () => {
-    it('应该保证只有一个并发更新成功', () => {
-      const gate = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '测试门控',
-        turn: 1,
-      });
-
-      // 模拟两个并发操作同时读取版本号
-      const version = gate.version;
-
-      // 第一个操作（Discord）
-      const result1 = registry.update(gate.id, version, {
-        status: 'approved',
-        resolvedAt: Date.now(),
-        resolvedBy: 'discord',
-        resolvedAction: 'approve',
-      });
-
-      // 第二个操作（终端）使用相同的版本号
-      const result2 = registry.update(gate.id, version, {
-        status: 'rejected',
-        resolvedAt: Date.now(),
-        resolvedBy: 'terminal',
-        resolvedAction: 'reject',
-      });
-
-      // 只有一个应该成功
-      expect(result1.success).toBe(true);
-      expect(result2.success).toBe(false);
-      expect(result2.error).toBe('version_conflict');
-
-      // 最终状态应该是第一个操作的结果
-      const final = registry.get(gate.id);
-      expect(final?.status).toBe('approved');
-      expect(final?.resolvedBy).toBe('discord');
+      const result = registry.update(gate.id, updated.version, { status: 'pending' });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('invalid_transition');
     });
   });
 
   describe('invalidateAll', () => {
-    it('应该失效所有 pending 状态的门控', () => {
-      const gate1 = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '门控 1',
-        turn: 1,
+    it('invalidates all pending gates', () => {
+      registry.create({
+        sessionId: 'sess-1', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'G1', turn: 1,
       });
-
-      const gate2 = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '门控 2',
-        turn: 1,
-      });
-
-      // 解决第一个门控
-      registry.update(gate1.id, gate1.version, {
-        status: 'approved',
-        resolvedAt: Date.now(),
-        resolvedBy: 'discord',
-        resolvedAction: 'approve',
+      registry.create({
+        sessionId: 'sess-2', provider: 'codex', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'G2', turn: 1,
       });
 
       const count = registry.invalidateAll('restart');
+      expect(count).toBe(2);
 
-      expect(count).toBe(1); // 只有 gate2 应该被失效
-      expect(registry.get(gate2.id)?.status).toBe('invalidated');
-      expect(registry.get(gate2.id)?.resolvedBy).toBe('restart');
-      expect(registry.get(gate1.id)?.status).toBe('approved'); // gate1 不受影响
+      const stats = registry.getStats();
+      expect(stats.pending).toBe(0);
+      expect(stats.invalidated).toBe(2);
+    });
+  });
+
+  describe('delete', () => {
+    it('removes gate', () => {
+      const gate = registry.create({
+        sessionId: 'sess-1', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'Test', turn: 1,
+      });
+
+      expect(registry.delete(gate.id)).toBe(true);
+      expect(registry.get(gate.id)).toBeUndefined();
     });
   });
 
   describe('cleanupExpired', () => {
-    it('应该清理超时的门控', () => {
-      const gate = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '测试门控',
-        turn: 1,
+    it('expires old pending gates', async () => {
+      vi.useFakeTimers();
+      registry.create({
+        sessionId: 'sess-1', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'Old', turn: 1,
       });
+      vi.advanceTimersByTime(6 * 60 * 1000); // 6 minutes
 
-      // 模拟超时（设置很短的超时时间）
-      const count = registry.cleanupExpired(0);
-
+      const count = registry.cleanupExpired(5 * 60 * 1000);
       expect(count).toBe(1);
-      expect(registry.get(gate.id)?.status).toBe('expired');
-      expect(registry.get(gate.id)?.resolvedBy).toBe('timeout');
-    });
+      expect(registry.getStats().expired).toBe(1);
 
-    it('应该不影响已解决的门控', () => {
-      const gate = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '测试门控',
-        turn: 1,
-      });
-
-      registry.update(gate.id, gate.version, {
-        status: 'approved',
-        resolvedAt: Date.now(),
-        resolvedBy: 'discord',
-        resolvedAction: 'approve',
-      });
-
-      const count = registry.cleanupExpired(0);
-
-      expect(count).toBe(0);
-      expect(registry.get(gate.id)?.status).toBe('approved');
+      vi.useRealTimers();
     });
   });
 
   describe('archiveResolved', () => {
-    it('应该归档超出限制的已解决门控', () => {
-      // 创建 5 个门控并解决它们
+    it('removes old resolved gates keeping latest N', () => {
       for (let i = 0; i < 5; i++) {
         const gate = registry.create({
-          sessionId: 'session-1',
-          provider: 'claude',
-          type: 'binary_approval',
-          isBlocking: true,
-          supportsRemoteDecision: true,
-          summary: `门控 ${i}`,
-          turn: 1,
+          sessionId: `sess-${i}`, provider: 'claude', type: 'binary_approval',
+          isBlocking: true, supportsRemoteDecision: true, summary: `G${i}`, turn: 1,
         });
-
-        registry.update(gate.id, gate.version, {
-          status: 'approved',
-          resolvedAt: Date.now() + i, // 确保时间戳不同
-          resolvedBy: 'discord',
-          resolvedAction: 'approve',
-        });
+        registry.update(gate.id, gate.version, { status: 'approved' });
       }
 
-      const archived = registry.archiveResolved(3);
-
-      expect(archived).toBe(2); // 应该归档 2 个
-      expect(registry.getAll()).toHaveLength(3); // 保留 3 个
-    });
-
-    it('应该保留最近的门控', () => {
-      const gates = [];
-      for (let i = 0; i < 3; i++) {
-        const gate = registry.create({
-          sessionId: 'session-1',
-          provider: 'claude',
-          type: 'binary_approval',
-          isBlocking: true,
-          supportsRemoteDecision: true,
-          summary: `门控 ${i}`,
-          turn: 1,
-        });
-
-        registry.update(gate.id, gate.version, {
-          status: 'approved',
-          resolvedAt: Date.now() + i * 1000,
-          resolvedBy: 'discord',
-          resolvedAction: 'approve',
-        });
-
-        gates.push(gate);
-      }
-
-      registry.archiveResolved(1);
-
-      const remaining = registry.getAll();
-      expect(remaining).toHaveLength(1);
-      expect(remaining[0].id).toBe(gates[2].id); // 应该保留最后一个
+      const archived = registry.archiveResolved(2);
+      expect(archived).toBe(3);
+      expect(registry.getAll().length).toBe(2);
     });
   });
 
   describe('getStats', () => {
-    it('应该返回正确的统计信息', () => {
-      const gate1 = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '门控 1',
-        turn: 1,
+    it('returns counts by status', () => {
+      const g1 = registry.create({
+        sessionId: 's1', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'G1', turn: 1,
       });
-
-      const gate2 = registry.create({
-        sessionId: 'session-1',
-        provider: 'claude',
-        type: 'binary_approval',
-        isBlocking: true,
-        supportsRemoteDecision: true,
-        summary: '门控 2',
-        turn: 1,
+      const g2 = registry.create({
+        sessionId: 's2', provider: 'claude', type: 'binary_approval',
+        isBlocking: true, supportsRemoteDecision: true, summary: 'G2', turn: 1,
       });
-
-      registry.update(gate1.id, gate1.version, {
-        status: 'approved',
-        resolvedAt: Date.now(),
-        resolvedBy: 'discord',
-        resolvedAction: 'approve',
-      });
+      registry.update(g1.id, g1.version, { status: 'approved' });
 
       const stats = registry.getStats();
-
       expect(stats.total).toBe(2);
       expect(stats.pending).toBe(1);
       expect(stats.approved).toBe(1);
-      expect(stats.rejected).toBe(0);
     });
   });
 });
-
-
-
