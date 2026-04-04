@@ -6,6 +6,7 @@ type SectionShellProps = {
   title: string;
   description?: string;
   children: ReactNode;
+  boxed?: boolean;
 };
 
 export function SectionShell({
@@ -14,9 +15,10 @@ export function SectionShell({
   title,
   description,
   children,
+  boxed,
 }: SectionShellProps) {
   return (
-    <section id={id} className="section-shell">
+    <section id={id} className={`section-shell${boxed ? ' has-box' : ''}`}>
       <div className="section-copy">
         {eyebrow ? <p className="section-eyebrow">{eyebrow}</p> : null}
         <h2 className="section-title">{title}</h2>

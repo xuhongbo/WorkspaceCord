@@ -1,22 +1,20 @@
-import { reasons } from '../../lib/content';
+import { developerScenes } from '../../lib/content';
 import { SectionShell } from '../ui/section-shell';
 
 export function WhyGeeksLikeItSection() {
   return (
     <SectionShell
-      eyebrow="Why geeks like it"
-      title="为讲究工作流的人而做"
-      description="它不是另一层抽象，而是把你熟悉的终端、线程、状态和归档组织成更明确的控制面。"
+      eyebrow="Why Developers Love It"
+      title="场景证明"
+      description="不是罗列功能，而是看看开发者的一天。"
     >
-      <div className="reasons-grid">
-        {reasons.map((reason, index) => (
-          <article
-            key={reason.title}
-            className="reason-item"
-            data-offset={index % 2 === 0 ? 'start' : 'end'}
-          >
-            <span>{reason.title}</span>
-            <p>{reason.body}</p>
+      <div className="scenes-grid">
+        {developerScenes.map((scene) => (
+          <article key={scene.tag} className="scene-card">
+            <span className="scene-tag">{scene.tag}</span>
+            <h3>{scene.title}</h3>
+            <code>{scene.terminal}</code>
+            <p>{scene.body}</p>
           </article>
         ))}
       </div>

@@ -63,9 +63,7 @@ vi.mock('../src/archive-manager.ts', () => ({ loadArchived: vi.fn(), checkAutoAr
 vi.mock('../src/session-sync.ts', () => ({ startSync: vi.fn(), stopSync: vi.fn() }));
 vi.mock('../src/health-monitor.ts', () => ({ startHealthMonitor: vi.fn(), stopHealthMonitor: vi.fn(), setBotStartTime: vi.fn() }));
 vi.mock('../src/session-housekeeping.ts', () => ({ reconcileSessionRecordsWithGuild: vi.fn(async () => ({ checkedSessions: 0, endedMissingSessions: 0 })) }));
-vi.mock('../src/hook-server.ts', () => ({ startHookServer: vi.fn(), stopHookServer: vi.fn() }));
-vi.mock('../src/hook-watcher.ts', () => ({ startHookWatcher: vi.fn(), stopHookWatcher: vi.fn() }));
-vi.mock('../src/hook-health-check.ts', () => ({ checkHookHealth: vi.fn(() => ({ isHealthy: true, issues: [], warnings: [] })), logHookHealthStatus: vi.fn(), sendHookHealthNotification: vi.fn() }));
+vi.mock('../src/ipc-server.ts', () => ({ startIpcServer: vi.fn(), stopIpcServer: vi.fn() }));
 vi.mock('../src/subagent-manager.ts', () => ({ runSubagentWatchdog: vi.fn() }));
 vi.mock('../src/message-handler.ts', () => ({ handleMessage: vi.fn() }));
 vi.mock('../src/button-handler.ts', () => ({ handleButton: vi.fn(), handleSelectMenu: vi.fn() }));
@@ -128,5 +126,8 @@ describe('bot unmanaged codex hint', () => {
       }),
     );
     expect(deliver).toHaveBeenCalled();
+    // Verify deliver was called with a real channel lookup result (not a fake object)
+    const deliverChannel = deliver.mock.calls[0][0];
+    expect(deliverChannel.id).toBe('session-channel');
   });
 });

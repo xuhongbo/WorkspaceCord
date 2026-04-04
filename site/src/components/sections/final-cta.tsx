@@ -8,19 +8,9 @@ export function FinalCtaSection() {
         <h2>{finalCta.title}</h2>
         <p>{finalCta.description}</p>
       </div>
-      <div className="cta-group">
-        <a className="button button-primary" href={finalCta.primary.href}>
-          {finalCta.primary.label}
-        </a>
-        <a
-          className="button button-secondary"
-          href={finalCta.secondary.href}
-          target="_blank"
-          rel="noreferrer"
-        >
-          {finalCta.secondary.label}
-        </a>
-      </div>
+      <a className="button button-primary" href={finalCta.primary.href}>
+        {finalCta.primary.label}
+      </a>
     </section>
   );
 }

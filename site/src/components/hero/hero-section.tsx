@@ -32,13 +32,10 @@ export function HeroSection() {
             transition={{ duration: 0.65, ease: 'easeOut' }}
           >
             <p className="hero-eyebrow">
-              本地终端启动 -&gt; 收进 Dock -&gt; 拉起 Discord -&gt; 展开线程 -&gt; 收束 #history
+              远程受限 → Discord 工作台 → 分类=项目 → 频道=session
             </p>
             <h1>{heroContent.title}</h1>
             <p className="hero-description">{heroContent.description}</p>
-            <p className="hero-supporting">
-              一个服务器可承载多个本地项目，聚焦后再展开多条 session 线程；整个过程像一段正在运行的工作流短片。
-            </p>
             <div className="cta-group">
               <a className="button button-primary" href={heroContent.primaryCta.href}>
                 {heroContent.primaryCta.label}

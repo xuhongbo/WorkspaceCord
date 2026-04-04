@@ -1,10 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, existsSync, unlinkSync } from 'node:fs';
 
-const startHookServer = vi.fn();
-const stopHookServer = vi.fn();
-const startHookWatcher = vi.fn();
-const stopHookWatcher = vi.fn();
+const startIpcServer = vi.fn();
+const stopIpcServer = vi.fn();
 const registerCommands = vi.fn();
 const loadProjects = vi.fn();
 const loadSessions = vi.fn();
@@ -24,6 +22,7 @@ const deliver = vi.fn();
 const startPerformanceMonitoring = vi.fn();
 const stopPerformanceMonitoring = vi.fn();
 const reconcileSessionRecordsWithGuild = vi.fn(async () => ({ checkedSessions: 0, endedMissingSessions: 0 }));
+const mockSetLogger = vi.fn();
 
 let readyHandler: (() => Promise<void> | void) | undefined;
 
@@ -124,8 +123,7 @@ vi.mock('../src/health-monitor.ts', () => ({
   setBotStartTime,
 }));
 vi.mock('../src/session-housekeeping.ts', () => ({ reconcileSessionRecordsWithGuild }));
-vi.mock('../src/hook-server.ts', () => ({ startHookServer, stopHookServer }));
-vi.mock('../src/hook-watcher.ts', () => ({ startHookWatcher, stopHookWatcher }));
+vi.mock('../src/ipc-server.ts', () => ({ startIpcServer, stopIpcServer }));
 vi.mock('../src/hook-health-check.ts', () => ({
   checkHookHealth,
   logHookHealthStatus,
@@ -143,7 +141,7 @@ vi.mock('../src/command-handlers.ts', () => ({
   handleStopShortcut: vi.fn(),
   handleEndShortcut: vi.fn(),
   handleRunShortcut: vi.fn(),
-  setLogger: vi.fn(),
+  setLogger: mockSetLogger,
 }));
 vi.mock('../src/monitors/codex-log-monitor.ts', () => ({
   CodexLogMonitor: class {
@@ -188,11 +186,15 @@ describe('bot startup', () => {
     expect(reconcileSessionRecordsWithGuild).toHaveBeenCalledWith(mockGuild);
   });
 
-  it('启动时会同时启动 hook server 与 hook watcher', async () => {
+  it('启动时会启动 ipc server', async () => {
     await startBot();
 
-    expect(startHookServer).toHaveBeenCalledTimes(1);
-    expect(startHookWatcher).toHaveBeenCalledTimes(1);
+    expect(startIpcServer).toHaveBeenCalledTimes(1);
+  });
+
+  it('启动时会将 botLog 注入命令处理日志链路', async () => {
+    await startBot();
+    expect(mockSetLogger).toHaveBeenCalledTimes(1);
   });
 
 

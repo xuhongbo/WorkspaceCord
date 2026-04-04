@@ -33,6 +33,7 @@ export const VALID_KEYS = new Set([
   'REPLY_TO_MODE',
   'TEXT_CHUNK_LIMIT',
   'CHUNK_MODE',
+  'IPC_SOCKET_PATH',
   'SHELL_ENABLED',
   'SHELL_ALLOWED_USERS',
   'SESSION_SYNC_INTERVAL_MS',
@@ -134,6 +135,11 @@ export function validateConfigValue(key: string, value: string): string | null {
       if (/^<a?:[A-Za-z0-9_~]+:\d+>$/.test(value)) break;
       if (/\s/.test(value)) {
         return 'Invalid value for ACK_REACTION. Expected a Unicode emoji, empty string, or custom emoji like <:name:id>';
+      }
+      break;
+    case 'IPC_SOCKET_PATH':
+      if (!value.trim()) {
+        return 'Invalid value for IPC_SOCKET_PATH. Expected a non-empty socket path';
       }
       break;
     case 'REPLY_TO_MODE':
