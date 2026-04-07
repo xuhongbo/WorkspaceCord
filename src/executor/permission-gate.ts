@@ -1,13 +1,10 @@
-import type { TextChannel, AnyThreadChannel } from 'discord.js';
 import * as sessions from '../thread-manager.ts';
 import { handleAwaitingHuman, updateSessionState } from '../panel-adapter.ts';
 import { gateCoordinator } from '../state/gate-coordinator.ts';
 import { truncate } from '../utils.ts';
 import { config } from '../config.ts';
-import type { ThreadSession as Session } from '../types.ts';
+import type { ThreadSession as Session, SessionChannel } from '../types.ts';
 import type { ProviderCanUseTool } from '../providers/types.ts';
-
-type SessionChannel = TextChannel | AnyThreadChannel;
 
 type GateResolveResult = {
   action: 'approve' | 'reject';

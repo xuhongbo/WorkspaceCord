@@ -1,6 +1,7 @@
 import { createServer, type Socket } from 'node:net';
 import { unlinkSync, existsSync } from 'node:fs';
-import type { Client, TextChannel, AnyThreadChannel } from 'discord.js';
+import type { Client, TextChannel } from 'discord.js';
+import type { SessionChannel } from './types.ts';
 import { config } from './config.ts';
 import { updateSessionState } from './panel-adapter.ts';
 import * as sessions from './thread-manager.ts';
@@ -11,8 +12,6 @@ import type { PlatformEvent } from './state/types.ts';
 let server: ReturnType<typeof createServer> | null = null;
 let discordClient: Client | null = null;
 let activeSocketPath: string | null = null;
-
-type SessionChannel = TextChannel | AnyThreadChannel;
 
 function isSessionChannel(channel: unknown): channel is SessionChannel {
   if (!channel || typeof channel !== 'object') return false;

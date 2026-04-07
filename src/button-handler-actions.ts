@@ -4,9 +4,8 @@ import {
   StringSelectMenuBuilder,
   type ButtonInteraction,
   type StringSelectMenuInteraction,
-  type TextChannel,
-  type AnyThreadChannel,
 } from 'discord.js';
+import type { SessionChannel } from './types.ts';
 import { config } from './config.ts';
 import * as sessions from './thread-manager.ts';
 import {
@@ -28,8 +27,6 @@ import {
 import { archiveSessionsById } from './session-housekeeping.ts';
 import { truncate } from './utils.ts';
 import { gateCoordinator } from './state/gate-coordinator.ts';
-
-type SessionChannel = TextChannel | AnyThreadChannel;
 type EditableRow = ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>;
 type ComponentLike = {
   customId?: string;

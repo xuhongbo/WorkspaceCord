@@ -1,9 +1,7 @@
-import type { TextChannel, AnyThreadChannel } from 'discord.js';
+import type { SessionChannel } from './types.ts';
 import { resolveCodexSessionFromMonitor } from './thread-manager.ts';
 import { normalizeCodexEvent } from './state/event-normalizer.ts';
 import { registerExistingStatusCard, updateSessionState } from './panel-adapter.ts';
-
-type SessionChannel = TextChannel | AnyThreadChannel;
 
 function isSessionChannel(channel: unknown): channel is SessionChannel {
   if (!channel || typeof channel !== 'object') return false;

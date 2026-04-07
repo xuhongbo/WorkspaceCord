@@ -1,6 +1,4 @@
-import type { TextChannel, AnyThreadChannel } from 'discord.js';
-
-type SessionChannel = TextChannel | AnyThreadChannel;
+import type { SessionChannel } from './types.ts';
 import * as sessions from './thread-manager.ts';
 import { handleOutputStream } from './output-handler.ts';
 import {

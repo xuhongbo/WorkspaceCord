@@ -1,7 +1,7 @@
 // 实时作战面板集成适配器
 // 将新组件集成到现有 output-handler / session-executor / shell-handler
 
-import type { TextChannel, AnyThreadChannel } from 'discord.js';
+import type { SessionChannel } from './types.ts';
 import { StatusCard } from './discord/status-card.ts';
 import { SummaryHandler } from './discord/summary-handler.ts';
 import { InteractionCard } from './discord/interaction-card.ts';
@@ -21,8 +21,6 @@ import { performanceTracker } from './monitoring/performance-tracker.ts';
 import { clearPendingAnswers } from './output/answer-store.ts';
 import { cleanupSessionDeliveryState } from './discord/delivery.ts';
 import { clearCodexHint } from './bot-services-helpers.ts';
-
-type SessionChannel = TextChannel | AnyThreadChannel;
 
 // 会话到组件的映射
 const sessionComponents = new Map<string, {

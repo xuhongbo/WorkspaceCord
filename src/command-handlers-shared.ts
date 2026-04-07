@@ -10,9 +10,7 @@ import * as sessionMgr from './thread-manager.ts';
 import * as projectMgr from './project-manager.ts';
 import { buildProjectCleanupPreview } from './session-housekeeping.ts';
 import { isUserAllowed } from './utils.ts';
-import type { ProviderName, SessionMode } from './types.ts';
-
-type SessionChannel = TextChannel | AnyThreadChannel;
+import type { ProviderName, SessionMode, SessionChannel } from './types.ts';
 
 let logFn: (msg: string) => void = console.log;
 

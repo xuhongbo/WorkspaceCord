@@ -1,9 +1,7 @@
-import type { TextChannel, AnyThreadChannel } from 'discord.js';
+import type { SessionChannel } from '../types.ts';
 import { config } from '../config.ts';
 import { buildDeliveryPlan } from '../discord/delivery-policy.ts';
 import { deliver } from '../discord/delivery.ts';
-
-type SessionChannel = TextChannel | AnyThreadChannel;
 
 export function detectRepetition(text: string): { isRepetitive: boolean; cleanedText: string } {
   const sentences = text.split(/[。！？\n]+/).filter((s) => s.trim().length > 5);

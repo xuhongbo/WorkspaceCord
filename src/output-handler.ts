@@ -1,6 +1,4 @@
-import { type TextChannel, type AnyThreadChannel } from 'discord.js';
-
-type SessionChannel = TextChannel | AnyThreadChannel;
+import type { SessionChannel } from './types.ts';
 import { existsSync } from 'node:fs';
 import { config } from './config.ts';
 import type { ProviderEvent, ProviderName } from './providers/types.ts';

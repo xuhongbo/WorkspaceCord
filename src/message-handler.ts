@@ -2,8 +2,8 @@ import {
   ChannelType,
   type Message,
   type TextChannel,
-  type AnyThreadChannel,
 } from 'discord.js';
+import type { SessionChannel } from './types.ts';
 import { config } from './config.ts';
 import { getSessionByChannel, updateSession } from './thread-manager.ts';
 import { executeSessionPrompt } from './session-executor.ts';
@@ -14,8 +14,6 @@ import { sendSystemNotice } from './discord/delivery-notices.ts';
 import { registerMessageAttachments } from './discord/attachment-inbox.ts';
 import { buildInboundEnvelope } from './discord/inbound-envelope.ts';
 import { relocateSessionPanelToBottom } from './panel-adapter.ts';
-
-type SessionChannel = TextChannel | AnyThreadChannel;
 
 const lastMessageTime = new Map<string, number>();
 const lastRelocationTime = new Map<string, number>();
