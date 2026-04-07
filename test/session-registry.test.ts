@@ -197,8 +197,8 @@ describe('session-registry: endSession', () => {
     expect(getSessionsByCategory('cat-1')).not.toContainEqual(expect.objectContaining({ id: 'to-end' }));
   });
 
-  it('throws for unknown session', async () => {
-    await expect(endSession('nonexistent')).rejects.toThrow('not found');
+  it('is idempotent for unknown session', async () => {
+    await expect(endSession('nonexistent')).resolves.toBeUndefined();
   });
 });
 

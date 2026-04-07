@@ -559,7 +559,7 @@ export function setCurrentInteractionMessage(
 
 export async function endSession(id: string): Promise<void> {
   const session = getSession(id);
-  if (!session) throw new Error(`Session "${id}" not found`);
+  if (!session) return; // Idempotent: already ended
 
   const controller = sessionControllers.get(session.id);
   if (controller && session.isGenerating) {

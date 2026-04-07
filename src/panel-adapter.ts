@@ -513,6 +513,12 @@ export function cleanupSessionPanel(sessionId: string): void {
   clearPendingAnswers(sessionId);
   cleanupSessionDeliveryState(sessionId);
   clearCodexHint(sessionId);
+
+  // Invalidate any pending human gates for this session
+  const activeGate = gateCoordinator.getActiveGateForSession(sessionId);
+  if (activeGate) {
+    gateCoordinator.resolveFromDiscord(activeGate.id, 'reject').catch(() => {});
+  }
 }
 
 // 清理失活会话的状态投影缓存和组件

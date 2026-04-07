@@ -176,20 +176,24 @@ async function runMonitorDecision(
   let response = '';
   const report = buildWorkerProgressReport(goal, workerResult);
   const latestOutput = summarizeWorkerPass(report);
-  const stream = sessions.sendMonitorPrompt(
-    session.id,
-    buildMonitorPrompt(
-      goal,
-      latestOutput,
-      JSON.stringify(report, null, 2),
-      iteration,
-      session.workflowState.nextProofContract,
-    ),
-  );
-  for await (const event of stream) {
-    if (event.type === 'text_delta') {
-      response += event.text;
+  try {
+    const stream = sessions.sendMonitorPrompt(
+      session.id,
+      buildMonitorPrompt(
+        goal,
+        latestOutput,
+        JSON.stringify(report, null, 2),
+        iteration,
+        session.workflowState.nextProofContract,
+      ),
+    );
+    for await (const event of stream) {
+      if (event.type === 'text_delta') {
+        response += event.text;
+      }
     }
+  } catch (err: unknown) {
+    console.error(`[SessionExecutor] monitor:error sessionId=${session.id} iteration=${iteration}`, err);
   }
 
   const parsed = parseMonitorDecision(response);

@@ -75,9 +75,16 @@ export async function* sendPrompt(
       throw err;
     }
   } finally {
-    registry.markSessionGenerating(sessionId, false);
-    registry.clearSessionController(sessionId);
-    await registry.saveSessionImmediate();
+    try {
+      registry.markSessionGenerating(sessionId, false);
+      registry.clearSessionController(sessionId);
+      await registry.saveSessionImmediate();
+    } catch (cleanupErr) {
+      console.error(`[ProviderRuntime] cleanup error for session ${sessionId}:`, cleanupErr);
+      // Ensure isGenerating is reset even if save fails
+      const s = registry.getSession(sessionId);
+      if (s) s.isGenerating = false;
+    }
   }
 }
 
@@ -128,9 +135,15 @@ export async function* continueSessionWithOverrides(
       throw err;
     }
   } finally {
-    registry.markSessionGenerating(sessionId, false);
-    registry.clearSessionController(sessionId);
-    await registry.saveSessionImmediate();
+    try {
+      registry.markSessionGenerating(sessionId, false);
+      registry.clearSessionController(sessionId);
+      await registry.saveSessionImmediate();
+    } catch (cleanupErr) {
+      console.error(`[ProviderRuntime] cleanup error for session ${sessionId}:`, cleanupErr);
+      const s = registry.getSession(sessionId);
+      if (s) s.isGenerating = false;
+    }
   }
 }
 
