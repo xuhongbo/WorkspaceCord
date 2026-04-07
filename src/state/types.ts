@@ -61,15 +61,18 @@ export const STATE_COLORS: Record<UnifiedState, number> = {
   offline: 0x95a5a6, // 浅灰
 };
 
-export interface SessionStateSnapshot {
+export interface SessionStateProjection {
   state: UnifiedState;
   stateSource: 'formal' | 'inferred';
   confidence: 'high' | 'medium' | 'low';
   updatedAt: number;
   turn: number;
   phase?: string;
-  isWaitingHuman: boolean;
   humanResolved: boolean;
+}
+
+export interface SessionPanelProjection extends SessionStateProjection {
+  isWaitingHuman: boolean;
   isCompleted: boolean;
   isError: boolean;
   isStalled: boolean;

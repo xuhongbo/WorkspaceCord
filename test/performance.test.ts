@@ -188,7 +188,7 @@ describe('性能与限流控制', () => {
       cleanupInactiveSessions();
 
       const statsAfter = getPerformanceStats();
-      expect(statsAfter.snapshotCount).toBeLessThanOrEqual(statsBefore.snapshotCount);
+      expect(statsAfter.projectionCount).toBeLessThanOrEqual(statsBefore.projectionCount);
     });
   });
 

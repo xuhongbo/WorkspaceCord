@@ -51,10 +51,12 @@ export interface ISessionLookup {
 }
 
 export interface IStateMachine {
-  transition(sessionId: string, event: string): Promise<void>;
-  getState(sessionId: string): Promise<string>;
-  canTransition(sessionId: string, event: string): Promise<boolean>;
-  on(event: string, handler: (sessionId: string, from: string, to: string) => void): void;
+  transition(sessionId: string, event: string, updates: Record<string, unknown>, metadata?: Record<string, unknown>): { success: boolean; state: unknown; error?: string };
+  getState(sessionId: string): unknown;
+  getSnapshot(sessionId: string): unknown;
+  getPanelProjection(sessionId: string): unknown;
+  applyPlatformEvent(event: unknown): unknown;
+  advanceTurnToIdle(sessionId: string): unknown;
 }
 
 export interface IProjectConfig {

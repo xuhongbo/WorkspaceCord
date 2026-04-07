@@ -5,23 +5,21 @@ import type { TextChannel, AnyThreadChannel } from 'discord.js';
 import { StatusCard } from './discord/status-card.ts';
 import { SummaryHandler } from './discord/summary-handler.ts';
 import { InteractionCard } from './discord/interaction-card.ts';
-import { StateMachine } from './state/state-machine.ts';
+import { StatusCardProjectionRenderer } from './discord/status-card-projection-renderer.ts';
+import { stateMachine, type StateMachine } from './state/state-machine.ts';
 import { toPlatformEvent, mapPlatformEventToState } from './state/event-normalizer.ts';
 import type { ProviderEvent } from './providers/types.ts';
 import * as sessions from './thread-manager.ts';
 import { gateCoordinator } from './state/gate-coordinator.ts';
 import type {
   PlatformEvent,
-  SessionStateSnapshot,
+  SessionStateProjection,
   DigestItem,
   UnifiedState,
 } from './state/types.ts';
 import { performanceTracker } from './monitoring/performance-tracker.ts';
 
 type SessionChannel = TextChannel | AnyThreadChannel;
-
-// 全局状态机实例
-const stateMachine = new StateMachine();
 
 // 会话到组件的映射
 const sessionComponents = new Map<string, {
@@ -38,10 +36,7 @@ const MAX_DIGEST_QUEUE_SIZE = 20;
 
 // 批量更新控制
 const BATCH_UPDATE_DELAY_MS = 500;
-const pendingUpdates = new Map<string, {
-  snapshot: SessionStateSnapshot;
-  timer: NodeJS.Timeout;
-}>();
+const statusCardProjectionRenderer = new StatusCardProjectionRenderer();
 
 // 交互卡限流控制
 const INTERACTION_CARD_COOLDOWN_MS = 10000;
@@ -50,7 +45,7 @@ const lastInteractionCardTime = new Map<string, number>();
 // 内存控制
 const SESSION_INACTIVE_TIMEOUT_MS = 3600000; // 1 小时
 const sessionLastActivity = new Map<string, number>();
-const sessionStateSnapshots = new Map<string, SessionStateSnapshot>();
+const sessionStateProjections = new Map<string, SessionStateProjection>();
 
 function getSessionComponents(sessionId: string): {
   channel: SessionChannel;
@@ -61,8 +56,70 @@ function getSessionComponents(sessionId: string): {
   return sessionComponents.get(sessionId);
 }
 
-function ensureSession(sessionId: string): SessionStateSnapshot {
-  return stateMachine.ensureSession(sessionId);
+function getSessionProjection(sessionId: string): SessionStateProjection {
+  return stateMachine.getSnapshot(sessionId);
+}
+
+function ensureProjectionTurn(
+  sessionId: string,
+  turn = 1,
+  event = 'turn_bootstrap',
+): SessionStateProjection {
+  const projection = getSessionProjection(sessionId);
+  if (projection.turn > 0) return projection;
+
+  const initialized = stateMachine.setTurn(sessionId, turn, event);
+  cacheProjection(sessionId, initialized);
+  return initialized;
+}
+
+function cacheProjection(sessionId: string, projection: SessionStateProjection): void {
+  sessionLastActivity.set(sessionId, Date.now());
+  sessionStateProjections.set(sessionId, projection);
+}
+
+function syncSessionRuntimeState(sessionId: string, projection: SessionStateProjection): void {
+  sessions.updateSession(sessionId, {
+    currentTurn: projection.turn,
+    humanResolved: projection.humanResolved,
+  });
+}
+
+function createStatusCardProjectionContext(sessionId: string) {
+  const components = getSessionComponents(sessionId);
+  if (!components) return undefined;
+  const session = sessions.getSession(sessionId);
+  return {
+    statusCard: components.statusCard,
+    remoteHumanControl: session?.remoteHumanControl,
+    provider: session?.provider,
+    permissionsSummary: session ? sessions.getSessionPermissionSummary(session) : undefined,
+  };
+}
+
+async function renderProjectionToStatusCard(
+  sessionId: string,
+  projection: SessionStateProjection,
+): Promise<void> {
+  await statusCardProjectionRenderer.renderNow(
+    sessionId,
+    projection,
+    createStatusCardProjectionContext(sessionId),
+  );
+}
+
+async function scheduleProjectionRender(
+  sessionId: string,
+  projection: SessionStateProjection,
+  updateKey: string,
+): Promise<void> {
+  statusCardProjectionRenderer.schedule(
+    sessionId,
+    projection,
+    createStatusCardProjectionContext(sessionId),
+    BATCH_UPDATE_DELAY_MS,
+    () => performanceTracker.endStateUpdate(updateKey, { batched: true }),
+  );
 }
 
 function resolveProviderSource(
@@ -112,7 +169,7 @@ export async function initializeSessionPanel(
       permissionsSummary: session ? sessions.getSessionPermissionSummary(session) : undefined,
     });
 
-    const summaryHandler = new SummaryHandler(sessionId, channel.id, channel, statusCard);
+    const summaryHandler = new SummaryHandler(sessionId, channel.id, channel);
     const interactionCard = new InteractionCard(channel);
 
     sessionComponents.set(sessionId, {
@@ -126,12 +183,12 @@ export async function initializeSessionPanel(
       messageId: statusCard.getMessageId() ?? options.statusCardMessageId,
     });
 
-    const snapshot = ensureSession(sessionId);
-    if (snapshot.turn <= 0) {
-      stateMachine.updateSession(sessionId, { turn: options.initialTurn ?? 1 });
-    }
-
-    sessionLastActivity.set(sessionId, Date.now());
+    const projection = ensureProjectionTurn(
+      sessionId,
+      options.initialTurn ?? 1,
+      'panel_initialized',
+    );
+    cacheProjection(sessionId, projection);
   })();
 
   sessionInitializationPromises.set(sessionId, initialization);
@@ -160,7 +217,7 @@ export async function updateSessionState(
     sourceHint?: 'claude' | 'codex';
     channel?: SessionChannel;
   } = {},
-): Promise<SessionStateSnapshot | null> {
+): Promise<SessionStateProjection | null> {
   const updateKey = `${sessionId}:state`;
   performanceTracker.startStateUpdate(updateKey);
 
@@ -189,49 +246,15 @@ export async function updateSessionState(
     session?.isGenerating
   ) {
     performanceTracker.endStateUpdate(updateKey, { skipped: true });
-    return ensureSession(sessionId);
+    return getSessionProjection(sessionId);
   }
 
-  const snapshot = stateMachine.applyPlatformEvent(platformEvent);
-  sessionLastActivity.set(sessionId, Date.now());
-  sessionStateSnapshots.set(sessionId, snapshot);
+  const projection = stateMachine.applyPlatformEvent(platformEvent);
+  cacheProjection(sessionId, projection);
+  await scheduleProjectionRender(sessionId, projection, updateKey);
+  syncSessionRuntimeState(sessionId, projection);
 
-  // 批量更新：500ms 内的多次更新合并为一次
-  const pending = pendingUpdates.get(sessionId);
-  if (pending) {
-    clearTimeout(pending.timer);
-  }
-
-  const timer = setTimeout(async () => {
-    const components = getSessionComponents(sessionId);
-    const session = sessions.getSession(sessionId);
-    if (components) {
-      try {
-        await components.statusCard.update(snapshot.state, {
-          turn: snapshot.turn,
-          updatedAt: snapshot.updatedAt,
-          phase: snapshot.phase,
-          remoteHumanControl: session?.remoteHumanControl,
-          provider: session?.provider,
-          permissionsSummary: session ? sessions.getSessionPermissionSummary(session) : undefined,
-        });
-      } catch (error) {
-        // Discord API 限流降级：仅记录错误，不阻塞流程
-        console.error(`状态卡更新失败 (${sessionId}):`, error);
-      }
-    }
-    pendingUpdates.delete(sessionId);
-    performanceTracker.endStateUpdate(updateKey, { batched: true });
-  }, BATCH_UPDATE_DELAY_MS);
-
-  pendingUpdates.set(sessionId, { snapshot, timer });
-
-  sessions.updateSession(sessionId, {
-    currentTurn: snapshot.turn,
-    humanResolved: snapshot.humanResolved,
-  });
-
-  return snapshot;
+  return projection;
 }
 
 export async function handleResultEvent(
@@ -243,10 +266,7 @@ export async function handleResultEvent(
   const components = getSessionComponents(sessionId);
   if (!components) return;
 
-  const snapshot = ensureSession(sessionId);
-  if (snapshot.turn <= 0) {
-    stateMachine.updateSession(sessionId, { turn: 1 });
-  }
+  const projection = ensureProjectionTurn(sessionId, 1, 'turn_bootstrap');
 
   const isSessionEnd = event.metadata?.sessionEnd === true;
   const source = resolveProviderSource(sessionId);
@@ -269,7 +289,7 @@ export async function handleResultEvent(
       textContent.trim() || event.errors.join('\n').trim() || '任务失败';
     await components.summaryHandler.sendTurnFailure(
       failureText,
-      snapshot.turn,
+      projection.turn,
       session?.lastInboundMessageId,
       attachments,
     );
@@ -282,33 +302,18 @@ export async function handleResultEvent(
       metadata: { from: 'result', errors: event.errors },
     });
   } else {
-    const before = ensureSession(sessionId);
+    const beforeProjection = getSessionProjection(sessionId);
     const session = sessions.getSession(sessionId);
     await components.summaryHandler.sendTurnSummary(
       textContent,
-      before.turn,
+      beforeProjection.turn,
       session?.lastInboundMessageId,
       attachments,
     );
-    const after = stateMachine.incrementTurn(sessionId);
-    sessions.updateSession(sessionId, {
-      currentTurn: after.turn,
-      humanResolved: false,
-    });
-    await components.statusCard.update('idle', {
-      turn: after.turn,
-      updatedAt: Date.now(),
-      phase: stateMachine.getStateLabel('idle'),
-      remoteHumanControl: session?.remoteHumanControl,
-      provider: session?.provider,
-      permissionsSummary: session ? sessions.getSessionPermissionSummary(session) : undefined,
-    });
-    stateMachine.updateSession(sessionId, {
-      state: 'idle',
-      phase: stateMachine.getStateLabel('idle'),
-      isCompleted: false,
-      isWaitingHuman: false,
-    });
+    const projectionAfterTurn = stateMachine.advanceTurnToIdle(sessionId);
+    syncSessionRuntimeState(sessionId, projectionAfterTurn);
+    await renderProjectionToStatusCard(sessionId, projectionAfterTurn);
+    cacheProjection(sessionId, projectionAfterTurn);
   }
 }
 
@@ -331,10 +336,7 @@ export async function handleAwaitingHuman(
     return null;
   }
 
-  let snapshot = ensureSession(sessionId);
-  if (snapshot.turn <= 0) {
-    snapshot = stateMachine.incrementTurn(sessionId);
-  }
+  const projection = ensureProjectionTurn(sessionId, 1, 'turn_bootstrap');
 
   const provider = session?.provider ?? resolveProviderSource(sessionId);
   const remoteHumanControl = session?.remoteHumanControl !== false;
@@ -346,7 +348,7 @@ export async function handleAwaitingHuman(
     supportsRemoteDecision: remoteHumanControl,
     summary: detail,
     detail,
-    turn: snapshot.turn,
+    turn: projection.turn,
   });
 
   await updateSessionState(sessionId, {
@@ -358,16 +360,16 @@ export async function handleAwaitingHuman(
     metadata: { detail },
   });
 
-  const messageId = await components.interactionCard.show(sessionId, snapshot.turn, detail, {
+  const messageId = await components.interactionCard.show(sessionId, projection.turn, detail, {
     remoteHumanControl,
     provider,
   });
   gateCoordinator.bindDiscordMessage(gate.id, messageId);
   lastInteractionCardTime.set(sessionId, now);
-  sessionLastActivity.set(sessionId, now);
+  cacheProjection(sessionId, getSessionProjection(sessionId));
 
   sessions.updateSession(sessionId, {
-    currentTurn: snapshot.turn,
+    currentTurn: projection.turn,
     humanResolved: false,
     currentInteractionMessageId: messageId,
     activeHumanGateId: gate.id,
@@ -496,14 +498,14 @@ export function getStateMachine(): StateMachine {
   return stateMachine;
 }
 
-// 清理失活会话的状态快照
+// 清理失活会话的状态投影缓存
 export function cleanupInactiveSessions(): void {
   const now = Date.now();
   for (const [sessionId, lastActivity] of sessionLastActivity) {
     if (now - lastActivity > SESSION_INACTIVE_TIMEOUT_MS) {
-      sessionStateSnapshots.delete(sessionId);
+      sessionStateProjections.delete(sessionId);
       sessionLastActivity.delete(sessionId);
-      console.log(`清理失活会话状态快照: ${sessionId}`);
+      console.log(`清理失活会话状态投影: ${sessionId}`);
     }
   }
 }
@@ -513,13 +515,13 @@ export function getPerformanceStats(): {
   discoveryLatency: ReturnType<typeof performanceTracker.getMetricStats>;
   updateLatency: ReturnType<typeof performanceTracker.getMetricStats>;
   activeSessions: number;
-  snapshotCount: number;
+  projectionCount: number;
 } {
   return {
     discoveryLatency: performanceTracker.getMetricStats('session_discovery_latency'),
     updateLatency: performanceTracker.getMetricStats('state_update_latency'),
     activeSessions: sessionComponents.size,
-    snapshotCount: sessionStateSnapshots.size,
+    projectionCount: sessionStateProjections.size,
   };
 }
 
