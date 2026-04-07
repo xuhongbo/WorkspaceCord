@@ -12,17 +12,17 @@ export interface CommandHandlers {
   handleAgent: (interaction: ChatInputCommandInteraction) => Promise<void>;
   handleSubagent: (interaction: ChatInputCommandInteraction) => Promise<void>;
   handleShell: (interaction: ChatInputCommandInteraction) => Promise<void>;
-  handleSpawnShortcut: (interaction: ChatInputCommandInteraction) => Promise<void>;
-  handleStopShortcut: (interaction: ChatInputCommandInteraction) => Promise<void>;
-  handleEndShortcut: (interaction: ChatInputCommandInteraction) => Promise<void>;
-  handleRunShortcut: (interaction: ChatInputCommandInteraction) => Promise<void>;
   handleButton: (interaction: ButtonInteraction) => Promise<void>;
   handleSelectMenu: (interaction: StringSelectMenuInteraction) => Promise<void>;
   handleMessage: (message: Message) => Promise<void>;
 }
 
 export class BotEventRouter {
-  constructor(private handlers: CommandHandlers) {}
+  private readonly handlers: CommandHandlers;
+
+  constructor(handlers: CommandHandlers) {
+    this.handlers = handlers;
+  }
 
   async routeInteraction(interaction: Interaction): Promise<void> {
     try {
@@ -33,10 +33,6 @@ export class BotEventRouter {
           case 'agent': return await h.handleAgent(interaction);
           case 'subagent': return await h.handleSubagent(interaction);
           case 'shell': return await h.handleShell(interaction);
-          case 'spawn': return await h.handleSpawnShortcut(interaction);
-          case 'stop': return await h.handleStopShortcut(interaction);
-          case 'end': return await h.handleEndShortcut(interaction);
-          case 'run': return await h.handleRunShortcut(interaction);
         }
       }
       if (interaction.isButton()) return await this.handlers.handleButton(interaction);

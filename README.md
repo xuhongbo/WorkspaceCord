@@ -35,7 +35,11 @@ Discord Server
 - Discord-side project binding with `/project setup`
 - Main session channels and subagent threads
 - Session archiving into `#history`
+- Project-level personality, reusable skills, and MCP registry management
 - Support for both Claude and Codex providers
+- `monitor` mode with continued steering until task completion
+- Remote human approval / gate handling from Discord for managed sessions
+- Managed local `Codex` launch plus automatic local session discovery/sync
 - Global config storage without requiring a project-local `.env`
 - Optional daemon install and background management
 
@@ -152,6 +156,42 @@ workspacecord codex [options]   # Launch managed Codex session with remote appro
 - `/subagent run` — create a subagent thread under the current session
 - `/subagent list` — list subagents for the current session
 - `/shell run` / `/shell processes` / `/shell kill`
+
+
+## Capability Matrix
+
+| Capability | Status | Entry Points |
+|---|---|---|
+| Global configuration | Stable | `workspacecord config *` |
+| Explicit local project mounting | Stable | `workspacecord project *` |
+| Discord category binding | Stable | `/project setup`, `/project info` |
+| Project-level personality | Available | `/project personality`, `/project personality-clear` |
+| Project-level reusable skills | Available | `/project skill-add`, `/project skill-list`, `/project skill-run` |
+| Project-level MCP registry | Available | `/project mcp-add`, `/project mcp-list`, `/project mcp-remove` |
+| Main agent sessions | Stable | `/agent spawn`, `/agent list`, `/agent archive`, `/agent cleanup` |
+| Subagent threads | Stable | `/subagent run`, `/subagent list` |
+| Session execution modes | Stable | `/agent mode`, `/agent goal`, `/agent verbose` |
+| Remote human approval / gates | Available | interaction cards, `monitor` mode, Claude permission handling |
+| Managed local Codex launch | Available | `workspacecord codex` |
+| Local session discovery / sync | Available | hook / codex-log / sync recovery paths |
+| Shell execution from Discord | Available | `/shell run`, `/shell processes`, `/shell kill` |
+| History archive | Stable | `#history`, `/agent archive` |
+| Daemon installation / background run | Available | `workspacecord daemon *` |
+
+## Runtime Architecture
+
+Current main runtime path:
+
+```text
+bot.ts
+  -> BotEventRouter
+    -> command handlers / button handler / message handler
+      -> thread-manager façade
+        -> session-registry / session runtime / state machine / panel adapter
+          -> Discord delivery + status cards + summaries
+```
+
+This repository intentionally keeps Discord as the control plane, while local project state, provider sessions, approvals, and output rendering stay on the machine that runs `workspacecord`.
 
 ## Development
 

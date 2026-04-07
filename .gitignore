@@ -167,7 +167,9 @@ tmp/
 .workspacecord-config.json
 .workspacecord-data/
 tmp/
+local-acceptance/
 
 /bin
 # Local git worktrees
 .worktrees/
+.omx/

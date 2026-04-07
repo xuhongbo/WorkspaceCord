@@ -68,7 +68,9 @@ const {
   handleResultEvent,
   relocateSessionPanelToBottom,
   updateSessionState,
+  getStateMachine,
 } = await import('../src/panel-adapter.ts');
+const { stateMachine } = await import('../src/state/state-machine.ts');
 
 function createChannel() {
   return {
@@ -81,6 +83,10 @@ function createChannel() {
 }
 
 describe('panel-adapter', () => {
+  it('复用共享状态机实例', () => {
+    expect(getStateMachine()).toBe(stateMachine);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     getSession.mockImplementation((sessionId: string) => ({
@@ -128,6 +134,35 @@ describe('panel-adapter', () => {
     expect(updateSession).not.toHaveBeenCalledWith(
       'session-error',
       expect.objectContaining({ currentTurn: 4 }),
+    );
+  });
+
+
+  it('成功结果会推进到下一轮并回到 idle 投影', async () => {
+    const channel = createChannel();
+    await initializeSessionPanel('session-success', channel as never, { initialTurn: 2 });
+
+    await handleResultEvent(
+      'session-success',
+      {
+        type: 'result',
+        success: true,
+        costUsd: 0,
+        durationMs: 10,
+        numTurns: 1,
+        errors: [],
+      },
+      '本轮完成',
+    );
+
+    expect(sendTurnSummary).toHaveBeenCalledWith('本轮完成', 2, 'user-msg-1', []);
+    expect(statusUpdate).toHaveBeenLastCalledWith(
+      'idle',
+      expect.objectContaining({ turn: 3, phase: '待命' }),
+    );
+    expect(updateSession).toHaveBeenCalledWith(
+      'session-success',
+      expect.objectContaining({ currentTurn: 3, humanResolved: false }),
     );
   });
 

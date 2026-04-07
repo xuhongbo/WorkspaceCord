@@ -42,7 +42,9 @@ export class Store<T> {
   }
 
   async write(data: T): Promise<void> {
-    const nextWrite = this.writeQueue.catch(() => {}).then(async () => {
+    const nextWrite = this.writeQueue.catch((err) => {
+      console.error(`[Store] Previous write failed for ${this.filename}:`, err);
+    }).then(async () => {
       const filePath = this.filePath;
       const dir = dirname(filePath);
       if (!existsSync(dir)) {

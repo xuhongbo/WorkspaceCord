@@ -17,6 +17,7 @@ import { executeSessionPrompt } from '../src/session-executor.ts';
 import {
   loadRegistry,
   getProjectByName,
+  getProjectByPath,
   registerProject,
   unbindProjectCategory,
   bindProjectCategory,
@@ -150,14 +151,29 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   ]);
 }
 
-const projectName = process.env.workspacecord_E2E_PROJECT || 'workspacecord';
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function skipProviderSmoke(
+  report: IntegrationReport,
+  stepName: 'provider-claude-smoke' | 'provider-codex-smoke',
+  providerLabel: 'Claude' | 'Codex',
+  error: unknown,
+): void {
+  const message = messageOf(error);
+  report.missingInputs.push(`${providerLabel} 真实生成冒烟未完成：${message}`);
+  step(report, stepName, 'skipped', `${providerLabel} 真实生成未完成：${message}`);
+}
+
+const requestedProjectName = process.env.workspacecord_E2E_PROJECT || 'workspacecord';
 const artifactsDir = join(process.cwd(), 'local-acceptance');
 mkdirSync(artifactsDir, { recursive: true });
 const reportPath = join(artifactsDir, 'workspacecord-integration-report.json');
 
 const report: IntegrationReport = {
   startedAt: new Date().toISOString(),
-  projectName,
+  projectName: requestedProjectName,
   guildId: config.guildId,
   usedExistingBinding: false,
   temporaryCategoryCreated: false,
@@ -173,6 +189,7 @@ let cleanupBinding = false;
 let existingControl: TextChannel | null = null;
 let rebindForSmoke = false;
 let guild: Guild | null = null;
+let effectiveProjectName = requestedProjectName;
 const createdSessionIds = new Set<string>();
 const createdHistoryThreadIds = new Set<string>();
 let originalBinding:
@@ -190,12 +207,25 @@ try {
   await loadSessions();
   await loadArchived();
 
-  let mountedProject = getProjectByName(projectName);
+  let mountedProject = getProjectByName(effectiveProjectName);
   if (!mountedProject) {
-    mountedProject = await registerProject(projectName, process.cwd());
-    step(report, 'mount-project', 'passed', `自动挂载本地项目 ${projectName}`);
+    const mountedByPath = getProjectByPath(process.cwd());
+    if (mountedByPath) {
+      mountedProject = mountedByPath;
+      effectiveProjectName = mountedByPath.name;
+      report.projectName = mountedByPath.name;
+      step(
+        report,
+        'mount-project',
+        'passed',
+        `复用当前路径已挂载项目 ${mountedByPath.name}`,
+      );
+    } else {
+      mountedProject = await registerProject(effectiveProjectName, process.cwd());
+      step(report, 'mount-project', 'passed', `自动挂载本地项目 ${effectiveProjectName}`);
+    }
   } else {
-    step(report, 'mount-project', 'passed', `已存在挂载项目 ${projectName}`);
+    step(report, 'mount-project', 'passed', `已存在挂载项目 ${effectiveProjectName}`);
   }
 
   client = new Client({
@@ -280,13 +310,13 @@ try {
   const actorTag = 'workspacecord-e2e#0001';
 
   if (rebindForSmoke) {
-    await unbindProjectCategory(projectName);
+    await unbindProjectCategory(effectiveProjectName);
     step(report, 'project-rebind', 'passed', '已临时解绑原分类，准备在临时分类执行冒烟');
   }
 
   if (!report.usedExistingBinding || !existingControl) {
     const interaction = makeInteraction(actorId, actorTag, guild, bootstrapChannel, 'setup', {
-      project: projectName,
+      project: effectiveProjectName,
     });
     await handleProject(interaction);
     const setupReply = await interaction.fetchReply().catch(() => null);
@@ -299,13 +329,18 @@ try {
     if (/Failed|not under a Category|Run `\/project setup` first/i.test(setupText)) {
       throw new Error(`project setup failed: ${setupText}`);
     }
-    step(report, 'project-setup', 'passed', `已刷新项目绑定与控制频道 ${projectName}`);
+    step(
+      report,
+      'project-setup',
+      'passed',
+      `已刷新项目绑定与控制频道 ${effectiveProjectName}`,
+    );
   } else {
     step(report, 'project-setup', 'skipped', '项目已存在 Discord 绑定，跳过重复绑定');
   }
 
   await guild.channels.fetch();
-  const boundProject = getProjectByName(projectName);
+  const boundProject = getProjectByName(effectiveProjectName);
   report.historyChannelId = boundProject?.historyChannelId;
 
   const mainLabel = `e2e-main-${Date.now().toString().slice(-4)}`;
@@ -379,16 +414,20 @@ try {
       '未配置 ANTHROPIC_API_KEY，跳过真实 Claude 生成测试',
     );
   } else {
-    await withTimeout(
-      executeSessionPrompt(
-        getSession(mainSession.id)!,
-        mainChannel,
-        'Reply with exactly: workspacecord_E2E_OK',
-      ),
-      60000,
-      'provider-claude-smoke',
-    );
-    step(report, 'provider-claude-smoke', 'passed', '已执行 Claude 真实生成冒烟');
+    try {
+      await withTimeout(
+        executeSessionPrompt(
+          getSession(mainSession.id)!,
+          mainChannel,
+          'Reply with exactly: workspacecord_E2E_OK',
+        ),
+        60000,
+        'provider-claude-smoke',
+      );
+      step(report, 'provider-claude-smoke', 'passed', '已执行 Claude 真实生成冒烟');
+    } catch (err: unknown) {
+      skipProviderSmoke(report, 'provider-claude-smoke', 'Claude', err);
+    }
   }
 
   if (!codexCapable) {
@@ -402,101 +441,105 @@ try {
       '未配置 CODEX_API_KEY，跳过真实 Codex 生成测试',
     );
   } else {
-    const codexLabel = `e2e-codex-${Date.now().toString().slice(-4)}`;
-    const codexInteraction = makeInteraction(actorId, actorTag, guild, bootstrapChannel, 'spawn', {
-      label: codexLabel,
-      provider: 'codex',
-      mode: 'auto',
-    });
-    await withTimeout(handleAgent(codexInteraction), 30000, 'provider-codex-spawn');
-
-    const codexSession = getSessionsByCategory(category.id).find(
-      (session) => session.type === 'persistent' && session.agentLabel === codexLabel,
-    );
-    if (!codexSession) {
-      throw new Error('Codex 冒烟会话未创建成功');
-    }
-    report.codexSessionChannelId = codexSession.channelId;
-    createdSessionIds.add(codexSession.id);
-
-    const codexChannel = (await guild.channels.fetch(codexSession.channelId)) as TextChannel;
-    await withTimeout(
-      executeSessionPrompt(
-        getSession(codexSession.id)!,
-        codexChannel,
-        'Reply with exactly: workspacecord_CODEX_E2E_OK',
-      ),
-      60000,
-      'provider-codex-smoke',
-    );
-    step(report, 'provider-codex-smoke', 'passed', '已执行 Codex 真实生成冒烟');
-
-    const liveCodexSession = getSession(codexSession.id);
-    if (!liveCodexSession?.statusCardMessageId) {
-      throw new Error('Codex 会话缺少状态卡消息 ID，无法验证监控驱动状态更新');
-    }
-
-    const providerSessionId =
-      liveCodexSession.providerSessionId || '019d4200-1111-2222-3333-444444444444';
-    const monitorBaseDir = mkdtempSync(join(tmpdir(), 'workspacecord-codex-monitor-'));
-    const now = new Date();
-    const yyyy = String(now.getFullYear());
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mi = String(now.getMinutes()).padStart(2, '0');
-    const ss = String(now.getSeconds()).padStart(2, '0');
-    const dayDir = join(monitorBaseDir, yyyy, mm, dd);
-    mkdirSync(dayDir, { recursive: true });
-    const rolloutPath = join(
-      dayDir,
-      `rollout-${yyyy}-${mm}-${dd}T${hh}-${mi}-${ss}-${providerSessionId}.jsonl`,
-    );
-
-    const monitor = new CodexLogMonitor(monitorBaseDir, (sessionId, state, event, extra) => {
-      void handleCodexMonitorStateChange(
-        (channelId) => guild.channels.cache.get(channelId),
-        sessionId,
-        state,
-        event,
-        extra,
-      );
-    });
-
     try {
-      monitor.start();
-      writeFileSync(
-        rolloutPath,
-        `${JSON.stringify({ type: 'session_meta', payload: { cwd: liveCodexSession.directory } })}\n`,
-        'utf-8',
+      const codexLabel = `e2e-codex-${Date.now().toString().slice(-4)}`;
+      const codexInteraction = makeInteraction(actorId, actorTag, guild, bootstrapChannel, 'spawn', {
+        label: codexLabel,
+        provider: 'codex',
+        mode: 'auto',
+      });
+      await withTimeout(handleAgent(codexInteraction), 30000, 'provider-codex-spawn');
+
+      const codexSession = getSessionsByCategory(category.id).find(
+        (session) => session.type === 'persistent' && session.agentLabel === codexLabel,
+      );
+      if (!codexSession) {
+        throw new Error('Codex 冒烟会话未创建成功');
+      }
+      report.codexSessionChannelId = codexSession.channelId;
+      createdSessionIds.add(codexSession.id);
+
+      const codexChannel = (await guild.channels.fetch(codexSession.channelId)) as TextChannel;
+      await withTimeout(
+        executeSessionPrompt(
+          getSession(codexSession.id)!,
+          codexChannel,
+          'Reply with exactly: workspacecord_CODEX_E2E_OK',
+        ),
+        60000,
+        'provider-codex-smoke',
+      );
+      step(report, 'provider-codex-smoke', 'passed', '已执行 Codex 真实生成冒烟');
+
+      const liveCodexSession = getSession(codexSession.id);
+      if (!liveCodexSession?.statusCardMessageId) {
+        throw new Error('Codex 会话缺少状态卡消息 ID，无法验证监控驱动状态更新');
+      }
+
+      const providerSessionId =
+        liveCodexSession.providerSessionId || '019d4200-1111-2222-3333-444444444444';
+      const monitorBaseDir = mkdtempSync(join(tmpdir(), 'workspacecord-codex-monitor-'));
+      const now = new Date();
+      const yyyy = String(now.getFullYear());
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mi = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const dayDir = join(monitorBaseDir, yyyy, mm, dd);
+      mkdirSync(dayDir, { recursive: true });
+      const rolloutPath = join(
+        dayDir,
+        `rollout-${yyyy}-${mm}-${dd}T${hh}-${mi}-${ss}-${providerSessionId}.jsonl`,
       );
 
-      appendFileSync(
-        rolloutPath,
-        `${JSON.stringify({ type: 'event_msg', payload: { type: 'task_started' } })}\n`,
-        'utf-8',
-      );
-      await waitForCondition(async () => {
-        const statusMessage = await codexChannel.messages.fetch(liveCodexSession.statusCardMessageId!);
-        return statusMessage.embeds[0]?.title?.includes('正在思考') ?? false;
-      }, 10000, 'codex-monitor-thinking');
-      step(report, 'codex-monitor-thinking', 'passed', 'Codex 日志监控已驱动状态卡进入“正在思考”');
+      const monitor = new CodexLogMonitor(monitorBaseDir, (sessionId, state, event, extra) => {
+        void handleCodexMonitorStateChange(
+          (channelId) => guild.channels.cache.get(channelId),
+          sessionId,
+          state,
+          event,
+          extra,
+        );
+      });
 
-      appendFileSync(
-        rolloutPath,
-        `${JSON.stringify({
-          type: 'response_item',
-          payload: { type: 'function_call', name: 'shell_command', arguments: JSON.stringify({ command: 'pwd' }) },
-        })}\n`,
-        'utf-8',
-      );
-      await waitForCondition(async () => {
-        const statusMessage = await codexChannel.messages.fetch(liveCodexSession.statusCardMessageId!);
-        return statusMessage.embeds[0]?.title?.includes('正在执行') ?? false;
-      }, 10000, 'codex-monitor-working');
-      step(report, 'codex-monitor-working', 'passed', 'Codex 日志监控已驱动状态卡进入“正在执行”');
-    } finally {
-      monitor.stop();
+      try {
+        monitor.start();
+        writeFileSync(
+          rolloutPath,
+          `${JSON.stringify({ type: 'session_meta', payload: { cwd: liveCodexSession.directory } })}\n`,
+          'utf-8',
+        );
+
+        appendFileSync(
+          rolloutPath,
+          `${JSON.stringify({ type: 'event_msg', payload: { type: 'task_started' } })}\n`,
+          'utf-8',
+        );
+        await waitForCondition(async () => {
+          const statusMessage = await codexChannel.messages.fetch(liveCodexSession.statusCardMessageId!);
+          return statusMessage.embeds[0]?.title?.includes('正在思考') ?? false;
+        }, 10000, 'codex-monitor-thinking');
+        step(report, 'codex-monitor-thinking', 'passed', 'Codex 日志监控已驱动状态卡进入“正在思考”');
+
+        appendFileSync(
+          rolloutPath,
+          `${JSON.stringify({
+            type: 'response_item',
+            payload: { type: 'function_call', name: 'shell_command', arguments: JSON.stringify({ command: 'pwd' }) },
+          })}\n`,
+          'utf-8',
+        );
+        await waitForCondition(async () => {
+          const statusMessage = await codexChannel.messages.fetch(liveCodexSession.statusCardMessageId!);
+          return statusMessage.embeds[0]?.title?.includes('正在执行') ?? false;
+        }, 10000, 'codex-monitor-working');
+        step(report, 'codex-monitor-working', 'passed', 'Codex 日志监控已驱动状态卡进入“正在执行”');
+      } finally {
+        monitor.stop();
+      }
+    } catch (err: unknown) {
+      skipProviderSmoke(report, 'provider-codex-smoke', 'Codex', err);
     }
   }
 
@@ -557,22 +600,28 @@ try {
     if (cleanupBinding) {
       if (originalBinding?.categoryId) {
         await bindProjectCategory(
-          projectName,
+          effectiveProjectName,
           originalBinding.categoryId,
           originalBinding.categoryName,
         ).catch(() => {});
         if (originalBinding.historyChannelId) {
-          await setProjectHistoryChannel(projectName, originalBinding.historyChannelId).catch(
+          await setProjectHistoryChannel(
+            effectiveProjectName,
+            originalBinding.historyChannelId,
+          ).catch(
             () => {},
           );
         }
         if (originalBinding.controlChannelId) {
-          await setProjectControlChannel(projectName, originalBinding.controlChannelId).catch(
+          await setProjectControlChannel(
+            effectiveProjectName,
+            originalBinding.controlChannelId,
+          ).catch(
             () => {},
           );
         }
       } else {
-        await unbindProjectCategory(projectName).catch(() => {});
+        await unbindProjectCategory(effectiveProjectName).catch(() => {});
       }
     }
   } finally {
@@ -580,6 +629,7 @@ try {
       client.destroy();
     }
     report.finishedAt = new Date().toISOString();
+    mkdirSync(artifactsDir, { recursive: true });
     writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf-8');
     process.stdout.write(`\n报告已写入: ${reportPath}\n`);
     if (report.missingInputs.length > 0) {

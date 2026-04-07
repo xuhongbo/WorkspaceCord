@@ -35,7 +35,11 @@ Discord Server
 - 使用 `/project setup` 在 Discord 中绑定项目
 - 主会话频道与子代理线程模型
 - 会话自动归档到 `#history`
+- 项目级人格、可复用技能和 MCP 服务注册管理
 - 同时支持 Claude 与 Codex 提供方
+- `monitor` 模式可持续推进直到任务完成
+- 托管会话支持 Discord 远程人工审批 / 门控处理
+- 支持本地托管 `Codex` 启动与自动会话发现 / 同步
 - 使用全局配置存储，不依赖项目内 `.env`
 - 支持守护进程安装与后台管理
 
@@ -152,6 +156,42 @@ workspacecord codex [options]   # 启动托管的 Codex 会话（支持远程审
 - `/subagent run`：在当前主会话下创建子代理线程
 - `/subagent list`：查看当前会话的子代理
 - `/shell run` / `/shell processes` / `/shell kill`
+
+
+## 能力矩阵
+
+| 能力 | 状态 | 入口 |
+|---|---|---|
+| 全局配置 | 稳定 | `workspacecord config *` |
+| 显式本地项目挂载 | 稳定 | `workspacecord project *` |
+| Discord 分类绑定 | 稳定 | `/project setup`, `/project info` |
+| 项目级人格 | 可用 | `/project personality`, `/project personality-clear` |
+| 项目级可复用技能 | 可用 | `/project skill-add`, `/project skill-list`, `/project skill-run` |
+| 项目级 MCP 注册表 | 可用 | `/project mcp-add`, `/project mcp-list`, `/project mcp-remove` |
+| 主代理会话 | 稳定 | `/agent spawn`, `/agent list`, `/agent archive`, `/agent cleanup` |
+| 子代理线程 | 稳定 | `/subagent run`, `/subagent list` |
+| 会话执行模式 | 稳定 | `/agent mode`, `/agent goal`, `/agent verbose` |
+| 远程人工审批 / 门控 | 可用 | 交互卡、`monitor` 模式、Claude 权限处理 |
+| 本地托管 Codex 启动 | 可用 | `workspacecord codex` |
+| 本地会话发现 / 同步 | 可用 | hook / codex-log / sync 恢复路径 |
+| 从 Discord 执行 shell | 可用 | `/shell run`, `/shell processes`, `/shell kill` |
+| 历史归档 | 稳定 | `#history`, `/agent archive` |
+| 守护进程安装 / 后台运行 | 可用 | `workspacecord daemon *` |
+
+## 运行时架构
+
+当前主运行路径：
+
+```text
+bot.ts
+  -> BotEventRouter
+    -> command handlers / button handler / message handler
+      -> thread-manager façade
+        -> session-registry / session runtime / state machine / panel adapter
+          -> Discord delivery + status cards + summaries
+```
+
+这意味着 Discord 只是控制平面；真正的项目状态、provider 会话、审批、输出渲染都发生在运行 `workspacecord` 的本机上。
 
 ## 开发与验证
 

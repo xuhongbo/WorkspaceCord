@@ -13,6 +13,7 @@ import type {
   ProviderName,
 } from './types.ts';
 import { config } from './config.ts';
+import { cleanupSessionPanel } from './panel-adapter.ts';
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,9 @@ const idToChannelId = new Map<string, string>();
 
 // categoryId → Set<channelId> (索引，用于快速查找)
 const sessionsByCategory = new Map<string, Set<string>>();
+
+// providerSessionId → channelId (二级索引，用于 O(1) provider session 查找)
+const providerSessionIndex = new Map<string, string>();
 
 // Session 运行时状态（不持久化）
 const sessionControllers = new Map<string, AbortController>();
@@ -101,6 +105,11 @@ export async function loadSessions(): Promise<void> {
       isGenerating: false,
     });
     idToChannelId.set(s.id, s.channelId);
+
+    // 维护 provider session 索引
+    if (s.providerSessionId) {
+      providerSessionIndex.set(s.providerSessionId, s.channelId);
+    }
 
     // 维护 category 索引
     if (!sessionsByCategory.has(s.categoryId)) {
@@ -302,6 +311,9 @@ export async function createSession(params: CreateSessionParams): Promise<Thread
 
   sessions.set(channelId, session);
   idToChannelId.set(id, channelId);
+  if (providerSessionId) {
+    providerSessionIndex.set(providerSessionId, channelId);
+  }
 
   if (!sessionsByCategory.has(categoryId)) {
     sessionsByCategory.set(categoryId, new Set());
@@ -328,12 +340,7 @@ export function getSessionByChannel(channelId: string): ThreadSession | undefine
 export const getSessionByThread = getSessionByChannel;
 
 export function getSessionByCodexId(codexSessionId: string): ThreadSession | undefined {
-  for (const session of sessions.values()) {
-    if (session.provider === 'codex' && session.providerSessionId === codexSessionId) {
-      return session;
-    }
-  }
-  return undefined;
+  return getSessionByProviderSession('codex', codexSessionId);
 }
 
 export function getSessionByProviderSession(
@@ -341,9 +348,10 @@ export function getSessionByProviderSession(
   providerSessionId: string,
 ): ThreadSession | undefined {
   if (!providerSessionId) return undefined;
-  for (const session of sessions.values()) {
-    if (session.provider !== provider) continue;
-    if (session.providerSessionId === providerSessionId) return session;
+  const channelId = providerSessionIndex.get(providerSessionId);
+  if (channelId) {
+    const session = sessions.get(channelId);
+    if (session && session.provider === provider) return session;
   }
   return undefined;
 }
@@ -397,12 +405,11 @@ function stripCodexMonitorPrefix(sessionId: string): string {
 
 export function findCodexSessionByProviderSessionId(providerSessionId: string): ThreadSession | undefined {
   const normalized = stripCodexMonitorPrefix(providerSessionId);
-  for (const session of sessions.values()) {
-    if (session.provider !== 'codex') continue;
-    if (!session.providerSessionId) continue;
-    if (session.providerSessionId === normalized || session.providerSessionId === providerSessionId) {
-      return session;
-    }
+  // Try O(1) index lookup first
+  const byNormalized = getSessionByProviderSession('codex', normalized);
+  if (byNormalized) return byNormalized;
+  if (normalized !== providerSessionId) {
+    return getSessionByProviderSession('codex', providerSessionId);
   }
   return undefined;
 }
@@ -444,6 +451,11 @@ export function updateSession(
 ): void {
   const session = getSession(sessionId);
   if (!session) return;
+  // Update providerSessionId index if changed
+  if (patch.providerSessionId !== undefined && patch.providerSessionId !== session.providerSessionId) {
+    if (session.providerSessionId) providerSessionIndex.delete(session.providerSessionId);
+    if (patch.providerSessionId) providerSessionIndex.set(patch.providerSessionId, session.channelId);
+  }
   Object.assign(session, patch);
   debouncedSave();
 }
@@ -558,7 +570,7 @@ export function setCurrentInteractionMessage(
 
 export async function endSession(id: string): Promise<void> {
   const session = getSession(id);
-  if (!session) throw new Error(`Session "${id}" not found`);
+  if (!session) return; // Idempotent: already ended
 
   const controller = sessionControllers.get(session.id);
   if (controller && session.isGenerating) {
@@ -568,6 +580,9 @@ export async function endSession(id: string): Promise<void> {
   sessionAbortReasons.delete(session.id);
 
   idToChannelId.delete(session.id);
+  if (session.providerSessionId) {
+    providerSessionIndex.delete(session.providerSessionId);
+  }
   sessions.delete(session.channelId);
 
   const categorySet = sessionsByCategory.get(session.categoryId);
@@ -578,6 +593,7 @@ export async function endSession(id: string): Promise<void> {
     }
   }
 
+  cleanupSessionPanel(session.id);
   await saveSessionsImmediate();
 }
 

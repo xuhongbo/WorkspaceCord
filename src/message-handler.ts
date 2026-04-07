@@ -2,8 +2,8 @@ import {
   ChannelType,
   type Message,
   type TextChannel,
-  type AnyThreadChannel,
 } from 'discord.js';
+import type { SessionChannel } from './types.ts';
 import { config } from './config.ts';
 import { getSessionByChannel, updateSession } from './thread-manager.ts';
 import { executeSessionPrompt } from './session-executor.ts';
@@ -15,12 +15,25 @@ import { registerMessageAttachments } from './discord/attachment-inbox.ts';
 import { buildInboundEnvelope } from './discord/inbound-envelope.ts';
 import { relocateSessionPanelToBottom } from './panel-adapter.ts';
 
-type SessionChannel = TextChannel | AnyThreadChannel;
-
 const lastMessageTime = new Map<string, number>();
+const lastRelocationTime = new Map<string, number>();
+const RATE_LIMIT_TTL_MS = 60 * 60 * 1000; // 1 hour
+const RELOCATION_COOLDOWN_MS = 10_000; // 10 seconds between relocations per session
+
+// Periodically prune stale rate-limit entries to prevent unbounded growth
+setInterval(() => {
+  const cutoff = Date.now() - RATE_LIMIT_TTL_MS;
+  for (const [key, time] of lastMessageTime) {
+    if (time < cutoff) lastMessageTime.delete(key);
+  }
+  for (const [key, time] of lastRelocationTime) {
+    if (time < cutoff) lastRelocationTime.delete(key);
+  }
+}, RATE_LIMIT_TTL_MS);
 
 export function resetMessageHandlerState(): void {
   lastMessageTime.clear();
+  lastRelocationTime.clear();
 }
 
 export async function handleMessage(message: Message): Promise<void> {
@@ -85,9 +98,13 @@ export async function handleMessage(message: Message): Promise<void> {
 
   console.log(`[MessageHandler] Prompt submitted to session ${session.id} (${envelope.text.length} chars)`);
   updateSession(session.id, { lastInboundMessageId: message.id });
-  await Promise.resolve(
-    relocateSessionPanelToBottom(session.id, channel as SessionChannel),
-  ).catch(() => {});
+  const lastReloc = lastRelocationTime.get(session.id) ?? 0;
+  if (now - lastReloc >= RELOCATION_COOLDOWN_MS) {
+    lastRelocationTime.set(session.id, now);
+    await Promise.resolve(
+      relocateSessionPanelToBottom(session.id, channel as SessionChannel),
+    ).catch(() => {});
+  }
   await executeSessionPrompt(session, channel as SessionChannel, envelope.renderedPrompt);
 
   if (session.type === 'subagent' && session.parentChannelId && message.guild) {

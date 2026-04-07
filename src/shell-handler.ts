@@ -1,6 +1,5 @@
 import { execa } from 'execa';
-import type { TextChannel, AnyThreadChannel } from 'discord.js';
-import type { ShellProcess } from './types.ts';
+import type { ShellProcess, SessionChannel } from './types.ts';
 import {
   initializeSessionPanel,
   updateSessionState,
@@ -9,8 +8,6 @@ import {
   handleResultEvent,
 } from './panel-adapter.ts';
 import { truncate } from './utils.ts';
-
-type SessionChannel = TextChannel | AnyThreadChannel;
 
 const runningProcesses = new Map<number, ShellProcess>();
 const execaProcesses = new Map<number, ReturnType<typeof execa>>();

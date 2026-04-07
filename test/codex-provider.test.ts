@@ -674,9 +674,10 @@ describe('CodexProvider', () => {
     const inputArg = runStreamedMock.mock.calls[0][0];
     // When mixed content, input is array of parts
     expect(Array.isArray(inputArg)).toBe(true);
-    const imgPart = (inputArg as Array<{ type: string }>).find((p) => p.type === 'local_image');
+    const imgPart = (inputArg as Array<{ type: string; path?: string }>).find((p) => p.type === 'local_image');
     expect(imgPart).toBeDefined();
-    expect(existsSync(imgPart!.path)).toBe(true);
+    // Temp file is cleaned up after stream completes — verify path was valid (starts with tmp prefix)
+    expect(imgPart!.path).toContain('workspacecord-img-');
   });
 
   it('passes plain string prompt as-is when no images', async () => {

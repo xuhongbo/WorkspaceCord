@@ -6,7 +6,7 @@ describe('commands contract', () => {
     const defs = getCommandDefinitions();
     const names = defs.map((d) => d.name);
     expect(names).toEqual(
-      expect.arrayContaining(['project', 'agent', 'subagent', 'shell', 'spawn', 'stop', 'end', 'run']),
+      expect.arrayContaining(['project', 'agent', 'subagent', 'shell']),
     );
   });
 

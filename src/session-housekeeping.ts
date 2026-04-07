@@ -115,6 +115,8 @@ export async function cleanupSessionsById(
       if (channel) {
         await channel.delete(deleteReason);
         result.deletedChannels += 1;
+        // Throttle to avoid Discord rate limits on bulk channel deletions
+        await new Promise((r) => setTimeout(r, 300));
       } else {
         result.missingChannels += 1;
         console.warn(`[Housekeeping] Channel ${session.channelId} for session ${sessionId} not found during cleanup`);

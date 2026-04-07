@@ -153,8 +153,10 @@ export class StatusCard {
     }
 
     if (data.phase) {
-      this.validate(data.phase);
-      embed.addFields({ name: '阶段', value: data.phase, inline: true });
+      const sanitizedPhase = this.sanitizePhase(data.phase);
+      if (sanitizedPhase) {
+        embed.addFields({ name: '阶段', value: sanitizedPhase, inline: true });
+      }
     }
 
     if (data.permissionsSummary) {
@@ -162,6 +164,28 @@ export class StatusCard {
     }
 
     return embed;
+  }
+
+  /**
+   * Sanitize phase text for status card display.
+   * Returns cleaned text or empty string if unsuitable.
+   */
+  private sanitizePhase(description: string): string {
+    let normalized = description.trim();
+    if (!normalized) return '';
+
+    // Strip code blocks, diffs, and file lists — these don't belong in a status card
+    if (normalized.includes('```') || /diff --git/.test(normalized) || this.isLikelyFileList(normalized)) {
+      console.warn(`[StatusCard] Phase contains unsuitable content, stripping: ${normalized.slice(0, 60)}...`);
+      return '';
+    }
+
+    // Truncate to 200 chars
+    if (normalized.length > 200) {
+      normalized = normalized.slice(0, 197) + '...';
+    }
+
+    return normalized;
   }
 
   validate(description?: string): void {

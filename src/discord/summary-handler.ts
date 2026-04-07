@@ -3,7 +3,6 @@
 
 import { type TextChannel, type AnyThreadChannel } from 'discord.js';
 import { config } from '../config.ts';
-import type { StatusCard } from './status-card.ts';
 import { buildDeliveryPlan } from './delivery-policy.ts';
 import { deliver } from './delivery.ts';
 import { DigestDelivery } from './digest-delivery.ts';
@@ -12,25 +11,22 @@ export class SummaryHandler {
   private sessionId: string;
   private chatId: string;
   private channel: TextChannel | AnyThreadChannel;
-  private statusCard: StatusCard;
   private digestDelivery: DigestDelivery;
 
   constructor(
     sessionId: string,
     chatId: string,
     channel: TextChannel | AnyThreadChannel,
-    statusCard: StatusCard,
   ) {
     this.sessionId = sessionId;
     this.chatId = chatId;
     this.channel = channel;
-    this.statusCard = statusCard;
     this.digestDelivery = new DigestDelivery(channel);
   }
 
   async sendTurnSummary(
     content: string,
-    turn: number,
+    _turn: number,
     replyToMessageId?: string,
     attachments: string[] = [],
   ): Promise<void> {
@@ -41,12 +37,11 @@ export class SummaryHandler {
       replyToMessageId,
       attachments,
     );
-    await this.statusCard.update('idle', { turn: turn + 1, updatedAt: Date.now() });
   }
 
   async sendTurnFailure(
     content: string,
-    turn: number,
+    _turn: number,
     replyToMessageId?: string,
     attachments: string[] = [],
   ): Promise<void> {
@@ -57,7 +52,6 @@ export class SummaryHandler {
       replyToMessageId,
       attachments,
     );
-    await this.statusCard.update('error', { turn, updatedAt: Date.now() });
   }
 
   async sendEndingSummary(content: string, attachments: string[] = []): Promise<void> {
@@ -68,7 +62,6 @@ export class SummaryHandler {
       undefined,
       attachments,
     );
-    await this.statusCard.update('offline', { turn: 0, updatedAt: Date.now() });
   }
 
   async sendDigestSummary(content: string): Promise<void> {

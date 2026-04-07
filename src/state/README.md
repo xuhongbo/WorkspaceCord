@@ -83,7 +83,15 @@ const result6 = stateMachine.transition('session-1', 'session_complete', {
 // 查询当前状态
 const state = stateMachine.getState('session-1');
 console.log(state);
-// { lifecycle: 'completed', execution: null, gate: 'approved' }
+// { lifecycle: 'completed', execution: null, gate: 'approved', ... }
+
+const projection = stateMachine.getSnapshot('session-1');
+console.log(projection);
+// { state: 'completed', turn: 1, humanResolved: false, ... } // 通用投影
+
+const panelProjection = stateMachine.getPanelProjection('session-1');
+console.log(panelProjection);
+// { state: 'completed', isCompleted: true, isWaitingHuman: false, ... } // 面板展示投影
 
 // 查询转换历史
 const history = stateMachine.getTransitionHistory('session-1');

@@ -48,8 +48,7 @@ describe('SummaryHandler', () => {
 
   it('本轮完成通过统一投递层发送最终可见消息', async () => {
     const channel = createChannel();
-    const statusCard = { update: vi.fn(async () => undefined) };
-    const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
+    const handler = new SummaryHandler('session-1', 'chat-1', channel as never);
 
     await handler.sendTurnSummary('任务完成', 3, 'user-msg-1');
 
@@ -64,14 +63,12 @@ describe('SummaryHandler', () => {
       }),
     );
     expect(deliver).toHaveBeenCalledWith(channel, expect.objectContaining({ mode: 'user_reply', replyToMessageId: 'user-msg-1' }));
-    expect(statusCard.update).toHaveBeenCalledWith('idle', expect.objectContaining({ turn: 4 }));
     expect(channel.send).not.toHaveBeenCalled();
   });
 
   it('发送最终摘要时可以携带附件', async () => {
     const channel = createChannel();
-    const statusCard = { update: vi.fn(async () => undefined) };
-    const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
+    const handler = new SummaryHandler('session-1', 'chat-1', channel as never);
     const attachments = ['/tmp/attachment.png'];
 
     await handler.sendTurnSummary('任务完成', 1, 'user-msg-1', attachments);
@@ -89,8 +86,7 @@ describe('SummaryHandler', () => {
 
   it('摘要首次创建通过统一投递层发送，后续刷新优先复用已有消息', async () => {
     const channel = createChannel();
-    const statusCard = { update: vi.fn(async () => undefined) };
-    const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
+    const handler = new SummaryHandler('session-1', 'chat-1', channel as never);
 
     await handler.sendDigestSummary('A'.repeat(2500));
     expect(deliver).not.toHaveBeenCalled();
@@ -108,8 +104,7 @@ describe('SummaryHandler', () => {
 
   it('前块编辑失败时仍保持摘要顺序并清理陈旧消息', async () => {
     const channel = createChannel();
-    const statusCard = { update: vi.fn(async () => undefined) };
-    const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
+    const handler = new SummaryHandler('session-1', 'chat-1', channel as never);
 
     await handler.sendDigestSummary('A'.repeat(2500));
     channel.messages.edit.mockImplementationOnce(async () => { throw new Error('gone'); }).mockImplementationOnce(async () => undefined);
@@ -123,8 +118,7 @@ describe('SummaryHandler', () => {
 
   it('刷新已有摘要消息时会清空旧正文，避免正文与嵌入重复展示', async () => {
     const channel = createChannel();
-    const statusCard = { update: vi.fn(async () => undefined) };
-    const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
+    const handler = new SummaryHandler('session-1', 'chat-1', channel as never);
 
     await handler.sendDigestSummary('首次摘要');
     await handler.sendDigestSummary('更新后的摘要');
@@ -140,8 +134,7 @@ describe('SummaryHandler', () => {
 
   it('可以把当前摘要整组迁移到底部并切换绑定', async () => {
     const channel = createChannel();
-    const statusCard = { update: vi.fn(async () => undefined) };
-    const handler = new SummaryHandler('session-1', 'chat-1', channel as never, statusCard as never);
+    const handler = new SummaryHandler('session-1', 'chat-1', channel as never);
 
     await handler.sendDigestSummary('A'.repeat(2500));
 

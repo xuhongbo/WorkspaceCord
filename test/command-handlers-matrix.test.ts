@@ -127,10 +127,6 @@ const {
   handleAgent,
   handleSubagent,
   handleShell,
-  handleSpawnShortcut,
-  handleStopShortcut,
-  handleEndShortcut,
-  handleRunShortcut,
 } = await import('../src/command-handlers.ts');
 
 const project = {
@@ -679,28 +675,5 @@ describe('shell commands', () => {
     const interaction = makeInteraction({ subcommand: 'run', values: { command: 'pwd' }, channel: makeTextChannel({ id: 'session-channel' }) });
     await handleShell(interaction as never);
     expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining('Shell execution is disabled') }));
-  });
-});
-
-describe('shortcut commands', () => {
-  it('spawn shortcut 复用 spawn 主路径', async () => {
-    const control = makeTextChannel({ id: 'control-1', parentId: 'cat-1', name: 'control' });
-    const created = makeTextChannel({ id: 'created-1', parentId: 'cat-1', name: 'claude-test' });
-    const guild = makeGuild({ channels: [control], createImpl: async () => created });
-    createSession.mockResolvedValue({ ...session, channelId: 'created-1', claudePermissionMode: 'normal' });
-    const interaction = makeInteraction({ subcommand: 'spawn', values: { label: 'test' }, channel: control, guild });
-    await handleSpawnShortcut(interaction as never);
-    expect(createSession).toHaveBeenCalled();
-  });
-
-  it('stop/end/run shortcut 走对应主路径', async () => {
-    const channel = makeTextChannel({ id: 'session-channel' });
-    const guild = makeGuild({ channels: [channel] });
-    await handleStopShortcut(makeInteraction({ subcommand: 'stop', channel }) as never);
-    await handleEndShortcut(makeInteraction({ subcommand: 'end', channel, guild }) as never);
-    await handleRunShortcut(makeInteraction({ subcommand: 'run', values: { label: 'worker' }, channel, guild }) as never);
-    expect(abortSession).toHaveBeenCalled();
-    expect(endSession).toHaveBeenCalled();
-    expect(spawnSubagent).toHaveBeenCalled();
   });
 });

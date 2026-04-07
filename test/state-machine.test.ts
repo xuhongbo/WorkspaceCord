@@ -20,6 +20,8 @@ describe('StateMachine', () => {
       expect(state.lifecycle).toBe('initializing');
       expect(state.execution).toBeNull();
       expect(state.gate).toBeNull();
+      expect(state.displayState).toBe('idle');
+      expect(state.turn).toBe(0);
     });
 
     it('returns same state on subsequent calls', () => {
@@ -31,57 +33,63 @@ describe('StateMachine', () => {
 
   describe('transition — lifecycle', () => {
     it('transitions from initializing to active', () => {
-      const result = sm.transition('sess-1', 'session_started', { lifecycle: 'active' });
+      const result = sm.transition('sess-1', 'session_started', {
+        lifecycle: 'active',
+        execution: 'idle',
+      }, {
+        displayState: 'idle',
+      });
 
       expect(result.success).toBe(true);
       expect(result.state.lifecycle).toBe('active');
+      expect(result.state.execution).toBe('idle');
     });
 
     it('rejects invalid lifecycle transition', () => {
-      sm.getState('sess-1'); // create default (initializing)
-      const result = sm.transition('sess-1', 'bad', { lifecycle: 'completed' });
+      sm.transition('sess-1', 'start', { lifecycle: 'active', execution: 'idle' }, { displayState: 'idle' });
+      const result = sm.transition('sess-1', 'bad', { lifecycle: 'initializing' });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('非法');
     });
 
-    it('allows error from any state', () => {
-      sm.transition('sess-1', 'session_started', { lifecycle: 'active' });
-      const result = sm.transition('sess-1', 'error', { lifecycle: 'error' });
+    it('allows error from active state', () => {
+      sm.transition('sess-1', 'session_started', { lifecycle: 'active', execution: 'idle' }, { displayState: 'idle' });
+      const result = sm.transition('sess-1', 'error', { lifecycle: 'error' }, { displayState: 'error' });
 
       expect(result.success).toBe(true);
       expect(result.state.lifecycle).toBe('error');
+      expect(result.state.displayState).toBe('error');
     });
 
-    it('is idempotent — same state returns success without change', () => {
-      sm.transition('sess-1', 'start', { lifecycle: 'active' });
-      const result = sm.transition('sess-1', 'noop', { lifecycle: 'active' });
+    it('is idempotent when full state does not change', () => {
+      sm.transition('sess-1', 'start', { lifecycle: 'active', execution: 'idle' }, { displayState: 'idle' });
+      const before = sm.getTransitionHistory('sess-1').length;
+      const result = sm.transition('sess-1', 'noop', { lifecycle: 'active', execution: 'idle' }, { displayState: 'idle' });
 
       expect(result.success).toBe(true);
+      expect(sm.getTransitionHistory('sess-1')).toHaveLength(before);
     });
   });
 
   describe('transition — execution state', () => {
     beforeEach(() => {
-      sm.transition('sess-1', 'start', { lifecycle: 'active', execution: 'idle' });
+      sm.transition('sess-1', 'start', { lifecycle: 'active', execution: 'idle' }, { displayState: 'idle' });
     });
 
     it('transitions idle -> thinking', () => {
-      const result = sm.transition('sess-1', 'thinking', { execution: 'thinking' });
+      const result = sm.transition('sess-1', 'thinking', { execution: 'thinking' }, { displayState: 'thinking' });
       expect(result.success).toBe(true);
       expect(result.state.execution).toBe('thinking');
     });
 
-    it('rejects idle -> streaming_output (must go through thinking or tool_executing)', () => {
-      // Reset to idle
-      sm.transition('sess-1', 'reset', { execution: 'idle' });
-      const result = sm.transition('sess-1', 'stream', { execution: 'streaming_output' });
-
+    it('rejects idle -> streaming_output', () => {
+      const result = sm.transition('sess-1', 'stream', { execution: 'streaming_output' }, { displayState: 'working' });
       expect(result.success).toBe(false);
     });
 
     it('clears execution state when lifecycle is not active', () => {
-      const result = sm.transition('sess-1', 'paused', { lifecycle: 'paused' });
+      const result = sm.transition('sess-1', 'paused', { lifecycle: 'paused' }, { displayState: 'stalled' });
 
       expect(result.success).toBe(true);
       expect(result.state.lifecycle).toBe('paused');
@@ -89,7 +97,7 @@ describe('StateMachine', () => {
     });
 
     it('rejects non-null execution when lifecycle is not active', () => {
-      sm.transition('sess-1', 'done', { lifecycle: 'completed' });
+      sm.transition('sess-1', 'done', { lifecycle: 'completed' }, { displayState: 'completed' });
       const result = sm.transition('sess-1', 'bad', { execution: 'thinking' });
 
       expect(result.success).toBe(false);
@@ -97,10 +105,51 @@ describe('StateMachine', () => {
     });
   });
 
+  describe('turn helpers', () => {
+    it('setTurn writes into single state source', () => {
+      const projection = sm.setTurn('sess-1', 3);
+      const state = sm.getState('sess-1');
+
+      expect(projection.turn).toBe(3);
+      expect(state.turn).toBe(3);
+    });
+
+    it('incrementTurn increments turn and clears humanResolved', () => {
+      sm.transition('sess-1', 'approved', { lifecycle: 'active', execution: 'tool_executing', gate: 'approved' }, {
+        displayState: 'working',
+        humanResolved: true,
+        turn: 1,
+      });
+
+      const projection = sm.incrementTurn('sess-1');
+
+      expect(projection.turn).toBe(2);
+      expect(projection.humanResolved).toBe(false);
+    });
+
+    it('advanceTurnToIdle increments turn and settles to idle projection', () => {
+      sm.transition('sess-1', 'working', { lifecycle: 'active', execution: 'tool_executing', gate: 'approved' }, {
+        displayState: 'working',
+        humanResolved: true,
+        turn: 2,
+        phase: '执行中',
+      });
+
+      const projection = sm.advanceTurnToIdle('sess-1');
+      const state = sm.getState('sess-1');
+
+      expect(projection.turn).toBe(3);
+      expect(projection.state).toBe('idle');
+      expect(projection.humanResolved).toBe(false);
+      expect(state.execution).toBe('idle');
+      expect(state.gate).toBeNull();
+    });
+  });
+
   describe('transition history', () => {
     it('records transitions', () => {
-      sm.transition('sess-1', 'start', { lifecycle: 'active' });
-      sm.transition('sess-1', 'pause', { lifecycle: 'paused' });
+      sm.transition('sess-1', 'start', { lifecycle: 'active', execution: 'idle' }, { displayState: 'idle' });
+      sm.transition('sess-1', 'pause', { lifecycle: 'paused' }, { displayState: 'stalled' });
 
       const history = sm.getTransitionHistory('sess-1');
       expect(history).toHaveLength(2);
@@ -110,12 +159,13 @@ describe('StateMachine', () => {
 
     it('limits history to 100 entries', () => {
       for (let i = 0; i < 150; i++) {
-        const target = i % 2 === 0 ? 'active' : 'error';
-        if (target === 'error') {
-          sm.transition('sess-1', 'e', { lifecycle: 'error' });
-        } else {
-          sm.transition('sess-1', 'r', { lifecycle: 'active' });
-        }
+        const toError = i % 2 === 0;
+        sm.transition(
+          'sess-1',
+          toError ? 'error' : 'recover',
+          { lifecycle: toError ? 'error' : 'active', execution: toError ? null : 'idle' },
+          { displayState: toError ? 'error' : 'idle' },
+        );
       }
 
       const history = sm.getTransitionHistory('sess-1');
@@ -123,38 +173,10 @@ describe('StateMachine', () => {
     });
   });
 
-  describe('clearSession', () => {
-    it('removes session state', () => {
-      sm.transition('sess-1', 'start', { lifecycle: 'active' });
-      sm.clearSession('sess-1');
-
-      const state = sm.getState('sess-1');
-      expect(state.lifecycle).toBe('initializing'); // recreated as default
-    });
-  });
-
-  describe('legacy snapshot API', () => {
-    it('creates default snapshot', () => {
-      const snap = sm.ensureSession('sess-1');
-
-      expect(snap.state).toBe('idle');
-      expect(snap.turn).toBe(0);
-      expect(snap.isCompleted).toBe(false);
-    });
-
-    it('increments turn', () => {
-      sm.incrementTurn('sess-1');
-      const snap = sm.getSession('sess-1');
-      expect(snap?.turn).toBe(1);
-    });
-  });
-
   describe('resolveDisplayState', () => {
     it('returns highest priority state', () => {
-      sm.ensureSession('s1');
-      sm.updateSession('s1', { state: 'idle' });
-      sm.ensureSession('s2');
-      sm.updateSession('s2', { state: 'error' });
+      sm.transition('s1', 'idle', {}, { displayState: 'idle' });
+      sm.transition('s2', 'error', { lifecycle: 'error' }, { displayState: 'error' });
 
       const display = sm.resolveDisplayState();
       expect(display).toBe('error');
@@ -188,146 +210,196 @@ describe('StateMachine', () => {
   });
 
   describe('applyPlatformEvent', () => {
-    it('maps session_started to idle state and increments turn', () => {
-      const event = {
-        type: 'session_started' as const,
+    it('maps session_started to active idle and increments turn', () => {
+      const snap = sm.applyPlatformEvent({
+        type: 'session_started',
         sessionId: 'sess-1',
-        source: 'claude' as const,
-        stateSource: 'formal' as const,
-        confidence: 'high' as const,
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
         timestamp: Date.now(),
-      };
+      });
 
-      const snap = sm.applyPlatformEvent(event);
-
+      const state = sm.getState('sess-1');
       expect(snap.state).toBe('idle');
       expect(snap.turn).toBe(1);
+      expect(state.lifecycle).toBe('active');
+      expect(state.execution).toBe('idle');
     });
 
     it('maps thinking_started to thinking state', () => {
-      const event = {
-        type: 'thinking_started' as const,
-        sessionId: 'sess-1',
-        source: 'claude' as const,
-        stateSource: 'formal' as const,
-        confidence: 'high' as const,
-        timestamp: Date.now(),
-      };
-
-      const snap = sm.applyPlatformEvent(event);
-      expect(snap.state).toBe('thinking');
-    });
-
-    it('maps awaiting_human and sets isWaitingHuman', () => {
-      const event = {
-        type: 'awaiting_human' as const,
-        sessionId: 'sess-1',
-        source: 'claude' as const,
-        stateSource: 'formal' as const,
-        confidence: 'high' as const,
-        timestamp: Date.now(),
-      };
-
-      const snap = sm.applyPlatformEvent(event);
-      expect(snap.state).toBe('awaiting_human');
-      expect(snap.isWaitingHuman).toBe(true);
-    });
-
-    it('maps completed and sets isCompleted', () => {
-      const event = {
-        type: 'completed' as const,
-        sessionId: 'sess-1',
-        source: 'claude' as const,
-        stateSource: 'formal' as const,
-        confidence: 'high' as const,
-        timestamp: Date.now(),
-      };
-
-      const snap = sm.applyPlatformEvent(event);
-      expect(snap.state).toBe('completed');
-      expect(snap.isCompleted).toBe(true);
-    });
-
-    it('maps errored and sets isError', () => {
-      const event = {
-        type: 'errored' as const,
-        sessionId: 'sess-1',
-        source: 'claude' as const,
-        stateSource: 'formal' as const,
-        confidence: 'high' as const,
-        timestamp: Date.now(),
-      };
-
-      const snap = sm.applyPlatformEvent(event);
-      expect(snap.state).toBe('error');
-      expect(snap.isError).toBe(true);
-    });
-
-    it('clears isWaitingHuman on session_ended', () => {
       sm.applyPlatformEvent({
-        type: 'awaiting_human' as const, sessionId: 'sess-1', source: 'claude',
-        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
+        type: 'session_started',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
       });
 
-      sm.applyPlatformEvent({
-        type: 'session_ended' as const, sessionId: 'sess-1', source: 'claude',
-        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
-      });
-
-      const snap = sm.getSession('sess-1');
-      expect(snap?.isWaitingHuman).toBe(false);
-    });
-
-    it('respects token validation for session_idle — rejects mismatched token', () => {
-      // First set to completed to establish a timer token
-      sm.applyPlatformEvent({
-        type: 'completed' as const, sessionId: 'sess-1', source: 'claude',
-        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
-      });
-
-      // Try to transition to session_idle with wrong token
       const snap = sm.applyPlatformEvent({
-        type: 'session_idle' as const, sessionId: 'sess-1', source: 'claude',
-        stateSource: 'formal' as const, confidence: 'high' as const,
-        timestamp: Date.now(), metadata: { idleTimerToken: 999, turn: 0 },
+        type: 'thinking_started',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
       });
 
-      // Should remain completed because token doesn't match
+      expect(snap.state).toBe('thinking');
+      expect(sm.getState('sess-1').execution).toBe('thinking');
+    });
+
+    it('maps awaiting_human and sets pending gate', () => {
+      sm.applyPlatformEvent({
+        type: 'awaiting_human',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
+      });
+
+      const state = sm.getState('sess-1');
+      const panelProjection = sm.getPanelProjection('sess-1');
+      expect(panelProjection.state).toBe('awaiting_human');
+      expect(panelProjection.isWaitingHuman).toBe(true);
+      expect(state.lifecycle).toBe('waiting_human');
+      expect(state.gate).toBe('pending');
+    });
+
+    it('maps completed and registers idle reset timer', () => {
+      const snap = sm.applyPlatformEvent({
+        type: 'completed',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
+      });
+
+      expect(snap.state).toBe('completed');
+      expect(sm.getState('sess-1').lifecycle).toBe('completed');
+      expect((sm as any).completedTimers.size).toBe(1);
+    });
+
+    it('maps errored and sets lifecycle error', () => {
+      sm.applyPlatformEvent({
+        type: 'errored',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
+      });
+
+      const panelProjection = sm.getPanelProjection('sess-1');
+      expect(panelProjection.state).toBe('error');
+      expect(panelProjection.isError).toBe(true);
+      expect(sm.getState('sess-1').lifecycle).toBe('error');
+    });
+
+    it('session_ended invalidates pending gate', () => {
+      sm.applyPlatformEvent({
+        type: 'awaiting_human',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
+      });
+
+      const snap = sm.applyPlatformEvent({
+        type: 'session_ended',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
+      });
+
+      expect(snap.state).toBe('offline');
+      expect(sm.getState('sess-1').gate).toBe('invalidated');
+    });
+
+    it('respects token validation for session_idle', () => {
+      sm.applyPlatformEvent({
+        type: 'completed',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
+      });
+
+      const snap = sm.applyPlatformEvent({
+        type: 'session_idle',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
+        metadata: { idleTimerToken: 999, turn: 0 },
+      });
+
       expect(snap.state).toBe('completed');
     });
 
-    it('respects turn validation for session_idle — rejects mismatched turn', () => {
-      // Set to completed
+    it('respects turn validation for session_idle', () => {
       sm.applyPlatformEvent({
-        type: 'completed' as const, sessionId: 'sess-1', source: 'claude',
-        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
+        type: 'completed',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
       });
-      const snap = sm.getSession('sess-1');
       const activeToken = (sm as any).completedTimerTokens.get('sess-1');
 
-      // session_idle with matching token but wrong turn
-      const result = sm.applyPlatformEvent({
-        type: 'session_idle' as const, sessionId: 'sess-1', source: 'claude',
-        stateSource: 'formal' as const, confidence: 'high' as const,
-        timestamp: Date.now(), metadata: { idleTimerToken: activeToken, turn: 999 },
+      const snap = sm.applyPlatformEvent({
+        type: 'session_idle',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
+        metadata: { idleTimerToken: activeToken, turn: 999 },
       });
 
-      expect(result.state).toBe('completed');
+      expect(snap.state).toBe('completed');
     });
 
-    it('does not increment turn on session_started when turn already > 0', () => {
-      const event = {
-        type: 'session_started' as const, sessionId: 'sess-1', source: 'claude',
-        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
-      };
-      sm.applyPlatformEvent(event);
+    it('does not increment turn on repeated session_started', () => {
       sm.applyPlatformEvent({
-        type: 'session_started' as const, sessionId: 'sess-1', source: 'claude',
-        stateSource: 'formal' as const, confidence: 'high' as const, timestamp: Date.now(),
+        type: 'session_started',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
+      });
+      sm.applyPlatformEvent({
+        type: 'session_started',
+        sessionId: 'sess-1',
+        source: 'claude',
+        stateSource: 'formal',
+        confidence: 'high',
+        timestamp: Date.now(),
       });
 
-      const snap = sm.getSession('sess-1');
-      expect(snap?.turn).toBe(1); // Only incremented once
+      const projection = sm.getSnapshot('sess-1');
+      expect(projection.turn).toBe(1);
+    });
+  });
+
+  describe('clearSession', () => {
+    it('removes session state', () => {
+      sm.transition('sess-1', 'start', { lifecycle: 'active', execution: 'idle' }, { displayState: 'idle' });
+      sm.clearSession('sess-1');
+
+      const state = sm.getState('sess-1');
+      expect(state.lifecycle).toBe('initializing');
+      expect(sm.getSessionCount()).toBe(1);
     });
   });
 });

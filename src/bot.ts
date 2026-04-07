@@ -2,7 +2,6 @@ import {
   Client,
   GatewayIntentBits,
   ChannelType,
-  InteractionType,
   type TextChannel,
   type Interaction,
   type Message,
@@ -10,26 +9,32 @@ import {
 import { config } from './config.ts';
 import { BotServicesOrchestrator, type ServiceContainer } from './bot-services-orchestrator.ts';
 import { LogBuffer } from './bot-log-buffer.ts';
-import { getAllSessions, endSession, getSessionByChannel } from './thread-manager.ts';
+import { endSession, getSessionByChannel } from './thread-manager.ts';
 import { acquireLock, releaseLock } from './bot-locks.ts';
 import {
   handleProject,
   handleAgent,
   handleSubagent,
   handleShell,
-  handleSpawnShortcut,
-  handleStopShortcut,
-  handleEndShortcut,
-  handleRunShortcut,
   setLogger,
 } from './command-handlers.ts';
 import { handleMessage } from './message-handler.ts';
 import { handleButton, handleSelectMenu } from './button-handler.ts';
-
-// ─── Module-level singletons (backwards compatibility) ────────────────────────
+import { BotEventRouter } from './bot-event-router.ts';
 
 let logBuffer: LogBuffer | null = null;
 let serviceContainer: ServiceContainer | null = null;
+let client: Client;
+
+const eventRouter = new BotEventRouter({
+  handleProject,
+  handleAgent,
+  handleSubagent,
+  handleShell,
+  handleButton,
+  handleSelectMenu,
+  handleMessage,
+});
 
 export function botLog(msg: string): void {
   if (!logBuffer) {
@@ -45,40 +50,12 @@ export async function flushLogs(): Promise<void> {
 }
 
 export async function routeInteractionCreate(interaction: Interaction): Promise<void> {
-  try {
-    if (interaction.type === InteractionType.ApplicationCommand && interaction.isChatInputCommand()) {
-      switch (interaction.commandName) {
-        case 'project': return await handleProject(interaction);
-        case 'agent': return await handleAgent(interaction);
-        case 'subagent': return await handleSubagent(interaction);
-        case 'shell': return await handleShell(interaction);
-        case 'spawn': return await handleSpawnShortcut(interaction);
-        case 'stop': return await handleStopShortcut(interaction);
-        case 'end': return await handleEndShortcut(interaction);
-        case 'run': return await handleRunShortcut(interaction);
-      }
-    }
-    if (interaction.isButton()) return await handleButton(interaction);
-    if (interaction.isStringSelectMenu()) return await handleSelectMenu(interaction);
-  } catch (err) {
-    console.error('Interaction error:', err);
-    try {
-      if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-        await interaction.reply({ content: 'An error occurred.', ephemeral: true });
-      }
-    } catch {
-      /* can't recover */
-    }
-  }
+  await eventRouter.routeInteraction(interaction);
 }
 
 export async function routeMessageCreate(message: Message): Promise<void> {
-  await handleMessage(message);
+  await eventRouter.routeMessage(message);
 }
-
-// ─── Main entry point ────────────────────────────────────────────────────────
-
-let client: Client;
 
 export async function startBot(): Promise<void> {
   if (!acquireLock()) {
@@ -96,7 +73,6 @@ export async function startBot(): Promise<void> {
 
   setLogger(botLog);
 
-  // Set up event handlers before ready
   client.on('interactionCreate', routeInteractionCreate);
   client.on('messageCreate', routeMessageCreate);
 
@@ -118,7 +94,6 @@ export async function startBot(): Promise<void> {
     }
   });
 
-  // Bot ready — delegate to orchestrator
   client.once('ready', async () => {
     console.log(`Logged in as ${client.user?.tag}`);
 
@@ -136,7 +111,6 @@ export async function startBot(): Promise<void> {
     }
   });
 
-  // Discord connection error handlers
   client.on('error', (err) => {
     botLog(`Discord client error: ${err.message}`);
     console.error('Discord client error:', err);
@@ -152,9 +126,7 @@ export async function startBot(): Promise<void> {
   });
 
   client.on('shardDisconnect', (event, shardId) => {
-    botLog(
-      `Shard ${shardId} disconnected (code ${event.code}). discord.js will attempt reconnect.`,
-    );
+    botLog(`Shard ${shardId} disconnected (code ${event.code}). discord.js will attempt reconnect.`);
     console.warn(`Shard ${shardId} disconnected:`, event);
   });
 
@@ -166,7 +138,6 @@ export async function startBot(): Promise<void> {
     botLog(`Shard ${shardId} resumed (${replayedEvents} events replayed).`);
   });
 
-  // Graceful shutdown
   const shutdown = async () => {
     botLog('Shutting down...');
     if (serviceContainer) {

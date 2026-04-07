@@ -269,6 +269,7 @@ export class CodexLogMonitor {
       const state = this.mapEventToState(key);
       if (state !== undefined && state !== null) {
         tracked.registering = true;
+        const registrationStartedAt = Date.now();
         const providerSessionId = tracked.sessionId.replace(/^codex:/, '');
         const registerPromise =
           tracked.remoteHumanControl === undefined
@@ -279,15 +280,26 @@ export class CodexLogMonitor {
                 tracked.remoteHumanControl,
                 tracked.subagent,
               );
+        // Safety timeout: if registration hangs for >30s, reset the flag
+        const registrationTimeout = setTimeout(() => {
+          if (tracked.registering) {
+            tracked.registering = false;
+            console.warn(
+              `[CodexLogMonitor] Registration timeout for session ${providerSessionId} after 30s`,
+            );
+          }
+        }, 30_000);
         void registerPromise.then((success) => {
+          clearTimeout(registrationTimeout);
           tracked.registered = success;
           tracked.registering = false;
           if (success) {
             console.log(
-              `[CodexLogMonitor] Fast registration triggered for session ${providerSessionId}`,
+              `[CodexLogMonitor] Fast registration triggered for session ${providerSessionId} (${Date.now() - registrationStartedAt}ms)`,
             );
           }
         }).catch((err) => {
+          clearTimeout(registrationTimeout);
           tracked.registering = false;
           console.error(
             `[CodexLogMonitor] Registration failed for session ${providerSessionId}: ${(err as Error).message}`,

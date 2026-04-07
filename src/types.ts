@@ -1,6 +1,11 @@
 // Core type definitions for workspacecord
 // Structure: Server=Workspace, Category=Project, Channel=Session, Thread=Subagent
 
+import type { TextChannel, AnyThreadChannel } from 'discord.js';
+
+/** A Discord channel that hosts a session (text channel or thread). */
+export type SessionChannel = TextChannel | AnyThreadChannel;
+
 export type ProviderName = 'claude' | 'codex';
 export type SessionMode = 'auto' | 'plan' | 'normal' | 'monitor';
 export type SessionType = 'persistent' | 'subagent';
