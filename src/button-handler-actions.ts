@@ -17,7 +17,7 @@ import {
   getQuestionCount,
 } from './output-handler.ts';
 import { executeSessionContinue, executeSessionPrompt } from './session-executor.ts';
-import { updateSessionState } from './panel-adapter.ts';
+import { updateSessionState, getSessionProjection } from './panel-adapter.ts';
 import {
   acquireCleanupLock,
   deleteCleanupRequest,
@@ -109,7 +109,8 @@ export async function handleAwaitingHumanButton(interaction: ButtonInteraction):
     await interaction.reply({ content: '会话不存在', ephemeral: true });
     return true;
   }
-  if (session.currentTurn !== turn) {
+  const projection = getSessionProjection(sessionId);
+  if (projection.turn !== turn) {
     await interaction.reply({ content: '此请求已过期（轮次不匹配）', ephemeral: true });
     return true;
   }
@@ -117,7 +118,7 @@ export async function handleAwaitingHumanButton(interaction: ButtonInteraction):
     await interaction.reply({ content: '此请求已过期（消息不匹配）', ephemeral: true });
     return true;
   }
-  if (session.humanResolved) {
+  if (projection.humanResolved) {
     await interaction.reply({ content: '已被其他人处理', ephemeral: true });
     return true;
   }

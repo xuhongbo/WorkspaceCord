@@ -57,7 +57,7 @@ function getSessionComponents(sessionId: string): {
   return sessionComponents.get(sessionId);
 }
 
-function getSessionProjection(sessionId: string): SessionStateProjection {
+export function getSessionProjection(sessionId: string): SessionStateProjection {
   return stateMachine.getSnapshot(sessionId);
 }
 
@@ -79,7 +79,9 @@ function cacheProjection(sessionId: string, projection: SessionStateProjection):
   sessionStateProjections.set(sessionId, projection);
 }
 
-function syncSessionRuntimeState(sessionId: string, projection: SessionStateProjection): void {
+/** @deprecated Sync removed — StateMachine is now the single source of truth for turn/humanResolved. */
+function persistTurnState(sessionId: string, projection: SessionStateProjection): void {
+  // Only persist for crash-recovery; StateMachine is the authoritative runtime source
   sessions.updateSession(sessionId, {
     currentTurn: projection.turn,
     humanResolved: projection.humanResolved,
@@ -253,7 +255,7 @@ export async function updateSessionState(
   const projection = stateMachine.applyPlatformEvent(platformEvent);
   cacheProjection(sessionId, projection);
   await scheduleProjectionRender(sessionId, projection, updateKey);
-  syncSessionRuntimeState(sessionId, projection);
+  persistTurnState(sessionId, projection);
 
   return projection;
 }
@@ -312,7 +314,7 @@ export async function handleResultEvent(
       attachments,
     );
     const projectionAfterTurn = stateMachine.advanceTurnToIdle(sessionId);
-    syncSessionRuntimeState(sessionId, projectionAfterTurn);
+    persistTurnState(sessionId, projectionAfterTurn);
     await renderProjectionToStatusCard(sessionId, projectionAfterTurn);
     cacheProjection(sessionId, projectionAfterTurn);
   }

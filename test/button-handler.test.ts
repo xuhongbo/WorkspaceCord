@@ -47,8 +47,10 @@ vi.mock('../src/session-executor.ts', () => ({
   executeSessionPrompt,
 }));
 
+const getSessionProjection = vi.fn(() => ({ turn: 2, humanResolved: false, state: 'idle', stateSource: 'formal', confidence: 'high', updatedAt: Date.now() }));
 vi.mock('../src/panel-adapter.ts', () => ({
   updateSessionState,
+  getSessionProjection,
 }));
 vi.mock('../src/agent-cleanup-request-store.ts', () => ({
   getCleanupRequest,
