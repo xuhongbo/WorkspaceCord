@@ -2,7 +2,7 @@ import type { Client, TextChannel } from 'discord.js';
 import { buildDeliveryPlan } from './discord/delivery-policy.ts';
 import { deliver } from './discord/delivery.ts';
 import { config } from './config.ts';
-import { getAllSessions } from './thread-manager.ts';
+import { getAllSessions } from './session-registry.ts';
 
 const unmanagedCodexHintedSessions = new Set<string>();
 

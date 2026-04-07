@@ -1,5 +1,5 @@
 import { EmbedBuilder, type ChatInputCommandInteraction, type TextChannel } from 'discord.js';
-import * as sessionMgr from '../thread-manager.ts';
+import { getSessionByChannel } from '../session-registry.ts';
 import { spawnSubagent, getSubagents } from '../subagent-manager.ts';
 import type { ProviderName } from '../types.ts';
 import { assertUserAllowed, log, PROVIDER_LABELS } from '../command-handlers-shared.ts';
@@ -27,7 +27,7 @@ export async function handleSubagentRun(interaction: ChatInputCommandInteraction
     return;
   }
 
-  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({
       content: 'No active session in this channel. You must be in an agent session channel.',
@@ -66,7 +66,7 @@ export async function handleSubagentRun(interaction: ChatInputCommandInteraction
 }
 
 async function handleSubagentList(interaction: ChatInputCommandInteraction): Promise<void> {
-  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
     return;

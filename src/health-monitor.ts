@@ -1,5 +1,5 @@
 import type { Client } from 'discord.js';
-import { getAllSessions } from './thread-manager.ts';
+import { getAllSessions } from './session-registry.ts';
 import { getAllRegisteredProjects } from './project-registry.ts';
 import { config } from './config.ts';
 import { formatDuration } from './utils.ts';

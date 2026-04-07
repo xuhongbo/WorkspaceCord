@@ -30,7 +30,7 @@ function resetSessions() {
   storedSessions.length = 0;
 }
 
-vi.mock('../../src/thread-manager.ts', () => ({
+vi.mock('../../src/session-registry.ts', () => ({
   getAllSessions: mockGetAllSessions,
   getSessionsByCategory: mockGetSessionsByCategory,
   getSession: vi.fn(),
@@ -481,7 +481,7 @@ describe('smoke-migration: integration workflows', () => {
     (guild as any).channels.cache.get.mockImplementation((id: string) => chMap.get(id));
 
     // Make getSessionByChannel return the parent session
-    const { getSessionByChannel, createSession } = await import('../../src/thread-manager.ts');
+    const { getSessionByChannel, createSession } = await import('../../src/session-registry.ts');
     vi.mocked(getSessionByChannel).mockReturnValue(parentSession as any);
     // Make spawnSubagent call createSession directly (simulating real flow)
     const { spawnSubagent } = await import('../../src/subagent-manager.ts');

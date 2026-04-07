@@ -15,7 +15,7 @@ vi.mock('../src/config.ts', () => ({
   },
 }));
 
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   createSession: createSessionMock,
   endSession: endSessionMock,
   getAllSessions: getAllSessionsMock,

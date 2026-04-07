@@ -7,7 +7,7 @@ import {
 } from 'discord.js';
 import type { SessionChannel } from './types.ts';
 import { config } from './config.ts';
-import * as sessions from './thread-manager.ts';
+import { getSession, updateSession, abortSession, setMode } from './session-registry.ts';
 import {
   getExpandableContent,
   makeModeButtons,
@@ -39,12 +39,12 @@ function asComponentLike(component: unknown): ComponentLike {
 }
 
 export async function resolveAwaitingHumanIfNeeded(sessionId: string): Promise<void> {
-  const session = sessions.getSession(sessionId);
+  const session = getSession(sessionId);
   if (!session?.currentInteractionMessageId) {
     return;
   }
 
-  sessions.updateSession(sessionId, {
+  updateSession(sessionId, {
     humanResolved: true,
     currentInteractionMessageId: undefined,
   });
@@ -86,7 +86,7 @@ export function renderCleanupResultMessage(result: {
 export async function handleStopButton(interaction: ButtonInteraction): Promise<boolean> {
   if (!interaction.customId.startsWith('stop:')) return false;
   const sessionId = interaction.customId.slice(5);
-  const stopped = sessions.abortSession(sessionId);
+  const stopped = abortSession(sessionId);
   console.log(`[ButtonHandler] Stop button pressed by ${interaction.user.tag} — session ${sessionId} ${stopped ? 'stopped' : 'was not generating'}`);
   await interaction.reply({
     content: stopped ? 'Generation stopped.' : 'Session was not generating.',
@@ -104,7 +104,7 @@ export async function handleAwaitingHumanButton(interaction: ButtonInteraction):
   const turn = parseInt(parts[2], 10);
   const action = parts[3] as 'approve' | 'deny';
 
-  const session = sessions.getSession(sessionId);
+  const session = getSession(sessionId);
   if (!session) {
     await interaction.reply({ content: '会话不存在', ephemeral: true });
     return true;
@@ -144,7 +144,7 @@ export async function handleAwaitingHumanButton(interaction: ButtonInteraction):
     return true;
   }
 
-  sessions.updateSession(sessionId, {
+  updateSession(sessionId, {
     humanResolved: true,
     currentInteractionMessageId: undefined,
     activeHumanGateId: undefined,
@@ -205,7 +205,7 @@ export async function handleContinueButton(interaction: ButtonInteraction): Prom
   const customId = interaction.customId;
   if (!customId.startsWith('continue:')) return false;
   const sessionId = customId.slice(9);
-  const session = sessions.getSession(sessionId);
+  const session = getSession(sessionId);
   if (!session) {
     await interaction.reply({ content: 'Session not found.', ephemeral: true });
     return true;
@@ -317,13 +317,13 @@ export async function handleModeButton(interaction: ButtonInteraction): Promise<
   const parts = customId.split(':');
   const sessionId = parts[1];
   const newMode = parts[2] as 'auto' | 'plan' | 'normal' | 'monitor';
-  const session = sessions.getSession(sessionId);
+  const session = getSession(sessionId);
   if (!session) {
     await interaction.reply({ content: 'Session not found.', ephemeral: true });
     return true;
   }
   const oldMode = session.mode;
-  sessions.setMode(sessionId, newMode);
+  setMode(sessionId, newMode);
   console.log(`[ButtonHandler] Mode switched for session ${sessionId}: ${oldMode} → ${newMode}`);
   const labels: Record<string, string> = {
     auto: '⚡ Auto — full autonomy',
@@ -334,7 +334,7 @@ export async function handleModeButton(interaction: ButtonInteraction): Promise<
   await interaction.reply({ content: `Mode switched to **${labels[newMode]}**`, ephemeral: true });
   try {
     const original = interaction.message;
-    const liveSession = sessions.getSession(sessionId);
+    const liveSession = getSession(sessionId);
     const updatedComponents: EditableRow[] = original.components.map((row) => {
       if (!('components' in row)) return row as unknown as EditableRow;
       const first = asComponentLike(row.components?.[0]);
@@ -358,7 +358,7 @@ export async function handleSelectMenuAction(interaction: StringSelectMenuIntera
     const sessionId = parts[1];
     const questionIndex = parseInt(parts[2], 10);
     const selected = interaction.values[0];
-    const session = sessions.getSession(sessionId);
+    const session = getSession(sessionId);
     if (!session) {
       await interaction.reply({ content: 'Session not found.', ephemeral: true });
       return true;
@@ -401,7 +401,7 @@ export async function handleSelectMenuAction(interaction: StringSelectMenuIntera
     const afterPrefix = customId.slice(14);
     const sessionId = afterPrefix.includes(':') ? afterPrefix.split(':')[0] : afterPrefix;
     const selected = interaction.values[0];
-    const session = sessions.getSession(sessionId);
+    const session = getSession(sessionId);
     if (!session) {
       await interaction.reply({ content: 'Session not found.', ephemeral: true });
       return true;
@@ -421,7 +421,7 @@ export async function handleSelectMenuAction(interaction: StringSelectMenuIntera
   if (customId.startsWith('select:')) {
     const sessionId = customId.slice(7);
     const selected = interaction.values[0];
-    const session = sessions.getSession(sessionId);
+    const session = getSession(sessionId);
     if (!session) {
       await interaction.reply({ content: 'Session not found.', ephemeral: true });
       return true;

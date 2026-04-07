@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PresenceManager } from '../src/bot-presence.ts';
 import { ActivityType } from 'discord.js';
 
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   getAllSessions: vi.fn(),
 }));
 
-const { getAllSessions } = await import('../src/thread-manager.ts');
+const { getAllSessions } = await import('../src/session-registry.ts');
 
 describe('PresenceManager', () => {
   let manager: PresenceManager;

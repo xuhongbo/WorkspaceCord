@@ -11,7 +11,7 @@ import type { Client, Guild, TextChannel, CategoryChannel } from 'discord.js';
 import { ChannelType } from 'discord.js';
 import { listCodexSessionsForProjects } from './codex-session-discovery.ts';
 import { getAllRegisteredProjects } from './project-registry.ts';
-import * as sessions from './thread-manager.ts';
+import { createSession, getAllSessions } from './session-registry.ts';
 import { config } from './config.ts';
 import { isArchivedProviderSession } from './archive-manager.ts';
 
@@ -219,7 +219,7 @@ async function syncPersistentSession(
     `${provider}-${base}`.slice(0, 100),
   );
 
-  await sessions.createSession({
+  await createSession({
     channelId: channel.id,
     categoryId: category.id,
     projectName,
@@ -252,8 +252,7 @@ export async function runSync(client: Client): Promise<void> {
     }
 
     const existingProviderIds = new Set(
-      sessions
-        .getAllSessions()
+      getAllSessions()
         .map((session) => session.providerSessionId)
         .filter(Boolean),
     );

@@ -1,5 +1,6 @@
 import type { SessionChannel } from './types.ts';
-import * as sessions from './thread-manager.ts';
+import { getSession, abortSessionWithReason, consumeAbortReason, setMonitorGoal } from './session-registry.ts';
+import { sendPrompt, continueSessionWithOverrides, sendMonitorPrompt } from './session/session-provider-runtime.ts';
 import { handleOutputStream } from './output-handler.ts';
 import {
   handleResultEvent,
@@ -80,12 +81,12 @@ async function runWorkerPass(
 
   const stream =
     mode === 'continue'
-      ? sessions.continueSessionWithOverrides(session.id, {
+      ? continueSessionWithOverrides(session.id, {
           canUseTool: shouldUseClaudePermissionHandler(session)
             ? createClaudePermissionHandler(session, channel)
             : undefined,
         })
-      : sessions.sendPrompt(session.id, prompt as string | ContentBlock[], {
+      : sendPrompt(session.id, prompt as string | ContentBlock[], {
           canUseTool: shouldUseClaudePermissionHandler(session)
             ? createClaudePermissionHandler(session, channel)
             : undefined,
@@ -98,7 +99,7 @@ async function runWorkerPass(
         console.warn(
           `[SessionExecutor] worker:watchdog sessionId=${session.id} iteration=${iteration} timeout=${WORKER_IDLE_TIMEOUT_MS}ms`,
         );
-        sessions.abortSessionWithReason(session.id, 'watchdog');
+        abortSessionWithReason(session.id, 'watchdog');
         return;
       }
       const delay = idleMs >= WATCHDOG_FAST_THRESHOLD
@@ -121,7 +122,7 @@ async function runWorkerPass(
         },
       },
     );
-    const abortReason = sessions.consumeAbortReason(session.id);
+    const abortReason = consumeAbortReason(session.id);
 
     if (watchdogTriggered || abortReason === 'watchdog') {
       const stalledResult = {
@@ -186,7 +187,7 @@ async function runMonitorDecision(
   const report = buildWorkerProgressReport(goal, workerResult);
   const latestOutput = summarizeWorkerPass(report);
   try {
-    const stream = sessions.sendMonitorPrompt(
+    const stream = sendMonitorPrompt(
       session.id,
       buildMonitorPrompt(
         goal,
@@ -240,7 +241,7 @@ async function runAskUserDecision(
   latestOutput: string,
 ): Promise<AskUserDecision> {
   let response = '';
-  const stream = sessions.sendMonitorPrompt(
+  const stream = sendMonitorPrompt(
     session.id,
     buildAskUserReviewPrompt(goal, questionsJson, latestOutput),
   );
@@ -645,8 +646,8 @@ export async function executeSessionPrompt(
   }
 
   if ((options.updateMonitorGoal ?? true) && goalText && !session.monitorGoal) {
-    sessions.setMonitorGoal(session.id, goalText);
-    session = sessions.getSession(session.id) ?? session;
+    setMonitorGoal(session.id, goalText);
+    session = getSession(session.id) ?? session;
   }
 
   const goal = session.monitorGoal || goalText;

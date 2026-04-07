@@ -1,6 +1,6 @@
 import type { ChatInputCommandInteraction } from 'discord.js';
 import { config } from '../config.ts';
-import * as sessionMgr from '../thread-manager.ts';
+import { getSessionByChannel } from '../session-registry.ts';
 import * as projectMgr from '../project-manager.ts';
 import { executeShellCommand, listProcesses, killProcess } from '../shell-handler.ts';
 import { formatUptime } from '../utils.ts';
@@ -52,7 +52,7 @@ export async function handleShellRun(interaction: ChatInputCommandInteraction): 
   }
 
   let cwd = process.cwd();
-  const session = sessionMgr.getSessionByChannel(channel.id);
+  const session = getSessionByChannel(channel.id);
   if (session) {
     cwd = session.directory;
   } else {

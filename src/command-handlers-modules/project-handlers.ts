@@ -6,7 +6,7 @@ import {
   type TextChannel,
 } from 'discord.js';
 import * as projectMgr from '../project-manager.ts';
-import * as sessionMgr from '../thread-manager.ts';
+import { getSessionsByCategory, getSessionByChannel } from '../session-registry.ts';
 import { executeSessionPrompt } from '../session-executor.ts';
 import {
   assertUserAllowed,
@@ -137,7 +137,7 @@ async function handleProjectInfo(interaction: ChatInputCommandInteraction): Prom
     return;
   }
 
-  const sessions = sessionMgr.getSessionsByCategory(categoryId);
+  const sessions = getSessionsByCategory(categoryId);
   const activeSessions = sessions.filter((s) => s.type === 'persistent');
 
   const embed = new EmbedBuilder()
@@ -268,7 +268,7 @@ async function handleProjectSkillRun(interaction: ChatInputCommandInteraction): 
     return;
   }
 
-  const session = sessionMgr.getSessionByChannel(channel.id);
+  const session = getSessionByChannel(channel.id);
   if (!session) {
     await interaction.reply({
       content: 'Run this command inside an active agent session channel.',

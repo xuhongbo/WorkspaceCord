@@ -35,7 +35,7 @@ vi.mock('../../src/discord/delivery-policy.ts', () => ({
 vi.mock('../../src/discord/delivery.ts', () => ({
   deliver: deliveryMocks.deliver,
 }));
-vi.mock('../../src/thread-manager.ts', () => ({
+vi.mock('../../src/session-registry.ts', () => ({
   getSession: mocks.getSession,
   updateSession: mocks.updateSession,
   getSessionByChannel: vi.fn(),

@@ -16,7 +16,7 @@ vi.mock('../src/project-manager.ts', () => ({
   setHistoryChannelId,
 }));
 
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   endSession,
   getAllSessions,
   getSessionsByCategory,

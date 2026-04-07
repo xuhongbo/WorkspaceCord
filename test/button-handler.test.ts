@@ -26,7 +26,7 @@ vi.mock('../src/utils.ts', () => ({
   truncate: (text: string) => text,
 }));
 
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   getSession,
   updateSession,
   abortSession: vi.fn(() => false),

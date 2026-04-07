@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 import type { SessionChannel } from './types.ts';
 import { config } from './config.ts';
-import { getSessionByChannel, updateSession } from './thread-manager.ts';
+import { getSessionByChannel, updateSession } from './session-registry.ts';
 import { executeSessionPrompt } from './session-executor.ts';
 import { isUserAllowed } from './utils.ts';
 import { sendAckReaction, sendTyping, deliver } from './discord/delivery.ts';

@@ -1,7 +1,7 @@
 import { ChannelType, EmbedBuilder, type Guild, type ForumChannel } from 'discord.js';
 import { Store } from './persistence.ts';
 import { config } from './config.ts';
-import { getAllSessions, endSession, getSessionsByCategory } from './thread-manager.ts';
+import { getAllSessions, endSession, getSessionsByCategory } from './session-registry.ts';
 import { getProject, setHistoryChannelId } from './project-manager.ts';
 import type { ThreadSession, ArchivedSession } from './types.ts';
 

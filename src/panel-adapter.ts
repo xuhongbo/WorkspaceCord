@@ -9,7 +9,7 @@ import { StatusCardProjectionRenderer } from './discord/status-card-projection-r
 import { stateMachine, type StateMachine } from './state/state-machine.ts';
 import { toPlatformEvent, mapPlatformEventToState } from './state/event-normalizer.ts';
 import type { ProviderEvent } from './providers/types.ts';
-import * as sessions from './thread-manager.ts';
+import { getSession, updateSession, getSessionPermissionSummary, setStatusCardBinding, setCurrentInteractionMessage } from './session-registry.ts';
 import { gateCoordinator } from './state/gate-coordinator.ts';
 import type {
   PlatformEvent,
@@ -82,7 +82,7 @@ function cacheProjection(sessionId: string, projection: SessionStateProjection):
 /** @deprecated Sync removed — StateMachine is now the single source of truth for turn/humanResolved. */
 function persistTurnState(sessionId: string, projection: SessionStateProjection): void {
   // Only persist for crash-recovery; StateMachine is the authoritative runtime source
-  sessions.updateSession(sessionId, {
+  updateSession(sessionId, {
     currentTurn: projection.turn,
     humanResolved: projection.humanResolved,
   });
@@ -91,12 +91,12 @@ function persistTurnState(sessionId: string, projection: SessionStateProjection)
 function createStatusCardProjectionContext(sessionId: string) {
   const components = getSessionComponents(sessionId);
   if (!components) return undefined;
-  const session = sessions.getSession(sessionId);
+  const session = getSession(sessionId);
   return {
     statusCard: components.statusCard,
     remoteHumanControl: session?.remoteHumanControl,
     provider: session?.provider,
-    permissionsSummary: session ? sessions.getSessionPermissionSummary(session) : undefined,
+    permissionsSummary: session ? getSessionPermissionSummary(session) : undefined,
   };
 }
 
@@ -129,7 +129,7 @@ function resolveProviderSource(
   sessionId: string,
   fallback: 'claude' | 'codex' = 'claude',
 ): 'claude' | 'codex' {
-  const session = sessions.getSession(sessionId);
+  const session = getSession(sessionId);
   return session?.provider === 'codex' ? 'codex' : fallback;
 }
 
@@ -159,7 +159,7 @@ export async function initializeSessionPanel(
 
   const initialization = (async () => {
     const statusCard = new StatusCard(channel);
-    const session = sessions.getSession(sessionId);
+    const session = getSession(sessionId);
     if (options.statusCardMessageId) {
       statusCard.adopt(options.statusCardMessageId);
     }
@@ -169,7 +169,7 @@ export async function initializeSessionPanel(
       updatedAt: Date.now(),
       remoteHumanControl: session?.remoteHumanControl,
       provider: session?.provider,
-      permissionsSummary: session ? sessions.getSessionPermissionSummary(session) : undefined,
+      permissionsSummary: session ? getSessionPermissionSummary(session) : undefined,
     });
 
     const summaryHandler = new SummaryHandler(sessionId, channel.id, channel);
@@ -182,7 +182,7 @@ export async function initializeSessionPanel(
       interactionCard,
     });
 
-    sessions.setStatusCardBinding(sessionId, {
+    setStatusCardBinding(sessionId, {
       messageId: statusCard.getMessageId() ?? options.statusCardMessageId,
     });
 
@@ -225,7 +225,7 @@ export async function updateSessionState(
   performanceTracker.startStateUpdate(updateKey);
 
   if (!getSessionComponents(sessionId) && options.channel) {
-    const session = sessions.getSession(sessionId);
+    const session = getSession(sessionId);
     await initializeSessionPanel(sessionId, options.channel, {
       statusCardMessageId: session?.statusCardMessageId,
       initialTurn: session?.currentTurn || 1,
@@ -242,7 +242,7 @@ export async function updateSessionState(
     return null;
   }
 
-  const session = sessions.getSession(sessionId);
+  const session = getSession(sessionId);
   if (
     platformEvent.source === 'codex' &&
     platformEvent.type === 'completed' &&
@@ -274,7 +274,7 @@ export async function handleResultEvent(
   const isSessionEnd = event.metadata?.sessionEnd === true;
   const source = resolveProviderSource(sessionId);
   await components.interactionCard.hide();
-  sessions.setCurrentInteractionMessage(sessionId, undefined);
+  setCurrentInteractionMessage(sessionId, undefined);
 
   if (isSessionEnd) {
     await components.summaryHandler.sendEndingSummary(textContent, attachments);
@@ -287,7 +287,7 @@ export async function handleResultEvent(
       metadata: { from: 'result' },
     });
   } else if (!event.success) {
-    const session = sessions.getSession(sessionId);
+    const session = getSession(sessionId);
     const failureText =
       textContent.trim() || event.errors.join('\n').trim() || '任务失败';
     await components.summaryHandler.sendTurnFailure(
@@ -306,7 +306,7 @@ export async function handleResultEvent(
     });
   } else {
     const beforeProjection = getSessionProjection(sessionId);
-    const session = sessions.getSession(sessionId);
+    const session = getSession(sessionId);
     await components.summaryHandler.sendTurnSummary(
       textContent,
       beforeProjection.turn,
@@ -329,7 +329,7 @@ export async function handleAwaitingHuman(
 ): Promise<string | null> {
   const components = getSessionComponents(sessionId);
   if (!components) return null;
-  const session = sessions.getSession(sessionId);
+  const session = getSession(sessionId);
 
   // 交互卡限流：同一会话 10 秒内最多创建 1 个
   const lastTime = lastInteractionCardTime.get(sessionId) ?? 0;
@@ -371,13 +371,13 @@ export async function handleAwaitingHuman(
   lastInteractionCardTime.set(sessionId, now);
   cacheProjection(sessionId, getSessionProjection(sessionId));
 
-  sessions.updateSession(sessionId, {
+  updateSession(sessionId, {
     currentTurn: projection.turn,
     humanResolved: false,
     currentInteractionMessageId: messageId,
     activeHumanGateId: gate.id,
   });
-  sessions.setCurrentInteractionMessage(sessionId, messageId);
+  setCurrentInteractionMessage(sessionId, messageId);
   return messageId;
 }
 
@@ -387,7 +387,7 @@ export async function relocateSessionPanelToBottom(
 ): Promise<void> {
   let components = getSessionComponents(sessionId);
   if (!components && channel) {
-    const session = sessions.getSession(sessionId);
+    const session = getSession(sessionId);
     await initializeSessionPanel(sessionId, channel, {
       statusCardMessageId: session?.statusCardMessageId,
       initialTurn: session?.currentTurn || 1,
@@ -423,7 +423,7 @@ export async function relocateSessionPanelToBottom(
   }
 
   if (statusRelocation?.newMessageId) {
-    sessions.setStatusCardBinding(sessionId, {
+    setStatusCardBinding(sessionId, {
       messageId: statusRelocation.newMessageId,
     });
   }

@@ -31,7 +31,7 @@ vi.mock('../src/config.ts', () => ({
   },
 }));
 vi.mock('../src/commands.ts', () => ({ registerCommands: vi.fn() }));
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   loadSessions: vi.fn(),
   getAllSessions: vi.fn(() => []),
   endSession: vi.fn(),

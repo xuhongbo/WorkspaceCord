@@ -101,12 +101,14 @@ vi.mock('../src/codex-monitor-bridge.ts', () => ({ handleCodexMonitorStateChange
 vi.mock('../src/panel-adapter.ts', () => ({ startPerformanceMonitoring, stopPerformanceMonitoring }));
 vi.mock('../src/discord/delivery-policy.ts', () => ({ buildDeliveryPlan }));
 vi.mock('../src/discord/delivery.ts', () => ({ deliver }));
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   loadSessions,
   getAllSessions,
   endSession: vi.fn(),
   getSessionByChannel: vi.fn(),
   getSession: vi.fn(),
+}));
+vi.mock('../src/session/session-local-registration.ts', () => ({
   registerLocalSession: vi.fn(),
 }));
 vi.mock('../src/state/gate-coordinator.ts', () => ({

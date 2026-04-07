@@ -83,7 +83,7 @@ vi.mock('../src/project-manager.ts', () => ({
   removeMcpServer,
   getMcpServers,
 }));
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   createSession,
   getSession,
   getSessionByChannel,
