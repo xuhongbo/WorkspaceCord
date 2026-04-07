@@ -2,10 +2,8 @@
 // 将新组件集成到现有 output-handler / session-executor / shell-handler
 
 import type { SessionChannel } from './types.ts';
-import { StatusCard } from './discord/status-card.ts';
-import { SummaryHandler } from './discord/summary-handler.ts';
-import { InteractionCard } from './discord/interaction-card.ts';
 import { StatusCardProjectionRenderer } from './discord/status-card-projection-renderer.ts';
+import { SessionPanelComponent, renderDigest } from './discord/session-panel-component.ts';
 import { stateMachine, type StateMachine } from './state/state-machine.ts';
 import { toPlatformEvent, mapPlatformEventToState } from './state/event-normalizer.ts';
 import type { ProviderEvent } from './providers/types.ts';
@@ -22,39 +20,19 @@ import { clearPendingAnswers } from './output/answer-store.ts';
 import { cleanupSessionDeliveryState } from './discord/delivery.ts';
 import { clearCodexHint } from './bot-services-helpers.ts';
 
-// 会话到组件的映射
-const sessionComponents = new Map<string, {
-  channel: SessionChannel;
-  statusCard: StatusCard;
-  summaryHandler: SummaryHandler;
-  interactionCard: InteractionCard;
-}>();
+// 会话面板组件映射（替代原来的 5 个 Map）
+const sessionPanels = new Map<string, SessionPanelComponent>();
 const sessionInitializationPromises = new Map<string, Promise<void>>();
-
-// 会话摘要队列（低频聚合）
-const sessionDigests = new Map<string, DigestItem[]>();
-const MAX_DIGEST_QUEUE_SIZE = 20;
 
 // 批量更新控制
 const BATCH_UPDATE_DELAY_MS = 500;
 const statusCardProjectionRenderer = new StatusCardProjectionRenderer();
 
-// 交互卡限流控制
-const INTERACTION_CARD_COOLDOWN_MS = 10000;
-const lastInteractionCardTime = new Map<string, number>();
-
 // 内存控制
 const SESSION_INACTIVE_TIMEOUT_MS = 3600000; // 1 小时
-const sessionLastActivity = new Map<string, number>();
-const sessionStateProjections = new Map<string, SessionStateProjection>();
 
-function getSessionComponents(sessionId: string): {
-  channel: SessionChannel;
-  statusCard: StatusCard;
-  summaryHandler: SummaryHandler;
-  interactionCard: InteractionCard;
-} | undefined {
-  return sessionComponents.get(sessionId);
+function getPanel(sessionId: string): SessionPanelComponent | undefined {
+  return sessionPanels.get(sessionId);
 }
 
 export function getSessionProjection(sessionId: string): SessionStateProjection {
@@ -75,8 +53,10 @@ function ensureProjectionTurn(
 }
 
 function cacheProjection(sessionId: string, projection: SessionStateProjection): void {
-  sessionLastActivity.set(sessionId, Date.now());
-  sessionStateProjections.set(sessionId, projection);
+  const panel = getPanel(sessionId);
+  if (panel) {
+    panel.updateProjection(projection);
+  }
 }
 
 /** @deprecated Sync removed — StateMachine is now the single source of truth for turn/humanResolved. */
@@ -89,11 +69,11 @@ function persistTurnState(sessionId: string, projection: SessionStateProjection)
 }
 
 function createStatusCardProjectionContext(sessionId: string) {
-  const components = getSessionComponents(sessionId);
-  if (!components) return undefined;
+  const panel = getPanel(sessionId);
+  if (!panel) return undefined;
   const session = getSession(sessionId);
   return {
-    statusCard: components.statusCard,
+    statusCard: panel.statusCard,
     remoteHumanControl: session?.remoteHumanControl,
     provider: session?.provider,
     permissionsSummary: session ? getSessionPermissionSummary(session) : undefined,
@@ -144,7 +124,7 @@ export async function initializeSessionPanel(
 ): Promise<void> {
   performanceTracker.startSessionDiscovery(sessionId);
 
-  const existing = getSessionComponents(sessionId);
+  const existing = getPanel(sessionId);
   if (existing) {
     performanceTracker.endSessionDiscovery(sessionId, { cached: true });
     return;
@@ -158,32 +138,22 @@ export async function initializeSessionPanel(
   }
 
   const initialization = (async () => {
-    const statusCard = new StatusCard(channel);
+    const panel = new SessionPanelComponent(sessionId, channel);
     const session = getSession(sessionId);
-    if (options.statusCardMessageId) {
-      statusCard.adopt(options.statusCardMessageId);
-    }
-    await statusCard.initialize({
-      turn: options.initialTurn ?? 1,
+
+    await panel.initialize({
+      statusCardMessageId: options.statusCardMessageId,
+      initialTurn: options.initialTurn,
       phase: options.phase,
-      updatedAt: Date.now(),
       remoteHumanControl: session?.remoteHumanControl,
       provider: session?.provider,
       permissionsSummary: session ? getSessionPermissionSummary(session) : undefined,
     });
 
-    const summaryHandler = new SummaryHandler(sessionId, channel.id, channel);
-    const interactionCard = new InteractionCard(channel);
-
-    sessionComponents.set(sessionId, {
-      channel,
-      statusCard,
-      summaryHandler,
-      interactionCard,
-    });
+    sessionPanels.set(sessionId, panel);
 
     setStatusCardBinding(sessionId, {
-      messageId: statusCard.getMessageId() ?? options.statusCardMessageId,
+      messageId: panel.getMessageId() ?? options.statusCardMessageId,
     });
 
     const projection = ensureProjectionTurn(
@@ -224,7 +194,7 @@ export async function updateSessionState(
   const updateKey = `${sessionId}:state`;
   performanceTracker.startStateUpdate(updateKey);
 
-  if (!getSessionComponents(sessionId) && options.channel) {
+  if (!getPanel(sessionId) && options.channel) {
     const session = getSession(sessionId);
     await initializeSessionPanel(sessionId, options.channel, {
       statusCardMessageId: session?.statusCardMessageId,
@@ -266,18 +236,18 @@ export async function handleResultEvent(
   textContent: string,
   attachments: string[] = [],
 ): Promise<void> {
-  const components = getSessionComponents(sessionId);
-  if (!components) return;
+  const panel = getPanel(sessionId);
+  if (!panel) return;
 
   const projection = ensureProjectionTurn(sessionId, 1, 'turn_bootstrap');
 
   const isSessionEnd = event.metadata?.sessionEnd === true;
   const source = resolveProviderSource(sessionId);
-  await components.interactionCard.hide();
+  await panel.interactionCard.hide();
   setCurrentInteractionMessage(sessionId, undefined);
 
   if (isSessionEnd) {
-    await components.summaryHandler.sendEndingSummary(textContent, attachments);
+    await panel.summaryHandler.sendEndingSummary(textContent, attachments);
     await updateSessionState(sessionId, {
       type: 'session_ended',
       sessionId,
@@ -290,7 +260,7 @@ export async function handleResultEvent(
     const session = getSession(sessionId);
     const failureText =
       textContent.trim() || event.errors.join('\n').trim() || '任务失败';
-    await components.summaryHandler.sendTurnFailure(
+    await panel.summaryHandler.sendTurnFailure(
       failureText,
       projection.turn,
       session?.lastInboundMessageId,
@@ -307,7 +277,7 @@ export async function handleResultEvent(
   } else {
     const beforeProjection = getSessionProjection(sessionId);
     const session = getSession(sessionId);
-    await components.summaryHandler.sendTurnSummary(
+    await panel.summaryHandler.sendTurnSummary(
       textContent,
       beforeProjection.turn,
       session?.lastInboundMessageId,
@@ -327,15 +297,13 @@ export async function handleAwaitingHuman(
     source?: 'claude' | 'codex';
   } = {},
 ): Promise<string | null> {
-  const components = getSessionComponents(sessionId);
-  if (!components) return null;
+  const panel = getPanel(sessionId);
+  if (!panel) return null;
   const session = getSession(sessionId);
 
   // 交互卡限流：同一会话 10 秒内最多创建 1 个
-  const lastTime = lastInteractionCardTime.get(sessionId) ?? 0;
-  const now = Date.now();
-  if (now - lastTime < INTERACTION_CARD_COOLDOWN_MS) {
-    console.warn(`交互卡创建限流 (${sessionId}): 距上次创建仅 ${now - lastTime}ms`);
+  if (!panel.checkInteractionCooldown()) {
+    console.warn(`交互卡创建限流 (${sessionId}): 距上次创建仅 ${panel.getTimeSinceLastInteraction()}ms`);
     return null;
   }
 
@@ -363,12 +331,12 @@ export async function handleAwaitingHuman(
     metadata: { detail },
   });
 
-  const messageId = await components.interactionCard.show(sessionId, projection.turn, detail, {
+  const messageId = await panel.interactionCard.show(sessionId, projection.turn, detail, {
     remoteHumanControl,
     provider,
   });
   gateCoordinator.bindDiscordMessage(gate.id, messageId);
-  lastInteractionCardTime.set(sessionId, now);
+  panel.recordInteractionCardTime();
   cacheProjection(sessionId, getSessionProjection(sessionId));
 
   updateSession(sessionId, {
@@ -385,16 +353,16 @@ export async function relocateSessionPanelToBottom(
   sessionId: string,
   channel?: SessionChannel,
 ): Promise<void> {
-  let components = getSessionComponents(sessionId);
-  if (!components && channel) {
+  let panel = getPanel(sessionId);
+  if (!panel && channel) {
     const session = getSession(sessionId);
     await initializeSessionPanel(sessionId, channel, {
       statusCardMessageId: session?.statusCardMessageId,
       initialTurn: session?.currentTurn || 1,
     });
-    components = getSessionComponents(sessionId);
+    panel = getPanel(sessionId);
   }
-  if (!components) return;
+  if (!panel) return;
 
   let statusRelocation:
     | {
@@ -404,7 +372,7 @@ export async function relocateSessionPanelToBottom(
     | null = null;
 
   try {
-    statusRelocation = await components.statusCard.recreateAtBottom();
+    statusRelocation = await panel.statusCard.recreateAtBottom();
   } catch (error) {
     console.warn(`状态消息迁移失败 (${sessionId})：`, error);
     return;
@@ -412,12 +380,12 @@ export async function relocateSessionPanelToBottom(
 
   let digestRelocation = { oldMessageIds: [] as string[], newMessageIds: [] as string[] };
   try {
-    digestRelocation = await components.summaryHandler.relocateDigestToBottom();
+    digestRelocation = await panel.summaryHandler.relocateDigestToBottom();
   } catch (error) {
     console.warn(`摘要消息迁移失败 (${sessionId})：`, error);
     if (statusRelocation?.oldMessageId && statusRelocation.newMessageId) {
-      components.statusCard.adopt(statusRelocation.oldMessageId);
-      await components.channel.messages.delete(statusRelocation.newMessageId).catch(() => {});
+      panel.statusCard.adopt(statusRelocation.oldMessageId);
+      await panel.channel.messages.delete(statusRelocation.newMessageId).catch(() => {});
     }
     return;
   }
@@ -429,68 +397,39 @@ export async function relocateSessionPanelToBottom(
   }
 
   if (statusRelocation?.oldMessageId) {
-    await components.channel.messages.delete(statusRelocation.oldMessageId).catch(() => {});
+    await panel.channel.messages.delete(statusRelocation.oldMessageId).catch(() => {});
   }
   for (const messageId of digestRelocation.oldMessageIds) {
-    await components.channel.messages.delete(messageId).catch(() => {});
+    await panel.channel.messages.delete(messageId).catch(() => {});
   }
 }
 
 export function queueDigest(sessionId: string, item: DigestItem): void {
-  const text = item.text.trim();
-  if (!text) return;
-
-  if (!sessionDigests.has(sessionId)) {
-    sessionDigests.set(sessionId, []);
-  }
-  const queue = sessionDigests.get(sessionId)!;
-  const last = queue[queue.length - 1];
-  if (last && last.kind === item.kind && last.text === text) {
-    return;
-  }
-
-  queue.push({ kind: item.kind, text });
-  if (queue.length > MAX_DIGEST_QUEUE_SIZE) {
-    queue.splice(0, queue.length - MAX_DIGEST_QUEUE_SIZE);
-  }
+  const panel = getPanel(sessionId);
+  if (!panel) return;
+  panel.queueDigest(item);
 }
 
 export function getDigestQueue(sessionId: string): DigestItem[] {
-  return [...(sessionDigests.get(sessionId) ?? [])];
+  const panel = getPanel(sessionId);
+  if (!panel) return [];
+  return panel.getDigestQueue();
 }
 
 export function clearDigestQueue(sessionId: string): void {
-  sessionDigests.delete(sessionId);
-}
-
-function renderDigest(items: DigestItem[]): string {
-  const grouped = new Map<string, string[]>();
-  for (const item of items) {
-    if (!grouped.has(item.kind)) grouped.set(item.kind, []);
-    grouped.get(item.kind)!.push(item.text);
-  }
-
-  const lines: string[] = ['**最近进展**'];
-  for (const [kind, texts] of grouped) {
-    const latest = texts.slice(-2).join('；');
-    lines.push(`- ${kind}：${latest}`);
-    if (texts.length > 2) {
-      lines.push(`- ${kind}：另有 ${texts.length - 2} 条已折叠`);
-    }
-  }
-
-  return lines.join('\n');
+  const panel = getPanel(sessionId);
+  if (panel) panel.clearDigestQueue();
 }
 
 export async function flushDigest(sessionId: string): Promise<void> {
-  const components = getSessionComponents(sessionId);
-  if (!components) return;
+  const panel = getPanel(sessionId);
+  if (!panel) return;
 
-  const queue = getDigestQueue(sessionId);
+  const queue = panel.getDigestQueue();
   if (queue.length === 0) return;
 
-  await components.summaryHandler.sendDigestSummary(renderDigest(queue));
-  clearDigestQueue(sessionId);
+  await panel.summaryHandler.sendDigestSummary(renderDigest(queue));
+  panel.clearDigestQueue();
 }
 
 export function mapPlatformEventTypeToUnifiedState(type: PlatformEvent['type']): UnifiedState | null {
@@ -503,11 +442,9 @@ export function getStateMachine(): StateMachine {
 
 // 清理指定会话的所有面板状态（会话结束时调用）
 export function cleanupSessionPanel(sessionId: string): void {
-  sessionComponents.delete(sessionId);
-  sessionStateProjections.delete(sessionId);
-  sessionLastActivity.delete(sessionId);
-  sessionDigests.delete(sessionId);
-  lastInteractionCardTime.delete(sessionId);
+  const panel = getPanel(sessionId);
+  if (panel) panel.cleanup();
+  sessionPanels.delete(sessionId);
   statusCardProjectionRenderer.clear(sessionId);
   stateMachine.clearSession(sessionId);
   clearPendingAnswers(sessionId);
@@ -524,13 +461,10 @@ export function cleanupSessionPanel(sessionId: string): void {
 // 清理失活会话的状态投影缓存和组件
 export function cleanupInactiveSessions(): void {
   const now = Date.now();
-  for (const [sessionId, lastActivity] of sessionLastActivity) {
-    if (now - lastActivity > SESSION_INACTIVE_TIMEOUT_MS) {
-      sessionStateProjections.delete(sessionId);
-      sessionLastActivity.delete(sessionId);
-      sessionComponents.delete(sessionId);
-      sessionDigests.delete(sessionId);
-      lastInteractionCardTime.delete(sessionId);
+  for (const [sessionId, panel] of sessionPanels) {
+    if (now - panel.getLastActivity() > SESSION_INACTIVE_TIMEOUT_MS) {
+      panel.cleanup();
+      sessionPanels.delete(sessionId);
       statusCardProjectionRenderer.clear(sessionId);
       console.log(`清理失活会话状态投影: ${sessionId}`);
     }
@@ -544,11 +478,15 @@ export function getPerformanceStats(): {
   activeSessions: number;
   projectionCount: number;
 } {
+  let projectionCount = 0;
+  for (const panel of sessionPanels.values()) {
+    if (panel.getCachedProjection() !== null) projectionCount++;
+  }
   return {
     discoveryLatency: performanceTracker.getMetricStats('session_discovery_latency'),
     updateLatency: performanceTracker.getMetricStats('state_update_latency'),
-    activeSessions: sessionComponents.size,
-    projectionCount: sessionStateProjections.size,
+    activeSessions: sessionPanels.size,
+    projectionCount,
   };
 }
 
