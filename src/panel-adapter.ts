@@ -18,6 +18,7 @@ import type {
   UnifiedState,
 } from './state/types.ts';
 import { performanceTracker } from './monitoring/performance-tracker.ts';
+import { clearPendingAnswers } from './output/answer-store.ts';
 
 type SessionChannel = TextChannel | AnyThreadChannel;
 
@@ -507,6 +508,7 @@ export function cleanupSessionPanel(sessionId: string): void {
   lastInteractionCardTime.delete(sessionId);
   statusCardProjectionRenderer.clear(sessionId);
   stateMachine.clearSession(sessionId);
+  clearPendingAnswers(sessionId);
 }
 
 // 清理失活会话的状态投影缓存和组件
