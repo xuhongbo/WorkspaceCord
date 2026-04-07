@@ -13,6 +13,7 @@ import type {
   ProviderName,
 } from './types.ts';
 import { config } from './config.ts';
+import { cleanupSessionPanel } from './panel-adapter.ts';
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
@@ -578,6 +579,7 @@ export async function endSession(id: string): Promise<void> {
     }
   }
 
+  cleanupSessionPanel(session.id);
   await saveSessionsImmediate();
 }
 

@@ -498,13 +498,28 @@ export function getStateMachine(): StateMachine {
   return stateMachine;
 }
 
-// 清理失活会话的状态投影缓存
+// 清理指定会话的所有面板状态（会话结束时调用）
+export function cleanupSessionPanel(sessionId: string): void {
+  sessionComponents.delete(sessionId);
+  sessionStateProjections.delete(sessionId);
+  sessionLastActivity.delete(sessionId);
+  sessionDigests.delete(sessionId);
+  lastInteractionCardTime.delete(sessionId);
+  statusCardProjectionRenderer.clear(sessionId);
+  stateMachine.clearSession(sessionId);
+}
+
+// 清理失活会话的状态投影缓存和组件
 export function cleanupInactiveSessions(): void {
   const now = Date.now();
   for (const [sessionId, lastActivity] of sessionLastActivity) {
     if (now - lastActivity > SESSION_INACTIVE_TIMEOUT_MS) {
       sessionStateProjections.delete(sessionId);
       sessionLastActivity.delete(sessionId);
+      sessionComponents.delete(sessionId);
+      sessionDigests.delete(sessionId);
+      lastInteractionCardTime.delete(sessionId);
+      statusCardProjectionRenderer.clear(sessionId);
       console.log(`清理失活会话状态投影: ${sessionId}`);
     }
   }
