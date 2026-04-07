@@ -1,5 +1,5 @@
 import { Client, ActivityType } from 'discord.js';
-import { getAllSessions } from './thread-manager.ts';
+import { getAllSessions } from './session-registry.ts';
 
 export class PresenceManager {
   private readonly client: Client;

@@ -9,7 +9,7 @@ import {
 import { config } from './config.ts';
 import { BotServicesOrchestrator, type ServiceContainer } from './bot-services-orchestrator.ts';
 import { LogBuffer } from './bot-log-buffer.ts';
-import { endSession, getSessionByChannel } from './thread-manager.ts';
+import { endSession, getSessionByChannel } from './session-registry.ts';
 import { acquireLock, releaseLock } from './bot-locks.ts';
 import {
   handleProject,

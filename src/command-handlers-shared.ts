@@ -6,7 +6,7 @@ import {
   type Guild,
 } from 'discord.js';
 import { config } from './config.ts';
-import * as sessionMgr from './thread-manager.ts';
+import { createSession, getSessionByChannel } from './session-registry.ts';
 import * as projectMgr from './project-manager.ts';
 import { buildProjectCleanupPreview } from './session-housekeeping.ts';
 import { isUserAllowed } from './utils.ts';
@@ -140,7 +140,7 @@ export function parseCodexBypass(value: string | null): boolean | undefined {
 export function buildSpawnPermissionPatch(
   interaction: ChatInputCommandInteraction,
   provider: ProviderName,
-): Partial<Parameters<typeof sessionMgr.createSession>[0]> {
+): Partial<Parameters<typeof createSession>[0]> {
   if (provider === 'claude') {
     return {
       claudePermissionMode: (interaction.options.getString('claude-permissions') ||
@@ -261,7 +261,7 @@ export async function resolveOrCreateControlChannel(
     }
   }
 
-  const currentSession = sessionMgr.getSessionByChannel(currentChannel.id);
+  const currentSession = getSessionByChannel(currentChannel.id);
   if (!currentSession) {
     projectMgr.setControlChannelId(categoryId, currentChannel.id);
     return currentChannel;

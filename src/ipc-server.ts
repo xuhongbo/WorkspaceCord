@@ -4,7 +4,8 @@ import type { Client, TextChannel } from 'discord.js';
 import type { SessionChannel } from './types.ts';
 import { config } from './config.ts';
 import { updateSessionState } from './panel-adapter.ts';
-import * as sessions from './thread-manager.ts';
+import { getSession, getSessionByProviderSession, updateSession } from './session-registry.ts';
+import { buildClaudeSubagentProviderSessionId } from './session/session-local-registration.ts';
 import { discoverAndRegisterSession } from './session-discovery.ts';
 import { gateCoordinator } from './state/gate-coordinator.ts';
 import type { PlatformEvent } from './state/types.ts';
@@ -108,12 +109,12 @@ async function handleHookEvent(payload: Record<string, unknown>): Promise<void> 
   const subagent = event.metadata?.subagent;
   const subagentProviderSessionId =
     event.source === 'claude' && subagent?.agentId
-      ? sessions.buildClaudeSubagentProviderSessionId(event.sessionId, subagent.agentId as string)
+      ? buildClaudeSubagentProviderSessionId(event.sessionId, subagent.agentId as string)
       : undefined;
   let session =
     (subagentProviderSessionId
-      ? sessions.getSessionByProviderSession(event.source as 'claude' | 'codex', subagentProviderSessionId)
-      : undefined) ?? sessions.getSessionByProviderSession(event.source as 'claude' | 'codex', event.sessionId);
+      ? getSessionByProviderSession(event.source as 'claude' | 'codex', subagentProviderSessionId)
+      : undefined) ?? getSessionByProviderSession(event.source as 'claude' | 'codex', event.sessionId);
 
   if (!session && discordClient && event.metadata?.cwd) {
     const registered = await discoverAndRegisterSession(discordClient, {
@@ -132,7 +133,7 @@ async function handleHookEvent(payload: Record<string, unknown>): Promise<void> 
     });
 
     if (registered) {
-      session = sessions.getSession(registered.sessionId);
+      session = getSession(registered.sessionId);
       console.log(`[IpcServer] Auto-registered session: ${registered.sessionId}`);
     }
   }
@@ -147,7 +148,7 @@ async function handleHookEvent(payload: Record<string, unknown>): Promise<void> 
     channel,
   });
 
-  sessions.updateSession(session.id, {
+  updateSession(session.id, {
     lastObservedState: event.type,
     lastObservedEventKey: event.metadata?.hookEvent as string | undefined,
     lastObservedAt: event.timestamp || Date.now(),
@@ -171,7 +172,7 @@ async function handleGateResolved(payload: Record<string, unknown>): Promise<voi
 
   const gate = gateCoordinator.getGate(data.gateId);
   if (gate?.discordMessageId) {
-    const session = sessions.getSession(data.sessionId);
+    const session = getSession(data.sessionId);
     if (session) {
       const channel = discordClient?.channels.cache.get(session.channelId) as TextChannel | undefined;
       if (channel) {

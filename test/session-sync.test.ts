@@ -28,7 +28,7 @@ vi.mock('../src/project-registry.ts', () => ({
   getAllRegisteredProjects,
 }));
 
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   getAllSessions,
   createSession,
 }));

@@ -335,13 +335,13 @@ describe('Thread Manager', () => {
 
   describe('buildClaudeSubagentProviderSessionId', () => {
     it('builds a subagent session ID from parent and agent ID', async () => {
-      const { buildClaudeSubagentProviderSessionId } = await import('../src/thread-manager.ts');
+      const { buildClaudeSubagentProviderSessionId } = await import('../src/session/session-local-registration.ts');
       const result = buildClaudeSubagentProviderSessionId('parent-123', 'agent-xyz');
       expect(result).toBe('subagent:parent-123:agent-xyz');
     });
 
     it('handles special characters in agent ID', async () => {
-      const { buildClaudeSubagentProviderSessionId } = await import('../src/thread-manager.ts');
+      const { buildClaudeSubagentProviderSessionId } = await import('../src/session/session-local-registration.ts');
       const result = buildClaudeSubagentProviderSessionId('p', 'a/b_c');
       expect(result).toBe('subagent:p:a/b_c');
     });
@@ -351,7 +351,7 @@ describe('Thread Manager', () => {
     it('throws when session is not found', async () => {
       sessionsMap.clear();
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
       await expect(async () => {
         const gen = sendPrompt('nonexistent', 'hello');
         for await (const _ of gen);
@@ -361,7 +361,7 @@ describe('Thread Manager', () => {
     it('throws when session is already generating', async () => {
       sessionsMap.set('ch-1', makeSession({ isGenerating: true }));
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
       await expect(async () => {
         const gen = sendPrompt('test-session', 'hello');
         for await (const _ of gen);
@@ -371,7 +371,7 @@ describe('Thread Manager', () => {
     it('calls provider.sendPrompt with correct options', async () => {
       sessionsMap.set('ch-1', makeSession());
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       const events: any[] = [];
       for await (const event of sendPrompt('test-session', 'hello')) {
@@ -391,7 +391,7 @@ describe('Thread Manager', () => {
     it('yields all events from provider stream', async () => {
       sessionsMap.set('ch-1', makeSession());
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       const events: any[] = [];
       for await (const event of sendPrompt('test-session', 'hello')) {
@@ -406,7 +406,7 @@ describe('Thread Manager', () => {
     it('saves session on session_init event', async () => {
       sessionsMap.set('ch-1', makeSession());
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       for await (const _ of sendPrompt('test-session', 'hello'));
 
@@ -417,7 +417,7 @@ describe('Thread Manager', () => {
     it('accumulates cost on result event', async () => {
       sessionsMap.set('ch-1', makeSession({ totalCost: 0 }));
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       for await (const _ of sendPrompt('test-session', 'hello'));
 
@@ -428,7 +428,7 @@ describe('Thread Manager', () => {
     it('clears generating flag in finally block', async () => {
       sessionsMap.set('ch-1', makeSession());
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       for await (const _ of sendPrompt('test-session', 'hello'));
 
@@ -441,7 +441,7 @@ describe('Thread Manager', () => {
     it('calls provider.continueSession with correct options', async () => {
       sessionsMap.set('ch-1', makeSession());
 
-      const { continueSession } = await import('../src/thread-manager.ts');
+      const { continueSession } = await import('../src/session/session-provider-runtime.ts');
 
       const events: any[] = [];
       for await (const event of continueSession('test-session')) {
@@ -459,7 +459,7 @@ describe('Thread Manager', () => {
     it('yields all events from continued session', async () => {
       sessionsMap.set('ch-1', makeSession());
 
-      const { continueSession } = await import('../src/thread-manager.ts');
+      const { continueSession } = await import('../src/session/session-provider-runtime.ts');
 
       const events: any[] = [];
       for await (const event of continueSession('test-session')) {
@@ -476,7 +476,7 @@ describe('Thread Manager', () => {
     it('calls provider.sendPrompt with monitor system prompt', async () => {
       sessionsMap.set('ch-1', makeSession());
 
-      const { sendMonitorPrompt } = await import('../src/thread-manager.ts');
+      const { sendMonitorPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       const events: any[] = [];
       for await (const event of sendMonitorPrompt('test-session', 'Check progress')) {
@@ -493,7 +493,7 @@ describe('Thread Manager', () => {
     it('saves session after completing monitor prompt', async () => {
       sessionsMap.set('ch-1', makeSession());
 
-      const { sendMonitorPrompt } = await import('../src/thread-manager.ts');
+      const { sendMonitorPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       for await (const _ of sendMonitorPrompt('test-session', 'Check progress'));
 
@@ -504,7 +504,7 @@ describe('Thread Manager', () => {
       sessionsMap.set('ch-1', makeSession());
       const beforeActivity = sessionsMap.get('ch-1').lastActivity;
 
-      const { sendMonitorPrompt } = await import('../src/thread-manager.ts');
+      const { sendMonitorPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       for await (const _ of sendMonitorPrompt('test-session', 'Check progress'));
 
@@ -516,7 +516,7 @@ describe('Thread Manager', () => {
     it('uses bypass permission mode for auto sessions', async () => {
       sessionsMap.set('ch-1', makeSession({ mode: 'auto' }));
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       for await (const _ of sendPrompt('test-session', 'auto task'));
 
@@ -526,7 +526,7 @@ describe('Thread Manager', () => {
     it('system prompt includes personality when configured', async () => {
       sessionsMap.set('ch-1', makeSession());
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       for await (const _ of sendPrompt('test-session', 'hello'));
 
@@ -539,7 +539,7 @@ describe('Thread Manager', () => {
     it('system prompt includes mode prompt for plan mode', async () => {
       sessionsMap.set('ch-1', makeSession({ mode: 'plan' }));
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       for await (const _ of sendPrompt('test-session', 'plan task'));
 
@@ -551,7 +551,7 @@ describe('Thread Manager', () => {
     it('system prompt includes mode prompt for normal mode', async () => {
       sessionsMap.set('ch-1', makeSession({ mode: 'normal' }));
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       for await (const _ of sendPrompt('test-session', 'normal task'));
 
@@ -563,7 +563,7 @@ describe('Thread Manager', () => {
     it('system prompt includes discord session context', async () => {
       sessionsMap.set('ch-1', makeSession());
 
-      const { sendPrompt } = await import('../src/thread-manager.ts');
+      const { sendPrompt } = await import('../src/session/session-provider-runtime.ts');
 
       for await (const _ of sendPrompt('test-session', 'hello'));
 
@@ -575,54 +575,54 @@ describe('Thread Manager', () => {
 
   describe('re-exported session-registry functions', () => {
     it('re-exports loadSessions', async () => {
-      const tm = await import('../src/thread-manager.ts');
+      const tm = await import('../src/session-registry.ts');
       expect(typeof tm.loadSessions).toBe('function');
     });
 
     it('re-exports createSession', async () => {
-      const tm = await import('../src/thread-manager.ts');
+      const tm = await import('../src/session-registry.ts');
       expect(typeof tm.createSession).toBe('function');
     });
 
     it('re-exports getSession', async () => {
-      const tm = await import('../src/thread-manager.ts');
+      const tm = await import('../src/session-registry.ts');
       expect(typeof tm.getSession).toBe('function');
     });
 
     it('re-exports getSessionByChannel', async () => {
-      const tm = await import('../src/thread-manager.ts');
+      const tm = await import('../src/session-registry.ts');
       expect(typeof tm.getSessionByChannel).toBe('function');
     });
 
     it('re-exports endSession', async () => {
-      const tm = await import('../src/thread-manager.ts');
+      const tm = await import('../src/session-registry.ts');
       expect(typeof tm.endSession).toBe('function');
     });
 
     it('re-exports setMode', async () => {
-      const tm = await import('../src/thread-manager.ts');
+      const tm = await import('../src/session-registry.ts');
       expect(typeof tm.setMode).toBe('function');
     });
 
     it('re-exports abortSession', async () => {
-      const tm = await import('../src/thread-manager.ts');
+      const tm = await import('../src/session-registry.ts');
       expect(typeof tm.abortSession).toBe('function');
     });
 
     it('re-exports getAllSessions', async () => {
-      const tm = await import('../src/thread-manager.ts');
+      const tm = await import('../src/session-registry.ts');
       expect(typeof tm.getAllSessions).toBe('function');
     });
 
     it('re-exports CreateSessionParams type', async () => {
-      const tm = await import('../src/thread-manager.ts');
+      const tm = await import('../src/session-registry.ts');
       expect(tm).toBeDefined();
     });
   });
 
   describe('updateLocalObservation', () => {
     it('updates session with discovery info', async () => {
-      const { updateLocalObservation } = await import('../src/thread-manager.ts');
+      const { updateLocalObservation } = await import('../src/session/session-local-registration.ts');
 
       updateLocalObservation('test-session', {
         discoverySource: 'claude-hook',
@@ -635,7 +635,7 @@ describe('Thread Manager', () => {
     });
 
     it('includes remoteHumanControl when provided', async () => {
-      const { updateLocalObservation } = await import('../src/thread-manager.ts');
+      const { updateLocalObservation } = await import('../src/session/session-local-registration.ts');
 
       updateLocalObservation('test-session', {
         discoverySource: 'sync',
@@ -649,7 +649,7 @@ describe('Thread Manager', () => {
     });
 
     it('omits remoteHumanControl when not provided', async () => {
-      const { updateLocalObservation } = await import('../src/thread-manager.ts');
+      const { updateLocalObservation } = await import('../src/session/session-local-registration.ts');
 
       updateLocalObservation('test-session', {
         discoverySource: 'codex-log',

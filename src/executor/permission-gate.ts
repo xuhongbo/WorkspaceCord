@@ -1,4 +1,4 @@
-import * as sessions from '../thread-manager.ts';
+import { getSession } from '../session-registry.ts';
 import { handleAwaitingHuman, updateSessionState } from '../panel-adapter.ts';
 import { gateCoordinator } from '../state/gate-coordinator.ts';
 import { truncate } from '../utils.ts';
@@ -12,7 +12,7 @@ type GateResolveResult = {
 };
 
 function refreshSession(session: Session): Session {
-  return sessions.getSession(session.id) ?? session;
+  return getSession(session.id) ?? session;
 }
 
 export function waitForGateResolution(

@@ -3,7 +3,7 @@
 
 import type { Client } from 'discord.js';
 import type { ProviderName } from './types.ts';
-import { registerLocalSession } from './thread-manager.ts';
+import { registerLocalSession } from './session/session-local-registration.ts';
 
 export interface SessionDiscoveryParams {
   provider: ProviderName;

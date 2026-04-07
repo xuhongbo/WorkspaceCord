@@ -1,5 +1,5 @@
 import type { SessionChannel } from './types.ts';
-import { resolveCodexSessionFromMonitor } from './thread-manager.ts';
+import { resolveCodexSessionFromMonitor } from './session-registry.ts';
 import { normalizeCodexEvent } from './state/event-normalizer.ts';
 import { registerExistingStatusCard, updateSessionState } from './panel-adapter.ts';
 

@@ -61,9 +61,10 @@ describe('thread-manager system prompt', () => {
   it('把 discord 交互语义注入 systemPromptParts', async () => {
     const { _setDataDirForTest } = await import('../src/persistence.ts');
     _setDataDirForTest(dataDir);
-    const threadManager = await import('../src/thread-manager.ts');
+    const sessionRegistry = await import('../src/session-registry.ts');
+    const sessionRuntime = await import('../src/session/session-provider-runtime.ts');
 
-    const session = await threadManager.createSession({
+    const session = await sessionRegistry.createSession({
       channelId: 'channel-1',
       categoryId: 'category-1',
       projectName: 'demo',
@@ -73,7 +74,7 @@ describe('thread-manager system prompt', () => {
       type: 'persistent',
     });
 
-    for await (const _event of threadManager.sendPrompt(session.id, 'hello')) {
+    for await (const _event of sessionRuntime.sendPrompt(session.id, 'hello')) {
       // consume stream
     }
 
@@ -89,9 +90,10 @@ describe('thread-manager system prompt', () => {
   it('monitor 模式也注入 discord 交互语义', async () => {
     const { _setDataDirForTest } = await import('../src/persistence.ts');
     _setDataDirForTest(dataDir);
-    const threadManager = await import('../src/thread-manager.ts');
+    const sessionRegistry = await import('../src/session-registry.ts');
+    const sessionRuntime = await import('../src/session/session-provider-runtime.ts');
 
-    const session = await threadManager.createSession({
+    const session = await sessionRegistry.createSession({
       channelId: 'channel-2',
       categoryId: 'category-1',
       projectName: 'demo',
@@ -102,7 +104,7 @@ describe('thread-manager system prompt', () => {
       mode: 'monitor',
     });
 
-    for await (const _event of threadManager.sendPrompt(session.id, 'hello monitor')) {
+    for await (const _event of sessionRuntime.sendPrompt(session.id, 'hello monitor')) {
       // consume stream
     }
 
@@ -116,9 +118,10 @@ describe('thread-manager system prompt', () => {
   it('codex 会话级权限会覆盖默认 provider 选项，bypass 会强制全开', async () => {
     const { _setDataDirForTest } = await import('../src/persistence.ts');
     _setDataDirForTest(dataDir);
-    const threadManager = await import('../src/thread-manager.ts');
+    const sessionRegistry = await import('../src/session-registry.ts');
+    const sessionRuntime = await import('../src/session/session-provider-runtime.ts');
 
-    const session = await threadManager.createSession({
+    const session = await sessionRegistry.createSession({
       channelId: 'channel-3',
       categoryId: 'category-1',
       projectName: 'demo',
@@ -133,7 +136,7 @@ describe('thread-manager system prompt', () => {
       codexWebSearchMode: 'disabled',
     });
 
-    for await (const _event of threadManager.sendPrompt(session.id, 'hello permissions')) {
+    for await (const _event of sessionRuntime.sendPrompt(session.id, 'hello permissions')) {
       // consume stream
     }
 

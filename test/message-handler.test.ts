@@ -20,7 +20,7 @@ vi.mock('../src/config.ts', () => ({
     ackReaction: '👀',
   },
 }));
-vi.mock('../src/thread-manager.ts', () => ({ getSessionByChannel, updateSession }));
+vi.mock('../src/session-registry.ts', () => ({ getSessionByChannel, updateSession }));
 vi.mock('../src/session-executor.ts', () => ({ executeSessionPrompt }));
 vi.mock('../src/discord/delivery-policy.ts', () => ({ buildDeliveryPlan }));
 vi.mock('../src/discord/delivery.ts', () => ({ sendTyping, sendAckReaction, deliver }));

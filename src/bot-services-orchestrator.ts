@@ -17,7 +17,7 @@ import { startPerformanceMonitoring, stopPerformanceMonitoring } from './panel-a
 import { runSubagentWatchdog } from './subagent-manager.ts';
 import { loadArchived, checkAutoArchive } from './archive-manager.ts';
 import { loadProjects } from './project-manager.ts';
-import { loadSessions, getSession } from './thread-manager.ts';
+import { loadSessions, getSession } from './session-registry.ts';
 import { registerCommands } from './commands.ts';
 import { cleanupOldMessages, notifyUnmanagedCodexHint } from './bot-services-helpers.ts';
 
@@ -135,7 +135,7 @@ export class BotServicesOrchestrator {
         );
       },
       async (providerSessionId, cwd, remoteHumanControl, subagent) => {
-        const { registerLocalSession } = await import('./thread-manager.ts');
+        const { registerLocalSession } = await import('./session/session-local-registration.ts');
         const g = client.guilds.cache.first();
         if (!g) return false;
         const result = await registerLocalSession(

@@ -77,11 +77,13 @@ vi.mock('../src/command-handlers.ts', () => ({
 vi.mock('../src/codex-monitor-bridge.ts', () => ({ handleCodexMonitorStateChange: vi.fn() }));
 vi.mock('../src/panel-adapter.ts', () => ({ startPerformanceMonitoring: vi.fn(), stopPerformanceMonitoring: vi.fn() }));
 vi.mock('../src/state/gate-coordinator.ts', () => ({ gateCoordinator: { invalidateAllOnRestart: vi.fn(() => []), getGate: vi.fn() } }));
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   loadSessions: vi.fn(),
   getAllSessions: vi.fn(() => []),
   endSession: vi.fn(),
   getSessionByChannel: vi.fn(),
+}));
+vi.mock('../src/session/session-local-registration.ts', () => ({
   registerLocalSession,
 }));
 vi.mock('../src/monitors/codex-log-monitor.ts', () => ({

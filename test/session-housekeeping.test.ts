@@ -5,7 +5,7 @@ const endSession = vi.fn();
 const getAllSessions = vi.fn();
 const archiveSession = vi.fn();
 
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   getSession,
   endSession,
   getAllSessions,

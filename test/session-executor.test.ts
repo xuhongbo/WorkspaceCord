@@ -32,16 +32,18 @@ vi.mock('../src/panel-adapter.ts', () => ({
   handleAwaitingHuman,
 }));
 
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   getSession,
   setMonitorGoal,
   updateWorkflowState,
+  consumeAbortReason,
+  abortSessionWithReason: vi.fn(),
+}));
+vi.mock('../src/session/session-provider-runtime.ts', () => ({
   sendPrompt,
   continueSession,
   continueSessionWithOverrides,
   sendMonitorPrompt,
-  consumeAbortReason,
-  abortSessionWithReason: vi.fn(),
 }));
 
 vi.mock('../src/state/gate-coordinator.ts', () => ({

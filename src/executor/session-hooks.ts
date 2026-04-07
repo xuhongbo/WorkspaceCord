@@ -1,10 +1,10 @@
-import * as sessions from '../thread-manager.ts';
+import { getSession, updateWorkflowState } from '../session-registry.ts';
 import { updateSessionState } from '../panel-adapter.ts';
 import type { ThreadSession as Session, SessionChannel } from '../types.ts';
 import type { ContentBlock } from '../providers/types.ts';
 
 export function refreshSession(session: Session): Session {
-  return sessions.getSession(session.id) ?? session;
+  return getSession(session.id) ?? session;
 }
 
 export function applyWorkflowHook(
@@ -12,7 +12,7 @@ export function applyWorkflowHook(
   hook: Session['workflowState']['lastHook'],
   patch: Partial<Session['workflowState']> = {},
 ): Session {
-  return sessions.updateWorkflowState(session.id, (current) => ({
+  return updateWorkflowState(session.id, (current) => ({
     ...current,
     ...patch,
     lastHook: hook,

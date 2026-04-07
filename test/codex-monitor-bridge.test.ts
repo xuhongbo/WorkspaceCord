@@ -5,7 +5,7 @@ const normalizeCodexEvent = vi.fn();
 const registerExistingStatusCard = vi.fn();
 const updateSessionState = vi.fn();
 
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   resolveCodexSessionFromMonitor,
 }));
 

@@ -9,7 +9,7 @@ import {
   type AnyThreadChannel,
 } from 'discord.js';
 import { config } from '../config.ts';
-import * as sessionMgr from '../thread-manager.ts';
+import { createSession, getSession, getSessionByChannel, getSessionsByCategory, setMode, setMonitorGoal, setAgentPersona, setVerbose, setModel, setStatusCardBinding, setCurrentInteractionMessage, abortSession, endSession, updateSessionPermissions, getSessionPermissionSummary, getSessionPermissionDetails } from '../session-registry.ts';
 import * as projectMgr from '../project-manager.ts';
 import { archiveSession } from '../archive-manager.ts';
 import { executeSessionContinue } from '../session-executor.ts';
@@ -140,7 +140,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
 
   let session;
   try {
-    session = await sessionMgr.createSession({
+    session = await createSession({
       channelId: sessionChannel.id,
       categoryId,
       projectName: project.name,
@@ -158,7 +158,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
   }
 
   if (mode !== 'auto') {
-    sessionMgr.setMode(session.id, mode);
+    setMode(session.id, mode);
   }
 
   const statusEmbed = new EmbedBuilder()
@@ -167,7 +167,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
     .setDescription('等待首条消息')
     .addFields({
       name: '权限',
-      value: sessionMgr.getSessionPermissionSummary(session),
+      value: getSessionPermissionSummary(session),
       inline: false,
     });
 
@@ -175,7 +175,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
     embeds: [statusEmbed],
     components: [makeModeButtons(session.id, mode, session.claudePermissionMode)],
   });
-  sessionMgr.setCurrentInteractionMessage(session.id, undefined);
+  setCurrentInteractionMessage(session.id, undefined);
 
   let registered = false;
   try {
@@ -188,7 +188,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
     await interaction.editReply(`Failed to initialize session panel for "${label}".`);
     return;
   }
-  sessionMgr.setStatusCardBinding(session.id, { messageId: statusMessage.id });
+  setStatusCardBinding(session.id, { messageId: statusMessage.id });
   log(`[panel-adapter] 状态卡已注册，session=${session.id}`);
 
   const embed = new EmbedBuilder()
@@ -214,7 +214,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
   } else if (provider === 'codex') {
     embed.addFields({
       name: 'Codex 权限',
-      value: sessionMgr.getSessionPermissionDetails(session),
+      value: getSessionPermissionDetails(session),
       inline: false,
     });
   }
@@ -230,7 +230,7 @@ export async function handleAgentList(interaction: ChatInputCommandInteraction):
     return;
   }
 
-  const sessions = sessionMgr.getSessionsByCategory(categoryId).filter((s) => s.type === 'persistent');
+  const sessions = getSessionsByCategory(categoryId).filter((s) => s.type === 'persistent');
 
   if (sessions.length === 0) {
     await interaction.reply({
@@ -322,7 +322,7 @@ export async function handleAgentCleanup(interaction: ChatInputCommandInteractio
 }
 
 export async function handleAgentStop(interaction: ChatInputCommandInteraction): Promise<void> {
-  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({
       content: 'No active session in this channel. Run this inside an agent session channel.',
@@ -330,7 +330,7 @@ export async function handleAgentStop(interaction: ChatInputCommandInteraction):
     });
     return;
   }
-  const stopped = sessionMgr.abortSession(session.id);
+  const stopped = abortSession(session.id);
   await interaction.reply({
     content: stopped ? 'Generation stopped.' : 'Agent was not generating.',
     ephemeral: true,
@@ -338,14 +338,14 @@ export async function handleAgentStop(interaction: ChatInputCommandInteraction):
 }
 
 export async function handleAgentEnd(interaction: ChatInputCommandInteraction): Promise<void> {
-  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
     return;
   }
 
   await interaction.deferReply();
-  await sessionMgr.endSession(session.id);
+  await endSession(session.id);
 
   if (session.type === 'persistent' && interaction.guild) {
     try {
@@ -367,7 +367,7 @@ export async function handleAgentEnd(interaction: ChatInputCommandInteraction): 
 }
 
 export async function handleAgentArchive(interaction: ChatInputCommandInteraction): Promise<void> {
-  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
     return;
@@ -395,62 +395,62 @@ export async function handleAgentArchive(interaction: ChatInputCommandInteractio
 }
 
 export async function handleAgentMode(interaction: ChatInputCommandInteraction): Promise<void> {
-  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
     return;
   }
   const mode = interaction.options.getString('mode', true) as SessionMode;
-  sessionMgr.setMode(session.id, mode);
+  setMode(session.id, mode);
   await interaction.reply({ content: `Mode set to **${MODE_LABELS?.[mode] ?? mode}**.`, ephemeral: true });
 }
 
 export async function handleAgentGoal(interaction: ChatInputCommandInteraction): Promise<void> {
-  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
     return;
   }
   const goal = interaction.options.getString('goal', true);
-  sessionMgr.setMonitorGoal(session.id, goal);
+  setMonitorGoal(session.id, goal);
   await interaction.reply({ content: `Monitor goal set: *${goal}*`, ephemeral: true });
 }
 
 export async function handleAgentPersona(interaction: ChatInputCommandInteraction): Promise<void> {
-  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
     return;
   }
   const persona = interaction.options.getString('name') || undefined;
-  sessionMgr.setAgentPersona(session.id, persona === 'general' ? undefined : persona);
+  setAgentPersona(session.id, persona === 'general' ? undefined : persona);
   await interaction.reply({ content: `Persona set to **${persona || 'general'}**.`, ephemeral: true });
 }
 
 export async function handleAgentVerbose(interaction: ChatInputCommandInteraction): Promise<void> {
-  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
     return;
   }
   const newVerbose = !session.verbose;
-  sessionMgr.setVerbose(session.id, newVerbose);
+  setVerbose(session.id, newVerbose);
   await interaction.reply({ content: `Verbose mode ${newVerbose ? 'enabled' : 'disabled'}.`, ephemeral: true });
 }
 
 export async function handleAgentModel(interaction: ChatInputCommandInteraction): Promise<void> {
-  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
     return;
   }
   const model = interaction.options.getString('model', true);
-  sessionMgr.setModel(session.id, model);
+  setModel(session.id, model);
   await interaction.reply({ content: `Model set to \`${model}\`.`, ephemeral: true });
 }
 
 export async function handleAgentPermissions(interaction: ChatInputCommandInteraction): Promise<void> {
-  const session = sessionMgr.getSessionByChannel(interaction.channelId);
+  const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
     return;
@@ -462,11 +462,11 @@ export async function handleAgentPermissions(interaction: ChatInputCommandIntera
     return;
   }
 
-  await sessionMgr.updateSessionPermissions(session.id, patch);
-  const refreshed = sessionMgr.getSession(session.id) ?? { ...session, ...patch };
+  await updateSessionPermissions(session.id, patch);
+  const refreshed = getSession(session.id) ?? { ...session, ...patch };
   const timing = session.isGenerating ? '已保存，将在下一轮生效。' : '已更新并立即生效。';
   await interaction.reply({
-    content: `${timing}\n当前权限：${sessionMgr.getSessionPermissionDetails(refreshed as never)}`,
+    content: `${timing}\n当前权限：${getSessionPermissionDetails(refreshed as never)}`,
     ephemeral: true,
   });
 }
@@ -477,7 +477,7 @@ export async function handleAgentContinue(interaction: ChatInputCommandInteracti
     await interaction.reply({ content: 'No channel context.', ephemeral: true });
     return;
   }
-  const session = sessionMgr.getSessionByChannel(channel.id);
+  const session = getSessionByChannel(channel.id);
   if (!session) {
     await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
     return;

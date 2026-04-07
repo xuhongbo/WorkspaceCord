@@ -109,7 +109,7 @@ vi.mock('../src/config.ts', () => ({
 }));
 vi.mock('../src/commands.ts', () => ({ registerCommands }));
 vi.mock('../src/project-manager.ts', () => ({ loadProjects }));
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   loadSessions,
   getAllSessions,
   endSession: vi.fn(),

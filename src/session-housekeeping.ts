@@ -1,6 +1,6 @@
 import type { Guild } from 'discord.js';
 import { archiveSession } from './archive-manager.ts';
-import { endSession, getAllSessions, getSession } from './thread-manager.ts';
+import { endSession, getAllSessions, getSession } from './session-registry.ts';
 import type { ThreadSession } from './types.ts';
 
 export interface ProjectCleanupPreview {

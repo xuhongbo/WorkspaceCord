@@ -5,7 +5,7 @@ import {
   type AnyThreadChannel,
 } from 'discord.js';
 import { config } from './config.ts';
-import { createSession, endSession, getAllSessions } from './thread-manager.ts';
+import { createSession, endSession, getAllSessions } from './session-registry.ts';
 import type { ThreadSession, ProviderName } from './types.ts';
 import { sendSystemNotice } from './discord/delivery-notices.ts';
 

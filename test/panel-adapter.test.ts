@@ -47,7 +47,7 @@ vi.mock('../src/discord/interaction-card.ts', () => ({
   },
 }));
 
-vi.mock('../src/thread-manager.ts', () => ({
+vi.mock('../src/session-registry.ts', () => ({
   getSession,
   getSessionPermissionSummary,
   updateSession,

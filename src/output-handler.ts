@@ -12,7 +12,7 @@ import {
   renderReasoningEmbed,
   renderCodexTodoListEmbed,
 } from './codex-renderer.ts';
-import { getSession } from './thread-manager.ts';
+import { getSession } from './session-registry.ts';
 import {
   initializeSessionPanel,
   updateSessionState,
