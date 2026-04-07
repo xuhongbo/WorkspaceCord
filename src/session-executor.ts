@@ -72,7 +72,11 @@ async function runWorkerPass(
 
   let lastEventAt = Date.now();
   let watchdogTriggered = false;
-  let watchdog: ReturnType<typeof setInterval>;
+  let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const WATCHDOG_SLOW_INTERVAL = 5000;
+  const WATCHDOG_FAST_INTERVAL = 1000;
+  const WATCHDOG_FAST_THRESHOLD = 120_000; // switch to fast checks after 120s idle
 
   const stream =
     mode === 'continue'
@@ -87,15 +91,22 @@ async function runWorkerPass(
             : undefined,
         });
   try {
-    watchdog = setInterval(() => {
-      if (Date.now() - lastEventAt >= WORKER_IDLE_TIMEOUT_MS) {
+    const scheduleWatchdog = () => {
+      const idleMs = Date.now() - lastEventAt;
+      if (idleMs >= WORKER_IDLE_TIMEOUT_MS) {
         watchdogTriggered = true;
         console.warn(
           `[SessionExecutor] worker:watchdog sessionId=${session.id} iteration=${iteration} timeout=${WORKER_IDLE_TIMEOUT_MS}ms`,
         );
         sessions.abortSessionWithReason(session.id, 'watchdog');
+        return;
       }
-    }, 1000);
+      const delay = idleMs >= WATCHDOG_FAST_THRESHOLD
+        ? WATCHDOG_FAST_INTERVAL
+        : WATCHDOG_SLOW_INTERVAL;
+      watchdogTimer = setTimeout(scheduleWatchdog, delay);
+    };
+    watchdogTimer = setTimeout(scheduleWatchdog, WATCHDOG_SLOW_INTERVAL);
 
     const result = await handleOutputStream(
       stream,
@@ -147,7 +158,7 @@ async function runWorkerPass(
       abortReason,
     };
   } finally {
-    clearInterval(watchdog!);
+    if (watchdogTimer) clearTimeout(watchdogTimer);
   }
 }
 

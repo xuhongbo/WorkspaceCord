@@ -101,20 +101,32 @@ export type ProviderCanUseTool = (
   context: ProviderPermissionContext,
 ) => Promise<ProviderPermissionDecision>;
 
-export interface ProviderSessionOptions {
+/** Base options shared by all providers. */
+export interface BaseProviderOptions {
   directory: string;
   providerSessionId?: string;
   model?: string;
+  systemPromptParts: string[];
+  abortController: AbortController;
+  canUseTool?: ProviderCanUseTool;
+}
+
+/** Claude-specific options. */
+export interface ClaudeProviderOptions extends BaseProviderOptions {
+  claudePermissionMode?: ClaudePermissionMode;
+}
+
+/** Codex-specific options. */
+export interface CodexProviderOptions extends BaseProviderOptions {
   sandboxMode?: CodexSandboxMode;
   approvalPolicy?: CodexApprovalPolicy;
   networkAccessEnabled?: boolean;
   webSearchMode?: 'disabled' | 'cached' | 'live';
   modelReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
-  claudePermissionMode?: ClaudePermissionMode;
-  systemPromptParts: string[];
-  abortController: AbortController;
-  canUseTool?: ProviderCanUseTool;
 }
+
+/** Union type for backward compatibility — callers can pass any provider's options. */
+export type ProviderSessionOptions = ClaudeProviderOptions & CodexProviderOptions;
 
 export interface Provider {
   readonly name: ProviderName;
