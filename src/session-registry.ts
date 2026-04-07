@@ -3,21 +3,23 @@
 
 import { existsSync } from 'node:fs';
 import { sep } from 'node:path';
-import { Store } from './persistence.ts';
 import { sanitizeName, resolvePath } from './utils.ts';
 import type {
   ThreadSession,
-  SessionPersistData,
   SessionMode,
   SessionWorkflowState,
   ProviderName,
 } from './types.ts';
 import { config } from './config.ts';
 import { cleanupSessionPanel } from './panel-adapter.ts';
+import {
+  loadPersistedSessions,
+  saveAllSessions,
+  debouncedSave as debouncedSavePersistence,
+  saveImmediate as saveImmediatePersistence,
+} from './session/session-persistence.ts';
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
-
-const sessionStore = new Store<SessionPersistData[]>('sessions.json');
 
 // channelId (the session's own Discord channel or thread ID) → ThreadSession
 const sessions = new Map<string, ThreadSession>();
@@ -35,9 +37,6 @@ const providerSessionIndex = new Map<string, string>();
 const sessionControllers = new Map<string, AbortController>();
 const sessionAbortReasons = new Map<string, 'user' | 'watchdog'>();
 
-let saveQueue: Promise<void> = Promise.resolve();
-let saveTimer: NodeJS.Timeout | null = null;
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function createDefaultWorkflowState(): SessionWorkflowState {
@@ -51,8 +50,8 @@ function createDefaultWorkflowState(): SessionWorkflowState {
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
 export async function loadSessions(): Promise<void> {
-  const data = await sessionStore.read();
-  if (!data) return;
+  const data = await loadPersistedSessions();
+  if (data.length === 0) return;
 
   let cleaned = false;
 
@@ -125,84 +124,18 @@ export async function loadSessions(): Promise<void> {
   console.log(`[session-manager] Restored ${sessions.size} session(s)`);
 }
 
-async function persistSessionsNow(): Promise<void> {
-  const data: SessionPersistData[] = [];
-  for (const [, s] of sessions) {
-    data.push({
-      id: s.id,
-      channelId: s.channelId,
-      categoryId: s.categoryId,
-      projectName: s.projectName,
-      agentLabel: s.agentLabel,
-      provider: s.provider,
-      providerSessionId: s.providerSessionId,
-      model: s.model,
-      type: s.type,
-      parentChannelId: s.parentChannelId,
-      subagentDepth: s.subagentDepth,
-      directory: s.directory,
-      mode: s.mode,
-      agentPersona: s.agentPersona,
-      verbose: s.verbose || false,
-      claudePermissionMode: s.claudePermissionMode,
-      codexSandboxMode: s.codexSandboxMode,
-      codexApprovalPolicy: s.codexApprovalPolicy,
-      codexBypass: s.codexBypass,
-      codexNetworkAccessEnabled: s.codexNetworkAccessEnabled,
-      codexWebSearchMode: s.codexWebSearchMode,
-      monitorGoal: s.monitorGoal,
-      monitorProviderSessionId: s.monitorProviderSessionId,
-      workflowState: s.workflowState,
-      createdAt: s.createdAt,
-      lastActivity: s.lastActivity,
-      messageCount: s.messageCount,
-      totalCost: s.totalCost,
-      currentTurn: s.currentTurn,
-      humanResolved: s.humanResolved,
-      currentInteractionMessageId: s.currentInteractionMessageId,
-      statusCardMessageId: s.statusCardMessageId,
-      lastInboundMessageId: s.lastInboundMessageId,
-      discoverySource: s.discoverySource,
-      lastObservedState: s.lastObservedState,
-      lastObservedEventKey: s.lastObservedEventKey,
-      lastObservedAt: s.lastObservedAt,
-      lastObservedCwd: s.lastObservedCwd,
-      remoteHumanControl: s.remoteHumanControl,
-      activeHumanGateId: s.activeHumanGateId,
-    });
-  }
-  await sessionStore.write(data);
-}
-
 function saveSessions(): Promise<void> {
-  saveQueue = saveQueue
-    .catch(() => {})
-    .then(async () => {
-      try {
-        await persistSessionsNow();
-      } catch (err: unknown) {
-        console.error(`[session-manager] Failed to persist sessions: ${(err as Error).message}`);
-      }
-    });
-  return saveQueue;
+  return saveAllSessions(sessions);
 }
 
 /** 延迟批量保存（1秒内的多次调用会合并） */
 function debouncedSave(): void {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    saveSessions();
-  }, 1000);
+  debouncedSavePersistence(sessions);
 }
 
 /** 立即保存（用于关键操作） */
 function saveSessionsImmediate(): Promise<void> {
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  return saveSessions();
+  return saveImmediatePersistence(sessions);
 }
 
 // ─── Create / CRUD ────────────────────────────────────────────────────────────
