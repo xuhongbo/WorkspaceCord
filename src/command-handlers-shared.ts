@@ -56,17 +56,14 @@ export async function registerStatusCardWithPanelAdapter(
   channel: TextChannel,
   statusCardMessageId: string,
 ): Promise<boolean> {
-  const panelAdapter = await import('./panel-adapter.ts');
-  const adapter = panelAdapter as unknown as {
-    registerExistingStatusCard?: ExistingStatusCardRegistrar;
-  };
+  const { registerExistingStatusCard } = await import('./panel-adapter.ts');
 
-  if (typeof adapter.registerExistingStatusCard !== 'function') {
+  if (typeof registerExistingStatusCard !== 'function') {
     log(`[panel-adapter] registerExistingStatusCard 未暴露，session=${sessionId}`);
     return false;
   }
 
-  await adapter.registerExistingStatusCard(sessionId, channel, statusCardMessageId);
+  await registerExistingStatusCard(sessionId, channel, statusCardMessageId);
   return true;
 }
 
