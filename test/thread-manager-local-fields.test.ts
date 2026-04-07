@@ -32,7 +32,7 @@ describe('thread-manager 本地感知字段持久化', () => {
   });
 
   it('会把本地感知字段写入 sessions.json', async () => {
-    const threadManager = await import('../src/thread-manager.ts');
+    const threadManager = await import('../src/session-registry.ts');
     const session = await threadManager.createSession({
       channelId: 'channel-1',
       categoryId: 'category-1',

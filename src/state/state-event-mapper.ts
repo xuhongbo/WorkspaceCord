@@ -1,26 +1,18 @@
 // 平台事件到状态转换的映射逻辑
 // 从 PlatformEvent 推导出 TransitionUpdates + TransitionMetadata
 
-import type { UnifiedState, PlatformEvent } from './types.ts';
+import type {
+  UnifiedState,
+  PlatformEvent,
+  StateMachineState,
+  SessionLifecycle,
+  ExecutionState,
+  GateStatus,
+  TransitionUpdates,
+  TransitionMetadata,
+} from './types.ts';
 import { PLATFORM_EVENT_TO_STATE } from './types.ts';
-import type { StateMachineState, SessionLifecycle, ExecutionState, GateStatus } from './state-machine.ts';
 import { getStateLabel } from './state-projections.ts';
-
-export type TransitionUpdates = {
-  lifecycle?: SessionLifecycle;
-  execution?: ExecutionState | null;
-  gate?: GateStatus | null;
-};
-
-export type TransitionMetadata = {
-  displayState?: UnifiedState;
-  stateSource?: 'formal' | 'inferred';
-  confidence?: 'high' | 'medium' | 'low';
-  updatedAt?: number;
-  turn?: number;
-  phase?: string;
-  humanResolved?: boolean;
-};
 
 export interface EventTransitionResult {
   updates: TransitionUpdates;

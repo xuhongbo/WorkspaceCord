@@ -42,7 +42,7 @@ describe('thread-manager registerLocalSession', () => {
     _setDataDirForTest(dataDir);
 
     const projectRegistry = await import('../src/project-registry.ts');
-    const threadManager = await import('../src/thread-manager.ts');
+    const sessionLocal = await import('../src/session/session-local-registration.ts');
 
     await projectRegistry.loadRegistry();
     await projectRegistry.registerProject('root-project', rootDir);
@@ -78,7 +78,7 @@ describe('thread-manager registerLocalSession', () => {
       },
     } as unknown as Guild;
 
-    const result = await threadManager.registerLocalSession(
+    const result = await sessionLocal.registerLocalSession(
       {
         provider: 'codex',
         providerSessionId: 'provider-1',
@@ -106,7 +106,7 @@ describe('thread-manager registerLocalSession', () => {
     _setDataDirForTest(dataDir);
 
     const projectRegistry = await import('../src/project-registry.ts');
-    const threadManager = await import('../src/thread-manager.ts');
+    const sessionLocal = await import('../src/session/session-local-registration.ts');
 
     await projectRegistry.loadRegistry();
     await projectRegistry.registerProject('demo-project', rootDir);
@@ -131,7 +131,7 @@ describe('thread-manager registerLocalSession', () => {
       },
     } as unknown as Guild;
 
-    const result = await threadManager.registerLocalSession(
+    const result = await sessionLocal.registerLocalSession(
       {
         provider: 'codex',
         providerSessionId: 'provider-archived',
@@ -150,13 +150,14 @@ describe('thread-manager registerLocalSession', () => {
     _setDataDirForTest(dataDir);
 
     const projectRegistry = await import('../src/project-registry.ts');
-    const threadManager = await import('../src/thread-manager.ts');
+    const sessionRegistry = await import('../src/session-registry.ts');
+    const sessionLocal = await import('../src/session/session-local-registration.ts');
 
     await projectRegistry.loadRegistry();
     await projectRegistry.registerProject('demo-project', rootDir);
     await projectRegistry.bindProjectCategory('demo-project', 'cat-demo', 'Demo Category');
 
-    await threadManager.createSession({
+    await sessionRegistry.createSession({
       channelId: 'parent-channel',
       categoryId: 'cat-demo',
       projectName: 'demo-project',
@@ -198,7 +199,7 @@ describe('thread-manager registerLocalSession', () => {
       },
     } as unknown as Guild;
 
-    const result = await threadManager.registerLocalSession(
+    const result = await sessionLocal.registerLocalSession(
       {
         provider: 'codex',
         providerSessionId: 'child-provider',
@@ -231,13 +232,14 @@ describe('thread-manager registerLocalSession', () => {
     _setDataDirForTest(dataDir);
 
     const projectRegistry = await import('../src/project-registry.ts');
-    const threadManager = await import('../src/thread-manager.ts');
+    const sessionRegistry = await import('../src/session-registry.ts');
+    const sessionLocal = await import('../src/session/session-local-registration.ts');
 
     await projectRegistry.loadRegistry();
     await projectRegistry.registerProject('demo-project', rootDir);
     await projectRegistry.bindProjectCategory('demo-project', 'cat-demo', 'Demo Category');
 
-    await threadManager.createSession({
+    await sessionRegistry.createSession({
       channelId: 'parent-channel',
       categoryId: 'cat-demo',
       projectName: 'demo-project',
@@ -274,7 +276,7 @@ describe('thread-manager registerLocalSession', () => {
       },
     } as unknown as Guild;
 
-    const result = await threadManager.registerLocalSession(
+    const result = await sessionLocal.registerLocalSession(
       {
         provider: 'claude',
         providerSessionId: 'claude-parent',
@@ -300,13 +302,14 @@ describe('thread-manager registerLocalSession', () => {
     _setDataDirForTest(dataDir);
 
     const projectRegistry = await import('../src/project-registry.ts');
-    const threadManager = await import('../src/thread-manager.ts');
+    const sessionRegistry = await import('../src/session-registry.ts');
+    const sessionLocal = await import('../src/session/session-local-registration.ts');
 
     await projectRegistry.loadRegistry();
     await projectRegistry.registerProject('demo-project', rootDir);
     await projectRegistry.bindProjectCategory('demo-project', 'cat-demo', 'Demo Category');
 
-    await threadManager.createSession({
+    await sessionRegistry.createSession({
       channelId: 'parent-thread',
       categoryId: 'cat-demo',
       projectName: 'demo-project',
@@ -351,7 +354,7 @@ describe('thread-manager registerLocalSession', () => {
       },
     } as unknown as Guild;
 
-    const result = await threadManager.registerLocalSession(
+    const result = await sessionLocal.registerLocalSession(
       {
         provider: 'codex',
         providerSessionId: 'grandchild-provider',

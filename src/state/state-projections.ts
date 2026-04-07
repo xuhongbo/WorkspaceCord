@@ -1,9 +1,8 @@
 // 状态投影与显示辅助函数
 // 纯函数，不依赖类状态
 
-import type { UnifiedState, SessionStateProjection, SessionPanelProjection } from './types.ts';
+import type { UnifiedState, SessionStateProjection, SessionPanelProjection, StateMachineState } from './types.ts';
 import { STATE_PRIORITY, STATE_LABELS, STATE_COLORS } from './types.ts';
-import type { StateMachineState } from './state-machine.ts';
 
 export function toProjection(state: StateMachineState): SessionStateProjection {
   return {

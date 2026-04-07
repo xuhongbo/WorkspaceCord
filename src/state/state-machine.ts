@@ -2,67 +2,40 @@
 // 单一真相源：只维护 StateMachineState，不再维护兼容态快照存储
 
 import type { UnifiedState, SessionStateProjection, SessionPanelProjection, PlatformEvent } from './types.ts';
-import { STATE_PRIORITY, STATE_LABELS, STATE_COLORS, PLATFORM_EVENT_TO_STATE } from './types.ts';
+import { STATE_PRIORITY, STATE_LABELS, PLATFORM_EVENT_TO_STATE } from './types.ts';
+import type {
+  SessionLifecycle,
+  ExecutionState,
+  StateMachineState,
+  StateTransition,
+  TransitionUpdates,
+  TransitionMetadata,
+} from './types.ts';
+import {
+  toProjection,
+  toPanelProjection,
+  resolveDisplayState,
+  getStateLabel,
+  getStateColor,
+} from './state-projections.ts';
+import { mapEventToTransition } from './state-event-mapper.ts';
 
-// ─── 状态定义 ─────────────────────────────────────────────────────────────────
+// Re-export types so existing `import { ... } from './state-machine.ts'` keeps working
+export type {
+  SessionLifecycle,
+  ExecutionState,
+  GateStatus,
+  StateMachineState,
+  StateTransition,
+  TransitionUpdates,
+  TransitionMetadata,
+} from './types.ts';
 
-export type SessionLifecycle =
-  | 'initializing'
-  | 'active'
-  | 'waiting_human'
-  | 'paused'
-  | 'completed'
-  | 'error';
+// Re-export functions from sub-modules
+export { toProjection, toPanelProjection, resolveDisplayState, getStateLabel, getStateColor } from './state-projections.ts';
+export { mapEventToTransition } from './state-event-mapper.ts';
 
-export type ExecutionState =
-  | 'idle'
-  | 'thinking'
-  | 'tool_executing'
-  | 'streaming_output';
-
-export type GateStatus =
-  | 'pending'
-  | 'approved'
-  | 'rejected'
-  | 'expired'
-  | 'invalidated';
-
-export interface StateMachineState {
-  lifecycle: SessionLifecycle;
-  execution: ExecutionState | null;
-  gate: GateStatus | null;
-  displayState: UnifiedState;
-  stateSource: 'formal' | 'inferred';
-  confidence: 'high' | 'medium' | 'low';
-  updatedAt: number;
-  turn: number;
-  phase?: string;
-  humanResolved: boolean;
-}
-
-export interface StateTransition {
-  from: StateMachineState;
-  to: StateMachineState;
-  event: string;
-  timestamp: number;
-  sessionId: string;
-}
-
-type TransitionUpdates = {
-  lifecycle?: SessionLifecycle;
-  execution?: ExecutionState | null;
-  gate?: GateStatus | null;
-};
-
-type TransitionMetadata = {
-  displayState?: UnifiedState;
-  stateSource?: 'formal' | 'inferred';
-  confidence?: 'high' | 'medium' | 'low';
-  updatedAt?: number;
-  turn?: number;
-  phase?: string;
-  humanResolved?: boolean;
-};
+// ─── Transition tables ───────────────────────────────────────────────────────
 
 const LIFECYCLE_TRANSITIONS: Record<SessionLifecycle, SessionLifecycle[]> = {
   initializing: ['active', 'waiting_human', 'paused', 'completed', 'error'],
@@ -97,11 +70,11 @@ export class StateMachine {
   }
 
   getSnapshot(sessionId: string): SessionStateProjection {
-    return this.toProjection(this.getState(sessionId));
+    return toProjection(this.getState(sessionId));
   }
 
   getPanelProjection(sessionId: string): SessionPanelProjection {
-    return this.toPanelProjection(this.getState(sessionId));
+    return toPanelProjection(this.getState(sessionId));
   }
 
   transition(
@@ -196,18 +169,7 @@ export class StateMachine {
   }
 
   resolveDisplayState(): UnifiedState {
-    let best: UnifiedState = 'idle';
-    let bestPri = 0;
-
-    for (const state of this.sessions.values()) {
-      const pri = STATE_PRIORITY[state.displayState] || 0;
-      if (pri > bestPri) {
-        best = state.displayState;
-        bestPri = pri;
-      }
-    }
-
-    return best;
+    return resolveDisplayState(this.sessions.values());
   }
 
   shouldTransition(
@@ -227,16 +189,16 @@ export class StateMachine {
   }
 
   getStateLabel(state: UnifiedState): string {
-    return STATE_LABELS[state] || state;
+    return getStateLabel(state);
   }
 
   getStateColor(state: UnifiedState): number {
-    return STATE_COLORS[state] || 0x808080;
+    return getStateColor(state);
   }
 
   setTurn(sessionId: string, turn: number, event = 'turn_set'): SessionStateProjection {
     const result = this.transition(sessionId, event, {}, { turn, humanResolved: false });
-    return this.toProjection(result.state);
+    return toProjection(result.state);
   }
 
   incrementTurn(sessionId: string): SessionStateProjection {
@@ -245,7 +207,7 @@ export class StateMachine {
       turn: current.turn + 1,
       humanResolved: false,
     });
-    return this.toProjection(result.state);
+    return toProjection(result.state);
   }
 
   advanceTurnToIdle(sessionId: string): SessionStateProjection {
@@ -263,38 +225,25 @@ export class StateMachine {
         displayState: 'idle',
         stateSource: 'formal',
         confidence: 'high',
-        phase: this.getStateLabel('idle'),
+        phase: getStateLabel('idle'),
         humanResolved: false,
         turn: baseState.turn,
       },
     );
-    return this.toProjection(settled.success ? settled.state : baseState);
+    return toProjection(settled.success ? settled.state : baseState);
   }
 
   applyPlatformEvent(event: PlatformEvent): SessionStateProjection {
-    const mappedState = PLATFORM_EVENT_TO_STATE[event.type];
     const current = this.getState(event.sessionId);
 
-    if (!mappedState) return this.toProjection(current);
+    const mapped = mapEventToTransition(event, current, {
+      shouldTransition: this.shouldTransition.bind(this),
+      isSessionIdleTransitionAllowed: this.isSessionIdleTransitionAllowed.bind(this),
+    });
 
-    if (event.type === 'session_idle' && !this.isSessionIdleTransitionAllowed(event, current)) {
-      return this.toProjection(current);
-    }
+    if (!mapped) return toProjection(current);
 
-    const allowTransition =
-      event.type === 'human_resolved' ||
-      event.type === 'completed' ||
-      event.type === 'session_ended' ||
-      this.shouldTransition(
-        current.displayState,
-        mappedState,
-        current.stateSource,
-        event.stateSource ?? 'formal',
-      );
-
-    if (!allowTransition) {
-      return this.toProjection(current);
-    }
+    const mappedState = PLATFORM_EVENT_TO_STATE[event.type]!;
 
     const shouldResetCompletedTimer =
       event.type === 'session_started' ||
@@ -305,34 +254,15 @@ export class StateMachine {
       this.clearCompletedTimer(event.sessionId);
     }
 
-    const lifecycle = this.mapLifecycle(event, current, mappedState);
-    const execution = this.mapExecution(event, current, mappedState, lifecycle);
-    const gate = this.mapGate(event, current);
-    const turn = this.resolveTurn(event, current);
-    const humanResolved = this.resolveHumanResolved(event, current);
-    const phaseLabel = (event.metadata?.phase as string) ?? this.getStateLabel(mappedState);
-
     const result = this.transition(
       event.sessionId,
       event.type,
-      {
-        lifecycle,
-        execution,
-        gate,
-      },
-      {
-        displayState: mappedState,
-        stateSource: event.stateSource ?? 'formal',
-        confidence: event.confidence,
-        updatedAt: event.timestamp,
-        turn,
-        phase: phaseLabel,
-        humanResolved,
-      },
+      mapped.updates,
+      mapped.metadata,
     );
 
     if (!result.success) {
-      return this.toProjection(current);
+      return toProjection(current);
     }
 
     if (mappedState === 'completed') {
@@ -361,7 +291,7 @@ export class StateMachine {
       this.completedTimerTokens.set(event.sessionId, timerToken);
     }
 
-    return this.toProjection(result.state);
+    return toProjection(result.state);
   }
 
   clearSession(sessionId: string): void {
@@ -389,31 +319,6 @@ export class StateMachine {
     };
   }
 
-  private toProjection(state: StateMachineState): SessionStateProjection {
-    return {
-      state: state.displayState,
-      stateSource: state.stateSource,
-      confidence: state.confidence,
-      updatedAt: state.updatedAt,
-      turn: state.turn,
-      phase: state.phase,
-      humanResolved: state.humanResolved,
-    };
-  }
-
-  private toPanelProjection(state: StateMachineState): SessionPanelProjection {
-    return {
-      ...this.toProjection(state),
-      isWaitingHuman:
-        state.lifecycle === 'waiting_human' ||
-        state.gate === 'pending' ||
-        state.displayState === 'awaiting_human',
-      isCompleted: state.displayState === 'completed' || state.lifecycle === 'completed',
-      isError: state.displayState === 'error' || state.lifecycle === 'error',
-      isStalled: state.displayState === 'stalled',
-    };
-  }
-
   private isSameState(a: StateMachineState, b: StateMachineState): boolean {
     return (
       a.lifecycle === b.lifecycle &&
@@ -427,136 +332,6 @@ export class StateMachine {
       a.phase === b.phase &&
       a.humanResolved === b.humanResolved
     );
-  }
-
-  private mapLifecycle(
-    event: PlatformEvent,
-    current: StateMachineState,
-    mappedState: UnifiedState,
-  ): SessionLifecycle {
-    switch (event.type) {
-      case 'session_started':
-      case 'session_idle':
-      case 'thinking_started':
-      case 'work_started':
-      case 'human_resolved':
-      case 'compaction_started':
-        return 'active';
-      case 'awaiting_human':
-        return 'waiting_human';
-      case 'completed':
-        return 'completed';
-      case 'errored':
-        return 'error';
-      case 'stalled':
-        return current.lifecycle === 'active' ? 'paused' : current.lifecycle;
-      case 'session_ended':
-        return current.lifecycle === 'initializing' ? 'initializing' : 'paused';
-      default:
-        return this.mapLifecycleFromState(mappedState, current.lifecycle);
-    }
-  }
-
-  private mapLifecycleFromState(
-    mappedState: UnifiedState,
-    fallback: SessionLifecycle,
-  ): SessionLifecycle {
-    switch (mappedState) {
-      case 'idle':
-      case 'thinking':
-      case 'working':
-      case 'summarizing':
-        return 'active';
-      case 'awaiting_human':
-        return 'waiting_human';
-      case 'completed':
-        return 'completed';
-      case 'error':
-        return 'error';
-      case 'stalled':
-        return 'paused';
-      case 'offline':
-        return fallback === 'initializing' ? 'initializing' : 'paused';
-      default:
-        return fallback;
-    }
-  }
-
-  private mapExecution(
-    event: PlatformEvent,
-    current: StateMachineState,
-    mappedState: UnifiedState,
-    lifecycle: SessionLifecycle,
-  ): ExecutionState | null {
-    if (lifecycle !== 'active') return null;
-
-    switch (event.type) {
-      case 'session_started':
-      case 'session_idle':
-        return 'idle';
-      case 'thinking_started':
-        return 'thinking';
-      case 'work_started':
-        return 'tool_executing';
-      case 'human_resolved':
-        return 'tool_executing';
-      case 'compaction_started':
-        return 'thinking';
-      default:
-        return this.mapExecutionFromState(mappedState, current.execution);
-    }
-  }
-
-  private mapExecutionFromState(
-    mappedState: UnifiedState,
-    fallback: ExecutionState | null,
-  ): ExecutionState | null {
-    switch (mappedState) {
-      case 'idle':
-        return 'idle';
-      case 'thinking':
-      case 'summarizing':
-        return 'thinking';
-      case 'working':
-        return 'tool_executing';
-      default:
-        return fallback;
-    }
-  }
-
-  private mapGate(event: PlatformEvent, current: StateMachineState): GateStatus | null {
-    switch (event.type) {
-      case 'awaiting_human':
-        return 'pending';
-      case 'human_resolved':
-        return event.metadata?.action === 'reject' ? 'rejected' : 'approved';
-      case 'session_idle':
-        if (event.metadata?.action === 'reject' && current.gate === 'pending') {
-          return 'rejected';
-        }
-        return current.gate;
-      case 'session_ended':
-        return current.gate === 'pending' ? 'invalidated' : current.gate;
-      default:
-        return current.gate;
-    }
-  }
-
-  private resolveTurn(event: PlatformEvent, current: StateMachineState): number {
-    if (event.type === 'session_started' && current.turn <= 0) {
-      return 1;
-    }
-    return current.turn;
-  }
-
-  private resolveHumanResolved(
-    event: PlatformEvent,
-    current: StateMachineState,
-  ): boolean {
-    if (event.type === 'awaiting_human') return false;
-    if (event.type === 'human_resolved') return true;
-    if (event.type === 'session_idle' && event.metadata?.action === 'reject') return true;
-    return current.humanResolved;
   }
 
   private clearCompletedTimer(sessionId: string): void {

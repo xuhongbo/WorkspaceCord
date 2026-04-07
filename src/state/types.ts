@@ -106,3 +106,63 @@ export interface DigestItem {
   kind: string;
   text: string;
 }
+
+// ─── State machine types ─────────────────────────────────────────────────────
+
+export type SessionLifecycle =
+  | 'initializing'
+  | 'active'
+  | 'waiting_human'
+  | 'paused'
+  | 'completed'
+  | 'error';
+
+export type ExecutionState =
+  | 'idle'
+  | 'thinking'
+  | 'tool_executing'
+  | 'streaming_output';
+
+export type GateStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'expired'
+  | 'invalidated';
+
+export interface StateMachineState {
+  lifecycle: SessionLifecycle;
+  execution: ExecutionState | null;
+  gate: GateStatus | null;
+  displayState: UnifiedState;
+  stateSource: 'formal' | 'inferred';
+  confidence: 'high' | 'medium' | 'low';
+  updatedAt: number;
+  turn: number;
+  phase?: string;
+  humanResolved: boolean;
+}
+
+export interface StateTransition {
+  from: StateMachineState;
+  to: StateMachineState;
+  event: string;
+  timestamp: number;
+  sessionId: string;
+}
+
+export type TransitionUpdates = {
+  lifecycle?: SessionLifecycle;
+  execution?: ExecutionState | null;
+  gate?: GateStatus | null;
+};
+
+export type TransitionMetadata = {
+  displayState?: UnifiedState;
+  stateSource?: 'formal' | 'inferred';
+  confidence?: 'high' | 'medium' | 'low';
+  updatedAt?: number;
+  turn?: number;
+  phase?: string;
+  humanResolved?: boolean;
+};
