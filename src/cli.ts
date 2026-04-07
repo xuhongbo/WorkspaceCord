@@ -5,4 +5,7 @@ export { startBot } from './cli-framework.ts';
 void (async () => {
   const { runCli } = await import('./cli-framework.ts');
   await runCli();
-})();
+})().catch((err) => {
+  console.error('Fatal CLI error:', err);
+  process.exitCode = 1;
+});

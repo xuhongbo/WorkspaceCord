@@ -64,7 +64,9 @@ export class MessageStreamer {
     if (this.timer || this.flushing) return;
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.flush();
+      this.flush().catch((err) => {
+        console.error(`[MessageStreamer] flush error (session ${this._sessionId}):`, err);
+      });
     }, this.INTERVAL);
   }
 
@@ -95,14 +97,24 @@ export class MessageStreamer {
     }
   }
 
+  private async waitForFlush(): Promise<void> {
+    const deadline = Date.now() + 10_000; // 10s safety timeout
+    while (this.flushing) {
+      if (Date.now() > deadline) {
+        console.warn(`[MessageStreamer] flush wait timeout (session ${this._sessionId}), forcing reset`);
+        this.flushing = false;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+
   async finalize(): Promise<void> {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    while (this.flushing) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    await this.waitForFlush();
 
     if (this.dirty) {
       this.dirty = false;
@@ -116,9 +128,7 @@ export class MessageStreamer {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    while (this.flushing) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    await this.waitForFlush();
     this.currentText = '';
     this.dirty = false;
   }
