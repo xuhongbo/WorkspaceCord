@@ -2,7 +2,11 @@ import { Client, ActivityType } from 'discord.js';
 import { getAllSessions } from './thread-manager.ts';
 
 export class PresenceManager {
-  constructor(private client: Client) {}
+  private readonly client: Client;
+
+  constructor(client: Client) {
+    this.client = client;
+  }
 
   updatePresence(): void {
     const all = getAllSessions();

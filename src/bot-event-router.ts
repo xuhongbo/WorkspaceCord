@@ -18,7 +18,11 @@ export interface CommandHandlers {
 }
 
 export class BotEventRouter {
-  constructor(private handlers: CommandHandlers) {}
+  private readonly handlers: CommandHandlers;
+
+  constructor(handlers: CommandHandlers) {
+    this.handlers = handlers;
+  }
 
   async routeInteraction(interaction: Interaction): Promise<void> {
     try {

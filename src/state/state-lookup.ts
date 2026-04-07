@@ -23,7 +23,11 @@ export interface GateStats {
  * Delegates to GateManager for all reads — no direct mutation.
  */
 export class StateLookup {
-  constructor(private gateManager: GateManager) {}
+  private readonly gateManager: GateManager;
+
+  constructor(gateManager: GateManager) {
+    this.gateManager = gateManager;
+  }
 
   getActiveGates(): HumanGateRecord[] {
     return this.gateManager.getAllGates().filter((g) => g.status === 'pending');
