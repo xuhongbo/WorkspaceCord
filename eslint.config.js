@@ -38,7 +38,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['test/**/*.{ts,tsx,js,mjs,cjs}'],
+    files: ['test/**/*.{ts,tsx,js,mjs,cjs}', 'packages/*/__tests__/**/*.{ts,tsx,js,mjs,cjs}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
     },
