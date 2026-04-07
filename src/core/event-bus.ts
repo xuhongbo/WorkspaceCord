@@ -5,8 +5,7 @@ import type {
   EventHandler,
   EventMiddleware,
   EventType,
-} from './events.js';
-
+} from './events.ts';
 // ── Type-safe key helper ─────────────────────────────────────────────────────
 
 function key<T>(eventType: EventType<T>): string {

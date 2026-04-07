@@ -18,6 +18,6 @@ export type {
   GateExpiredPayload,
   DiscordReadyPayload,
   DiscordReconnectPayload,
-} from './events.js';
+} from './events.ts';
 
-export { EventBus } from './event-bus.js';
+export { EventBus } from './event-bus.ts';

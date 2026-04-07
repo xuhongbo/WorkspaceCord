@@ -2,8 +2,8 @@
 // 参考设计文档：2026-03-31-local-session-realtime-sync-and-human-gates-design.md
 // 第 10.3.1 节：并发安全机制
 
-import { Store } from '../persistence.js';
-import type { ProviderName } from '../types.js';
+import { Store } from '../persistence.ts';
+import type { ProviderName } from '../types.ts';
 
 // ─── 门控类型与状态 ───────────────────────────────────────────────────────────
 

@@ -67,7 +67,13 @@ vi.mock('../src/ipc-server.ts', () => ({ startIpcServer: vi.fn(), stopIpcServer:
 vi.mock('../src/subagent-manager.ts', () => ({ runSubagentWatchdog: vi.fn() }));
 vi.mock('../src/message-handler.ts', () => ({ handleMessage: vi.fn() }));
 vi.mock('../src/button-handler.ts', () => ({ handleButton: vi.fn(), handleSelectMenu: vi.fn() }));
-vi.mock('../src/command-handlers.ts', () => ({ handleProject: vi.fn(), handleAgent: vi.fn(), handleSubagent: vi.fn(), handleShell: vi.fn(), handleSpawnShortcut: vi.fn(), handleStopShortcut: vi.fn(), handleEndShortcut: vi.fn(), handleRunShortcut: vi.fn(), setLogger: vi.fn() }));
+vi.mock('../src/command-handlers.ts', () => ({
+  handleProject: vi.fn(),
+  handleAgent: vi.fn(),
+  handleSubagent: vi.fn(),
+  handleShell: vi.fn(),
+  setLogger: vi.fn(),
+}));
 vi.mock('../src/codex-monitor-bridge.ts', () => ({ handleCodexMonitorStateChange: vi.fn() }));
 vi.mock('../src/panel-adapter.ts', () => ({ startPerformanceMonitoring: vi.fn(), stopPerformanceMonitoring: vi.fn() }));
 vi.mock('../src/state/gate-coordinator.ts', () => ({ gateCoordinator: { invalidateAllOnRestart: vi.fn(() => []), getGate: vi.fn() } }));

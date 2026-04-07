@@ -5,10 +5,6 @@ const handleProject = vi.fn();
 const handleAgent = vi.fn();
 const handleSubagent = vi.fn();
 const handleShell = vi.fn();
-const handleSpawnShortcut = vi.fn();
-const handleStopShortcut = vi.fn();
-const handleEndShortcut = vi.fn();
-const handleRunShortcut = vi.fn();
 const handleMessage = vi.fn();
 const handleButton = vi.fn();
 const handleSelectMenu = vi.fn();
@@ -18,10 +14,6 @@ vi.mock('../src/command-handlers.ts', () => ({
   handleAgent,
   handleSubagent,
   handleShell,
-  handleSpawnShortcut,
-  handleStopShortcut,
-  handleEndShortcut,
-  handleRunShortcut,
   setLogger: vi.fn(),
 }));
 vi.mock('../src/message-handler.ts', () => ({ handleMessage }));
@@ -94,26 +86,6 @@ describe('bot routing', () => {
     await routeInteractionCreate(interaction as never);
 
     expect(handleButton).toHaveBeenCalledWith(interaction);
-  });
-
-
-
-  it('把快捷命令 spawn 分发到 handleSpawnShortcut', async () => {
-    const interaction = {
-      type: InteractionType.ApplicationCommand,
-      commandName: 'spawn',
-      isChatInputCommand: () => true,
-      isButton: () => false,
-      isStringSelectMenu: () => false,
-      isRepliable: () => true,
-      replied: false,
-      deferred: false,
-      reply: vi.fn(),
-    };
-
-    await routeInteractionCreate(interaction as never);
-
-    expect(handleSpawnShortcut).toHaveBeenCalledWith(interaction);
   });
 
   it('把下拉菜单交互分发到 handleSelectMenu', async () => {
