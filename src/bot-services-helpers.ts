@@ -6,6 +6,10 @@ import { getAllSessions } from './thread-manager.ts';
 
 const unmanagedCodexHintedSessions = new Set<string>();
 
+export function clearCodexHint(sessionId: string): void {
+  unmanagedCodexHintedSessions.delete(sessionId);
+}
+
 export async function cleanupOldMessages(client: Client): Promise<void> {
   if (!config.messageRetentionDays) return;
   const cutoff = Date.now() - config.messageRetentionDays * 24 * 60 * 60 * 1000;
