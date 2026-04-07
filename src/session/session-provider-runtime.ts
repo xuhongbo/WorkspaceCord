@@ -145,25 +145,38 @@ export async function* sendMonitorPrompt(
   const current = registry.getSession(sessionId);
   if (current) current.lastActivity = Date.now();
 
+  // Link to the session's main abort controller so aborting the session also aborts the monitor
+  const mainController = registry.getSessionController(sessionId);
   const controller = new AbortController();
-  const stream = provider.sendPrompt(prompt, buildProviderOptions(session, controller, true));
+  const onMainAbort = () => controller.abort();
+  mainController?.signal.addEventListener('abort', onMainAbort, { once: true });
 
-  for await (const event of stream) {
-    if (event.type === 'session_init') {
-      const cur = registry.getSession(sessionId);
-      if (cur) {
-        cur.monitorProviderSessionId = event.providerSessionId || undefined;
-        registry.debouncedSaveSession();
+  try {
+    const stream = provider.sendPrompt(prompt, buildProviderOptions(session, controller, true));
+
+    for await (const event of stream) {
+      if (event.type === 'session_init') {
+        const cur = registry.getSession(sessionId);
+        if (cur) {
+          cur.monitorProviderSessionId = event.providerSessionId || undefined;
+          registry.debouncedSaveSession();
+        }
       }
+      if (event.type === 'result') {
+        const cur = registry.getSession(sessionId);
+        if (cur) cur.totalCost += event.costUsd;
+      }
+      yield event;
     }
-    if (event.type === 'result') {
-      const cur = registry.getSession(sessionId);
-      if (cur) cur.totalCost += event.costUsd;
-    }
-    yield event;
-  }
 
-  const cur = registry.getSession(sessionId);
-  if (cur) cur.lastActivity = Date.now();
-  registry.debouncedSaveSession();
+    const cur = registry.getSession(sessionId);
+    if (cur) cur.lastActivity = Date.now();
+    registry.debouncedSaveSession();
+  } catch (err: unknown) {
+    if (!isAbortError(err)) {
+      throw err;
+    }
+  } finally {
+    mainController?.signal.removeEventListener('abort', onMainAbort);
+  }
 }

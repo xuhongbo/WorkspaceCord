@@ -171,6 +171,7 @@ vi.mock('../src/session-registry.ts', () => {
       id: params.channelId,
     })),
     setSessionController: vi.fn(),
+    getSessionController: vi.fn(() => undefined),
     clearSessionController: vi.fn(),
     markSessionGenerating: vi.fn((sessionId: string, generating: boolean) => {
       if (!sessionsMap) return;

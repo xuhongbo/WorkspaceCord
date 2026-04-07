@@ -1,4 +1,4 @@
-import { writeFileSync, readFileSync, unlinkSync, existsSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, readFileSync, unlinkSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { Provider, ProviderEvent, ProviderSessionOptions, ContentBlock } from './types.ts';
@@ -29,6 +29,24 @@ type CodexConstructor = new (options: Record<string, unknown>) => CodexClient;
 
 // Lazy-loaded SDK constructor — populated on first use
 let Codex: CodexConstructor | null = null;
+
+// Reference-counting for concurrent AGENTS.md injection in the same directory.
+// Only the last session to finish restores the original AGENTS.md.
+const agentsMdRefCounts = new Map<string, number>();
+
+function acquireAgentsMd(directory: string): void {
+  agentsMdRefCounts.set(directory, (agentsMdRefCounts.get(directory) ?? 0) + 1);
+}
+
+function releaseAgentsMd(directory: string): boolean {
+  const count = (agentsMdRefCounts.get(directory) ?? 1) - 1;
+  if (count <= 0) {
+    agentsMdRefCounts.delete(directory);
+    return true; // last holder — safe to restore
+  }
+  agentsMdRefCounts.set(directory, count);
+  return false; // other sessions still active — skip restore
+}
 
 async function loadSdk(): Promise<void> {
   if (Codex) return;
@@ -91,15 +109,18 @@ function escapeRegex(s: string): string {
 function writeImagesToTemp(blocks: ContentBlock[]): {
   textParts: string[];
   localImages: Array<{ type: 'local_image'; path: string }>;
+  tempDirs: string[];
 } {
   const textParts: string[] = [];
   const localImages: Array<{ type: 'local_image'; path: string }> = [];
+  const tempDirs: string[] = [];
 
   for (const block of blocks) {
     if (block.type === 'text') {
       textParts.push(block.text);
     } else if (block.type === 'image') {
       const dir = mkdtempSync(join(tmpdir(), 'workspacecord-img-'));
+      tempDirs.push(dir);
       const ext = block.source.media_type.split('/')[1] || 'png';
       const filePath = join(dir, `image.${ext}`);
       writeFileSync(filePath, Buffer.from(block.source.data, 'base64'));
@@ -109,7 +130,15 @@ function writeImagesToTemp(blocks: ContentBlock[]): {
     }
   }
 
-  return { textParts, localImages };
+  return { textParts, localImages, tempDirs };
+}
+
+function cleanupTempDirs(dirs: string[]): void {
+  for (const dir of dirs) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch { /* best-effort cleanup */ }
+  }
 }
 
 export class CodexProvider implements Provider {
@@ -128,16 +157,18 @@ export class CodexProvider implements Provider {
     await loadSdk();
 
     let input: string | InputPart[];
+    let tempDirs: string[] = [];
     if (typeof prompt === 'string') {
       input = prompt;
     } else {
-      const { textParts, localImages } = writeImagesToTemp(prompt);
+      const result = writeImagesToTemp(prompt);
+      tempDirs = result.tempDirs;
       const inputParts: InputPart[] = [];
-      for (const img of localImages) {
+      for (const img of result.localImages) {
         inputParts.push({ type: 'local_image', path: img.path });
       }
-      if (textParts.length > 0) {
-        inputParts.push({ type: 'text', text: textParts.join('\n') });
+      if (result.textParts.length > 0) {
+        inputParts.push({ type: 'text', text: result.textParts.join('\n') });
       }
       input =
         inputParts.length === 1 && inputParts[0].type === 'text'
@@ -146,6 +177,7 @@ export class CodexProvider implements Provider {
     }
 
     let originalAgents: AgentsMdInjectionState | null = null;
+    acquireAgentsMd(options.directory);
     try {
       originalAgents = injectAgentsMd(options.directory, options.systemPromptParts);
       const codex = new Codex!(buildCodexOptions());
@@ -158,7 +190,10 @@ export class CodexProvider implements Provider {
       const { events } = await thread.runStreamed(input);
       yield* this.translateEvents(events, options.abortController);
     } finally {
-      restoreAgentsMd(options.directory, originalAgents);
+      if (releaseAgentsMd(options.directory)) {
+        restoreAgentsMd(options.directory, originalAgents);
+      }
+      cleanupTempDirs(tempDirs);
     }
   }
 
@@ -171,6 +206,7 @@ export class CodexProvider implements Provider {
     }
 
     let originalAgents: AgentsMdInjectionState | null = null;
+    acquireAgentsMd(options.directory);
     try {
       originalAgents = injectAgentsMd(options.directory, options.systemPromptParts);
       const codex = new Codex!(buildCodexOptions());
@@ -178,7 +214,9 @@ export class CodexProvider implements Provider {
       const { events } = await thread.runStreamed('Continue from where you left off.');
       yield* this.translateEvents(events, options.abortController);
     } finally {
-      restoreAgentsMd(options.directory, originalAgents);
+      if (releaseAgentsMd(options.directory)) {
+        restoreAgentsMd(options.directory, originalAgents);
+      }
     }
   }
 
