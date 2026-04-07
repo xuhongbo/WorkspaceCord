@@ -12,12 +12,11 @@ export function applyWorkflowHook(
   hook: Session['workflowState']['lastHook'],
   patch: Partial<Session['workflowState']> = {},
 ): Session {
-  sessions.updateWorkflowState(session.id, (current) => ({
+  return sessions.updateWorkflowState(session.id, (current) => ({
     ...current,
     ...patch,
     lastHook: hook,
-  }));
-  return refreshSession(session);
+  })) ?? session;
 }
 
 export function extractPromptText(prompt: string | ContentBlock[]): string {
