@@ -51,6 +51,9 @@ function releaseAgentsMd(directory: string): boolean {
 async function loadSdk(): Promise<void> {
   if (Codex) return;
   const mod = await import('@openai/codex-sdk');
+  if (!mod.Codex) {
+    throw new Error('Codex SDK loaded but Codex constructor not found — check SDK version');
+  }
   Codex = mod.Codex as CodexConstructor;
 }
 
@@ -86,20 +89,24 @@ function injectAgentsMd(directory: string, parts: string[]): AgentsMdInjectionSt
 function restoreAgentsMd(directory: string, state: AgentsMdInjectionState | null): void {
   if (!state) return;
 
-  const agentsPath = join(directory, 'AGENTS.md');
-  if (!existsSync(agentsPath)) return;
+  try {
+    const agentsPath = join(directory, 'AGENTS.md');
+    if (!existsSync(agentsPath)) return;
 
-  const cleaned = stripInjectedAgentsMd(readFileSync(agentsPath, 'utf-8')).trimEnd();
-  if (!state.existed && !cleaned) {
-    try {
-      unlinkSync(agentsPath);
-    } catch {
-      /* may already be deleted */
+    const cleaned = stripInjectedAgentsMd(readFileSync(agentsPath, 'utf-8')).trimEnd();
+    if (!state.existed && !cleaned) {
+      try {
+        unlinkSync(agentsPath);
+      } catch {
+        /* may already be deleted */
+      }
+      return;
     }
-    return;
-  }
 
-  writeFileSync(agentsPath, cleaned ? `${cleaned}\n` : '', 'utf-8');
+    writeFileSync(agentsPath, cleaned ? `${cleaned}\n` : '', 'utf-8');
+  } catch (err) {
+    console.error(`[CodexProvider] Failed to restore AGENTS.md in ${directory}:`, err);
+  }
 }
 
 function escapeRegex(s: string): string {
