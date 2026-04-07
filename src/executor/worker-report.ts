@@ -14,32 +14,56 @@ export type WorkerPassResultShape = {
 
 export function summarizeWorkerText(text: string): string {
   const trimmed = text.trim();
-  if (!trimmed) return '(none)';
-  return truncate(trimmed.replace(/\s+/g, ' '), 1200);
+  return trimmed ? truncate(trimmed, 6000) : '(no textual response)';
 }
 
 export function extractClaimedCompletedOutcomes(text: string): string[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  const sentences = trimmed
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
     .filter(Boolean);
-  return lines.filter((line) => /(?:完成|implemented|done|finished|已实现|fixed|added)/i.test(line)).slice(0, 6);
+
+  return sentences
+    .filter((sentence) =>
+      /\b(completed?|finished?|validated?|implemented?|created?|added|wrote|fixed)\b/i.test(
+        sentence,
+      ),
+    )
+    .slice(0, 5);
 }
 
 export function extractRemainingGaps(text: string): string[] {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  const sentences = trimmed
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
     .filter(Boolean);
-  return lines.filter((line) => /(?:missing|todo|remaining|left|待处理|未完成|还需)/i.test(line)).slice(0, 6);
+
+  return sentences
+    .filter((sentence) =>
+      /\b(still|missing|need|remaining|not yet|left to|have not)\b/i.test(sentence),
+    )
+    .slice(0, 5);
 }
 
 export function buildWorkerProgressReport(
   goal: string,
   result: WorkerPassResultShape,
 ): SessionWorkerProgressReport {
-  const changedFiles = result.changedFiles.slice(0, 12);
-  const validationCommands = result.recentCommands.slice(0, 8);
+  const changedFiles = result.changedFiles ?? [];
+  const recentCommands = result.recentCommands ?? [];
+  const validationCommands = recentCommands
+    .filter((command) =>
+      /\b(test|vitest|jest|pytest|npm test|pnpm test|yarn test|grader|validate|check|lint)\b/i.test(
+        command,
+      ),
+    )
+    .slice(0, 10);
   const meaningfulExecution = result.commandCount > 0 || result.fileChangeCount > 0;
   const blockers = result.hadError ? ['The latest pass reported an error or stalled outcome.'] : [];
 

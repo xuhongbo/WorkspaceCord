@@ -26,21 +26,46 @@ export function parseMonitorDecision(text: string): ParsedMonitorDecision | null
   try {
     const parsed = JSON.parse(trimmed.slice(start, end + 1)) as Partial<ParsedMonitorDecision>;
     if (
-      (parsed.status !== 'complete' && parsed.status !== 'continue' && parsed.status !== 'blocked') ||
-      (parsed.confidence !== 'high' && parsed.confidence !== 'medium' && parsed.confidence !== 'low')
+      parsed.status !== 'complete' &&
+      parsed.status !== 'continue' &&
+      parsed.status !== 'blocked'
     ) {
       return null;
     }
+    const confidence =
+      parsed.confidence === 'high' || parsed.confidence === 'medium' || parsed.confidence === 'low'
+        ? parsed.confidence
+        : 'low';
     return {
       status: parsed.status,
-      confidence: parsed.confidence,
+      confidence,
       rationale: (parsed.rationale || '').trim(),
       steering: (parsed.steering || '').trim(),
       completionSummary: (parsed.completionSummary || '').trim(),
-      acceptedEvidence: parsed.acceptedEvidence || [],
-      missingEvidence: parsed.missingEvidence || [],
-      requiredNextProof: parsed.requiredNextProof || [],
-      disallowedDrift: parsed.disallowedDrift || [],
+      acceptedEvidence: Array.isArray(parsed.acceptedEvidence)
+        ? parsed.acceptedEvidence
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : [],
+      missingEvidence: Array.isArray(parsed.missingEvidence)
+        ? parsed.missingEvidence
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : [],
+      requiredNextProof: Array.isArray(parsed.requiredNextProof)
+        ? parsed.requiredNextProof
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : [],
+      disallowedDrift: Array.isArray(parsed.disallowedDrift)
+        ? parsed.disallowedDrift
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : [],
       blockingReason: (parsed.blockingReason || '').trim(),
     };
   } catch {
