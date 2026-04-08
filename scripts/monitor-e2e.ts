@@ -1,4 +1,4 @@
-try { process.loadEnvFile(); } catch {}
+try { process.loadEnvFile(); } catch { /* .env not required */ }
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as sessions from '../packages/engine/src/session-registry.ts';

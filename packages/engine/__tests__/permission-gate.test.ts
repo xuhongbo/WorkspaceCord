@@ -110,7 +110,7 @@ describe('permission-gate', () => {
   describe('waitForGateResolution', () => {
     it('registers a receipt handle and resolves on approve', async () => {
       mockRegisterReceiptHandle.mockImplementation(
-        (_gateId: string, handle: { resolve: Function }) => {
+        (_gateId: string, handle: { resolve: (...args: any[]) => void }) => {
           // Simulate immediate approval from discord
           handle.resolve('approve', 'discord');
         },
@@ -128,7 +128,7 @@ describe('permission-gate', () => {
 
     it('resolves with reject on rejection from terminal', async () => {
       mockRegisterReceiptHandle.mockImplementation(
-        (_gateId: string, handle: { resolve: Function }) => {
+        (_gateId: string, handle: { resolve: (...args: any[]) => void }) => {
           handle.resolve('reject', 'terminal');
         },
       );
@@ -139,7 +139,7 @@ describe('permission-gate', () => {
 
     it('resolves with reject/timeout on handle.reject()', async () => {
       mockRegisterReceiptHandle.mockImplementation(
-        (_gateId: string, handle: { reject: Function }) => {
+        (_gateId: string, handle: { reject: (...args: any[]) => void }) => {
           handle.reject('timeout');
         },
       );
@@ -150,7 +150,7 @@ describe('permission-gate', () => {
 
     it('uses codex type for codex provider', async () => {
       mockRegisterReceiptHandle.mockImplementation(
-        (_gateId: string, handle: { resolve: Function }) => {
+        (_gateId: string, handle: { resolve: (...args: any[]) => void }) => {
           handle.resolve('approve', 'discord');
         },
       );
@@ -163,7 +163,7 @@ describe('permission-gate', () => {
 
     it('only settles once even if resolve is called multiple times', async () => {
       mockRegisterReceiptHandle.mockImplementation(
-        (_gateId: string, handle: { resolve: Function }) => {
+        (_gateId: string, handle: { resolve: (...args: any[]) => void }) => {
           handle.resolve('approve', 'discord');
           handle.resolve('reject', 'terminal'); // second call should be ignored
         },
@@ -181,7 +181,7 @@ describe('permission-gate', () => {
       const session = makeSession({ activeHumanGateId: 'gate-1' });
       mockGetSession.mockReturnValue(session);
       mockRegisterReceiptHandle.mockImplementation(
-        (_gateId: string, handle: { resolve: Function }) => {
+        (_gateId: string, handle: { resolve: (...args: any[]) => void }) => {
           handle.resolve('approve', 'discord');
         },
       );
@@ -206,7 +206,7 @@ describe('permission-gate', () => {
       const session = makeSession({ activeHumanGateId: 'gate-1' });
       mockGetSession.mockReturnValue(session);
       mockRegisterReceiptHandle.mockImplementation(
-        (_gateId: string, handle: { resolve: Function }) => {
+        (_gateId: string, handle: { resolve: (...args: any[]) => void }) => {
           handle.resolve('reject', 'discord');
         },
       );
@@ -226,7 +226,7 @@ describe('permission-gate', () => {
       const session = makeSession({ activeHumanGateId: 'gate-1' });
       mockGetSession.mockReturnValue(session);
       mockRegisterReceiptHandle.mockImplementation(
-        (_gateId: string, handle: { reject: Function }) => {
+        (_gateId: string, handle: { reject: (...args: any[]) => void }) => {
           handle.reject('timeout');
         },
       );
@@ -246,7 +246,7 @@ describe('permission-gate', () => {
       const session = makeSession({ activeHumanGateId: 'gate-1' });
       mockGetSession.mockReturnValue(session);
       mockRegisterReceiptHandle.mockImplementation(
-        (_gateId: string, handle: { resolve: Function }) => {
+        (_gateId: string, handle: { resolve: (...args: any[]) => void }) => {
           handle.resolve('reject', 'terminal');
         },
       );
@@ -283,7 +283,7 @@ describe('permission-gate', () => {
       const session = makeSession({ activeHumanGateId: 'gate-1' });
       mockGetSession.mockReturnValue(session);
       mockRegisterReceiptHandle.mockImplementation(
-        (_gateId: string, handle: { resolve: Function }) => {
+        (_gateId: string, handle: { resolve: (...args: any[]) => void }) => {
           handle.resolve('approve', 'discord');
         },
       );
@@ -311,7 +311,7 @@ describe('permission-gate', () => {
       const session = makeSession({ activeHumanGateId: 'gate-1' });
       mockGetSession.mockReturnValue(session);
       mockRegisterReceiptHandle.mockImplementation(
-        (_gateId: string, handle: { resolve: Function }) => {
+        (_gateId: string, handle: { resolve: (...args: any[]) => void }) => {
           handle.resolve('approve', 'discord');
         },
       );

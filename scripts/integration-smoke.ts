@@ -1,4 +1,4 @@
-try { process.loadEnvFile(); } catch {}
+try { process.loadEnvFile(); } catch { /* .env not required */ }
 import { mkdirSync, mkdtempSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
