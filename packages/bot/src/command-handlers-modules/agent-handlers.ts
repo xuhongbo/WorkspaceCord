@@ -65,14 +65,14 @@ export async function handleAgent(interaction: ChatInputCommandInteraction): Pro
     case 'continue':
       return handleAgentContinue(interaction);
     default:
-      await interaction.reply({ content: `Unknown subcommand: ${sub}`, ephemeral: true });
+      await interaction.reply({ content: `未知子命令：${sub}`, ephemeral: true });
   }
 }
 
 export async function handleAgentSpawn(interaction: ChatInputCommandInteraction): Promise<void> {
   if (interaction.channel?.isThread()) {
     await interaction.reply({
-      content: 'Run `/agent spawn` in a project channel, not inside a thread.',
+      content: '请在项目频道中执行 `/agent spawn`，不能在子区内执行。',
       ephemeral: true,
     });
     return;
@@ -81,7 +81,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
   const categoryId = (interaction.channel as TextChannel)?.parentId;
   if (!categoryId) {
     await interaction.reply({
-      content: 'This channel is not under a Category. Run `/project setup` first.',
+      content: '此频道不在分类下，请先执行 `/project setup`。',
       ephemeral: true,
     });
     return;
@@ -90,7 +90,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
   const project = projectMgr.getProject(categoryId);
   if (!project) {
     await interaction.reply({
-      content: 'No project set up for this category. Run `/project setup` first.',
+      content: '此分类未设置项目，请先执行 `/project setup`。',
       ephemeral: true,
     });
     return;
@@ -114,7 +114,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
 
   if (interaction.channelId !== controlChannel.id) {
     await interaction.editReply(
-      `New agent sessions can only be spawned from the project control channel: <#${controlChannel.id}>. Please run \`/agent spawn\` there.`,
+      `新会话只能在项目控制频道 <#${controlChannel.id}> 中创建，请在那里执行 \`/agent spawn\`。`,
     );
     return;
   }
@@ -133,7 +133,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
       reason: `Agent session spawned by ${interaction.user.tag}`,
     });
   } catch (err: unknown) {
-    await interaction.editReply(`Failed to create session channel: ${(err as Error).message}`);
+    await interaction.editReply(`创建会话频道失败：${(err as Error).message}`);
     return;
   }
 
@@ -152,7 +152,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
     });
   } catch (err: unknown) {
     await sessionChannel.delete('Session creation failed').catch(() => {});
-    await interaction.editReply(`Failed to create session: ${(err as Error).message}`);
+    await interaction.editReply(`创建会话失败：${(err as Error).message}`);
     return;
   }
 
@@ -184,7 +184,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
   }
 
   if (!registered) {
-    await interaction.editReply(`Failed to initialize session panel for "${label}".`);
+    await interaction.editReply(`初始化会话面板失败："${label}"。`);
     return;
   }
   setStatusCardBinding(session.id, { messageId: statusMessage.id });
@@ -192,12 +192,12 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
 
   const embed = new EmbedBuilder()
     .setColor(0x2ecc71)
-    .setTitle(`✅ Agent Created: ${label}`)
+    .setTitle(`✅ Agent 已创建：${label}`)
     .addFields(
-      { name: 'Channel', value: `<#${sessionChannel.id}>`, inline: true },
-      { name: 'Provider', value: PROVIDER_LABELS[provider], inline: true },
-      { name: 'Mode', value: (MODE_LABELS?.[mode] ?? mode), inline: false },
-      { name: 'Directory', value: `\`${session.directory}\``, inline: false },
+      { name: '频道', value: `<#${sessionChannel.id}>`, inline: true },
+      { name: '提供商', value: PROVIDER_LABELS[provider], inline: true },
+      { name: '模式', value: (MODE_LABELS?.[mode] ?? mode), inline: false },
+      { name: '目录', value: `\`${session.directory}\``, inline: false },
     );
 
   if (provider === 'claude' && session.claudePermissionMode) {
@@ -225,7 +225,7 @@ export async function handleAgentSpawn(interaction: ChatInputCommandInteraction)
 export async function handleAgentList(interaction: ChatInputCommandInteraction): Promise<void> {
   const categoryId = resolveProjectCategoryId(interaction);
   if (!categoryId) {
-    await interaction.reply({ content: 'Could not determine project category.', ephemeral: true });
+    await interaction.reply({ content: '无法确定项目分类。', ephemeral: true });
     return;
   }
 
@@ -233,20 +233,20 @@ export async function handleAgentList(interaction: ChatInputCommandInteraction):
 
   if (sessions.length === 0) {
     await interaction.reply({
-      content: 'No active agent sessions in this project.',
+      content: '此项目没有活跃的 Agent 会话。',
       ephemeral: true,
     });
     return;
   }
 
   const lines = sessions.map((s) => {
-    const status = s.isGenerating ? '🔄 Generating' : '💤 Idle';
+    const status = s.isGenerating ? '🔄 执行中' : '💤 空闲';
     return `${status} | \`${s.agentLabel}\` | ${s.provider} | <#${s.channelId}> | ${formatRelative(s.lastActivity)}`;
   });
 
   const embed = new EmbedBuilder()
     .setColor(0x3498db)
-    .setTitle(`Agent Sessions (${sessions.length})`)
+    .setTitle(`Agent 会话（${sessions.length}）`)
     .setDescription(lines.join('\n'));
 
   await interaction.reply({ embeds: [embed], ephemeral: true });
@@ -255,27 +255,27 @@ export async function handleAgentList(interaction: ChatInputCommandInteraction):
 export async function handleAgentCleanup(interaction: ChatInputCommandInteraction): Promise<void> {
   const categoryId = resolveProjectCategoryId(interaction);
   if (!categoryId) {
-    await interaction.reply({ content: 'Could not determine project category.', ephemeral: true });
+    await interaction.reply({ content: '无法确定项目分类。', ephemeral: true });
     return;
   }
 
   const project = projectMgr.getProject(categoryId);
   if (!project) {
     await interaction.reply({
-      content: 'No project set up for this category. Run `/project setup` first.',
+      content: '此分类未设置项目，请先执行 `/project setup`。',
       ephemeral: true,
     });
     return;
   }
 
   if (!interaction.guild) {
-    await interaction.reply({ content: 'Guild context required.', ephemeral: true });
+    await interaction.reply({ content: '需要服务器上下文。', ephemeral: true });
     return;
   }
 
   const currentChannelId = resolveCleanupCurrentChannelId(interaction);
   if (!currentChannelId) {
-    await interaction.reply({ content: 'Could not determine current channel.', ephemeral: true });
+    await interaction.reply({ content: '无法确定当前频道。', ephemeral: true });
     return;
   }
 
@@ -324,14 +324,14 @@ export async function handleAgentStop(interaction: ChatInputCommandInteraction):
   const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({
-      content: 'No active session in this channel. Run this inside an agent session channel.',
+      content: '此频道没有活跃的会话，请在 Agent 会话频道中执行。',
       ephemeral: true,
     });
     return;
   }
   const stopped = abortSession(session.id);
   await interaction.reply({
-    content: stopped ? 'Generation stopped.' : 'Agent was not generating.',
+    content: stopped ? '已停止生成。' : 'Agent 未在执行中。',
     ephemeral: true,
   });
 }
@@ -339,7 +339,7 @@ export async function handleAgentStop(interaction: ChatInputCommandInteraction):
 export async function handleAgentEnd(interaction: ChatInputCommandInteraction): Promise<void> {
   const session = getSessionByChannel(interaction.channelId);
   if (!session) {
-    await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
+    await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
     return;
   }
 
@@ -361,97 +361,97 @@ export async function handleAgentEnd(interaction: ChatInputCommandInteraction): 
     }
   }
 
-  await interaction.editReply('Agent session ended.').catch(() => {});
+  await interaction.editReply('Agent 会话已结束。').catch(() => {});
   log(`Session "${session.id}" ended by ${interaction.user.tag}`);
 }
 
 export async function handleAgentArchive(interaction: ChatInputCommandInteraction): Promise<void> {
   const session = getSessionByChannel(interaction.channelId);
   if (!session) {
-    await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
+    await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
     return;
   }
   if (session.type !== 'persistent') {
     await interaction.reply({
-      content: 'Only persistent sessions can be archived. Use `/agent end` for subagents.',
+      content: '只有持久会话可以归档，子任务请使用 `/agent end`。',
       ephemeral: true,
     });
     return;
   }
   if (!interaction.guild) {
-    await interaction.reply({ content: 'Guild context required.', ephemeral: true });
+    await interaction.reply({ content: '需要服务器上下文。', ephemeral: true });
     return;
   }
 
   await interaction.deferReply();
   try {
     await archiveSession(session, interaction.guild);
-    await interaction.editReply('Session archived to #history. Channel deleted.').catch(() => {});
+    await interaction.editReply('会话已归档至 #history，频道已删除。').catch(() => {});
     log(`Session "${session.id}" archived by ${interaction.user.tag}`);
   } catch (err: unknown) {
-    await interaction.editReply(`Archive failed: ${(err as Error).message}`);
+    await interaction.editReply(`归档失败：${(err as Error).message}`);
   }
 }
 
 export async function handleAgentMode(interaction: ChatInputCommandInteraction): Promise<void> {
   const session = getSessionByChannel(interaction.channelId);
   if (!session) {
-    await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
+    await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
     return;
   }
   const mode = interaction.options.getString('mode', true) as SessionMode;
   setMode(session.id, mode);
-  await interaction.reply({ content: `Mode set to **${MODE_LABELS?.[mode] ?? mode}**.`, ephemeral: true });
+  await interaction.reply({ content: `模式已设为 **${MODE_LABELS?.[mode] ?? mode}**。`, ephemeral: true });
 }
 
 export async function handleAgentGoal(interaction: ChatInputCommandInteraction): Promise<void> {
   const session = getSessionByChannel(interaction.channelId);
   if (!session) {
-    await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
+    await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
     return;
   }
   const goal = interaction.options.getString('goal', true);
   setMonitorGoal(session.id, goal);
-  await interaction.reply({ content: `Monitor goal set: *${goal}*`, ephemeral: true });
+  await interaction.reply({ content: `监控目标已设为：*${goal}*`, ephemeral: true });
 }
 
 export async function handleAgentPersona(interaction: ChatInputCommandInteraction): Promise<void> {
   const session = getSessionByChannel(interaction.channelId);
   if (!session) {
-    await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
+    await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
     return;
   }
   const persona = interaction.options.getString('name') || undefined;
   setAgentPersona(session.id, persona === 'general' ? undefined : persona);
-  await interaction.reply({ content: `Persona set to **${persona || 'general'}**.`, ephemeral: true });
+  await interaction.reply({ content: `人设已设为 **${persona || 'general'}**。`, ephemeral: true });
 }
 
 export async function handleAgentVerbose(interaction: ChatInputCommandInteraction): Promise<void> {
   const session = getSessionByChannel(interaction.channelId);
   if (!session) {
-    await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
+    await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
     return;
   }
   const newVerbose = !session.verbose;
   setVerbose(session.id, newVerbose);
-  await interaction.reply({ content: `Verbose mode ${newVerbose ? 'enabled' : 'disabled'}.`, ephemeral: true });
+  await interaction.reply({ content: `详细模式已${newVerbose ? '开启' : '关闭'}。`, ephemeral: true });
 }
 
 export async function handleAgentModel(interaction: ChatInputCommandInteraction): Promise<void> {
   const session = getSessionByChannel(interaction.channelId);
   if (!session) {
-    await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
+    await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
     return;
   }
   const model = interaction.options.getString('model', true);
   setModel(session.id, model);
-  await interaction.reply({ content: `Model set to \`${model}\`.`, ephemeral: true });
+  await interaction.reply({ content: `模型已设为 \`${model}\`。`, ephemeral: true });
 }
 
 export async function handleAgentPermissions(interaction: ChatInputCommandInteraction): Promise<void> {
   const session = getSessionByChannel(interaction.channelId);
   if (!session) {
-    await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
+    await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
     return;
   }
 
@@ -473,19 +473,19 @@ export async function handleAgentPermissions(interaction: ChatInputCommandIntera
 export async function handleAgentContinue(interaction: ChatInputCommandInteraction): Promise<void> {
   const channel = interaction.channel;
   if (!channel) {
-    await interaction.reply({ content: 'No channel context.', ephemeral: true });
+    await interaction.reply({ content: '无频道上下文。', ephemeral: true });
     return;
   }
   const session = getSessionByChannel(channel.id);
   if (!session) {
-    await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
+    await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
     return;
   }
   if (session.isGenerating) {
-    await interaction.reply({ content: 'Agent is already generating.', ephemeral: true });
+    await interaction.reply({ content: 'Agent 正在执行中。', ephemeral: true });
     return;
   }
   await interaction.deferReply();
-  await interaction.editReply('Continuing...');
+  await interaction.editReply('继续中...');
   await executeSessionContinue(session, channel as SessionChannel);
 }

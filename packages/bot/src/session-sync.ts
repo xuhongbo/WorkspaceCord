@@ -156,9 +156,13 @@ async function runSyncSafely(client: Client): Promise<void> {
 }
 
 export function startSync(client: Client): void {
-  console.log(`[SessionSync] Starting sync (interval: ${SYNC_INTERVAL_MS}ms)`);
-  void runSyncSafely(client);
-  syncTimer = setInterval(() => void runSyncSafely(client), SYNC_INTERVAL_MS);
+  const effectiveInterval = Math.max(SYNC_INTERVAL_MS, 60_000);
+  console.log(`[SessionSync] Starting sync (interval: ${effectiveInterval}ms, first run in 10s)`);
+  // 延迟首次 sync，让 bot 先稳定响应交互
+  setTimeout(() => {
+    void runSyncSafely(client);
+    syncTimer = setInterval(() => void runSyncSafely(client), effectiveInterval);
+  }, 10_000);
 }
 
 export function stopSync(): void {
@@ -276,8 +280,18 @@ export async function runSync(client: Client): Promise<void> {
           const claudeSessions = await claudeSdk.listSessions({ dir: project.path, limit: 50 });
           for (const item of claudeSessions) {
             if (createdThisRun >= MAX_SESSIONS_PER_SYNC) break;
+            // 让出事件循环，避免长时间阻塞 interaction 处理
+            await new Promise(r => setTimeout(r, 0));
             recordScan('claude');
             if (!item?.sessionId) continue;
+            if ((item as Record<string, unknown>).parentSessionId) {
+              recordSkip('alreadySynced');
+              continue;
+            }
+            if (item.sessionId.includes('subagent:')) {
+              recordSkip('alreadySynced');
+              continue;
+            }
             if (existingProviderIds.has(item.sessionId)) {
               recordSkip('alreadySynced');
               continue;
@@ -332,6 +346,7 @@ export async function runSync(client: Client): Promise<void> {
 
     for (const session of codexSessions) {
       if (createdThisRun >= MAX_SESSIONS_PER_SYNC) break;
+      await new Promise(r => setTimeout(r, 0));
       recordScan('codex');
       if (existingProviderIds.has(session.id)) {
         recordSkip('alreadySynced');

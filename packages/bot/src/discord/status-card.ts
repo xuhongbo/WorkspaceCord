@@ -9,6 +9,7 @@ import {
 } from 'discord.js';
 import type { UnifiedState } from '@workspacecord/state';
 import { STATE_LABELS, STATE_COLORS } from '@workspacecord/state';
+import { truncate } from '@workspacecord/core';
 
 export class StatusCard {
   private messageId: string | null = null;
@@ -21,6 +22,10 @@ export class StatusCard {
     remoteHumanControl?: boolean;
     provider?: 'claude' | 'codex';
     permissionsSummary?: string;
+    verbose?: boolean;
+    monitorGoal?: string;
+    monitorIteration?: number;
+    maxMonitorIterations?: number;
   } | null = null;
 
   constructor(channel: TextChannel | AnyThreadChannel) {
@@ -42,6 +47,10 @@ export class StatusCard {
     remoteHumanControl?: boolean;
     provider?: 'claude' | 'codex';
     permissionsSummary?: string;
+    verbose?: boolean;
+    monitorGoal?: string;
+    monitorIteration?: number;
+    maxMonitorIterations?: number;
   } = {}): Promise<void> {
     const payload = {
       turn: data.turn ?? 1,
@@ -72,6 +81,10 @@ export class StatusCard {
       remoteHumanControl?: boolean;
       provider?: 'claude' | 'codex';
       permissionsSummary?: string;
+      verbose?: boolean;
+      monitorGoal?: string;
+      monitorIteration?: number;
+      maxMonitorIterations?: number;
     },
   ): Promise<void> {
     this.lastState = state;
@@ -133,6 +146,10 @@ export class StatusCard {
       remoteHumanControl?: boolean;
       provider?: 'claude' | 'codex';
       permissionsSummary?: string;
+      verbose?: boolean;
+      monitorGoal?: string;
+      monitorIteration?: number;
+      maxMonitorIterations?: number;
     },
   ): EmbedBuilder {
     const embed = new EmbedBuilder()
@@ -157,6 +174,17 @@ export class StatusCard {
       if (sanitizedPhase) {
         embed.addFields({ name: '阶段', value: sanitizedPhase, inline: true });
       }
+    }
+
+    if (data.verbose !== undefined) {
+      embed.addFields({ name: '输出', value: data.verbose ? '🔊 详细' : '🔇 精简', inline: true });
+    }
+
+    if (data.monitorGoal) {
+      embed.addFields({ name: '监控目标', value: truncate(data.monitorGoal, 150) });
+    }
+    if (data.monitorIteration !== undefined && data.maxMonitorIterations !== undefined) {
+      embed.addFields({ name: '迭代', value: `${data.monitorIteration}/${data.maxMonitorIterations}`, inline: true });
     }
 
     if (data.permissionsSummary) {

@@ -14,14 +14,14 @@ export async function handleSubagent(interaction: ChatInputCommandInteraction): 
     case 'list':
       return handleSubagentList(interaction);
     default:
-      await interaction.reply({ content: `Unknown subcommand: ${sub}`, ephemeral: true });
+      await interaction.reply({ content: `未知子命令：${sub}`, ephemeral: true });
   }
 }
 
 export async function handleSubagentRun(interaction: ChatInputCommandInteraction): Promise<void> {
   if (interaction.channel?.isThread()) {
     await interaction.reply({
-      content: 'Run `/subagent run` in an agent session channel, not inside a thread.',
+      content: '请在 Agent 会话频道中执行 `/subagent run`，不能在子区内执行。',
       ephemeral: true,
     });
     return;
@@ -30,7 +30,7 @@ export async function handleSubagentRun(interaction: ChatInputCommandInteraction
   const session = getSessionByChannel(interaction.channelId);
   if (!session) {
     await interaction.reply({
-      content: 'No active session in this channel. You must be in an agent session channel.',
+      content: '此频道没有活跃的会话，请在 Agent 会话频道中执行。',
       ephemeral: true,
     });
     return;
@@ -44,7 +44,7 @@ export async function handleSubagentRun(interaction: ChatInputCommandInteraction
   const guild = interaction.guild!;
   const sessionChannel = guild.channels.cache.get(session.channelId) as TextChannel | undefined;
   if (!sessionChannel) {
-    await interaction.editReply('Could not find session channel.');
+    await interaction.editReply('找不到会话频道。');
     return;
   }
 
@@ -52,36 +52,36 @@ export async function handleSubagentRun(interaction: ChatInputCommandInteraction
     const subSession = await spawnSubagent(session, label, provider, sessionChannel);
     const embed = new EmbedBuilder()
       .setColor(0xf39c12)
-      .setTitle(`🤖 Subagent Spawned: ${label}`)
+      .setTitle(`🤖 子任务已创建：${label}`)
       .addFields(
-        { name: 'Thread', value: `<#${subSession.channelId}>`, inline: true },
-        { name: 'Provider', value: PROVIDER_LABELS[provider], inline: true },
-        { name: 'Depth', value: `${subSession.subagentDepth}`, inline: true },
+        { name: '子区', value: `<#${subSession.channelId}>`, inline: true },
+        { name: '提供商', value: PROVIDER_LABELS[provider], inline: true },
+        { name: '嵌套深度', value: `${subSession.subagentDepth}`, inline: true },
       );
     await interaction.editReply({ embeds: [embed] });
     log(`Subagent "${label}" spawned by ${interaction.user.tag}`);
   } catch (err: unknown) {
-    await interaction.editReply(`Failed to spawn subagent: ${(err as Error).message}`);
+    await interaction.editReply(`创建子任务失败：${(err as Error).message}`);
   }
 }
 
 async function handleSubagentList(interaction: ChatInputCommandInteraction): Promise<void> {
   const session = getSessionByChannel(interaction.channelId);
   if (!session) {
-    await interaction.reply({ content: 'No active session in this channel.', ephemeral: true });
+    await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
     return;
   }
 
   const subagents = getSubagents(session);
   if (subagents.length === 0) {
-    await interaction.reply({ content: 'No active subagents for this session.', ephemeral: true });
+    await interaction.reply({ content: '当前会话没有活跃的子任务。', ephemeral: true });
     return;
   }
 
   const lines = subagents.map((s) => {
     const status = s.isGenerating ? '🔄' : '💤';
-    return `${status} \`${s.agentLabel}\` | <#${s.channelId}> | depth: ${s.subagentDepth}`;
+    return `${status} \`${s.agentLabel}\` | <#${s.channelId}> | 深度：${s.subagentDepth}`;
   });
 
-  await interaction.reply({ content: `Active subagents:\n${lines.join('\n')}`, ephemeral: true });
+  await interaction.reply({ content: `活跃子任务：\n${lines.join('\n')}`, ephemeral: true });
 }

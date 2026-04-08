@@ -34,10 +34,10 @@ export const PROVIDER_COLORS: Record<ProviderName, number> = {
 
 
 export const MODE_LABELS: Record<SessionMode, string> = {
-  auto: '⚡ Auto — full autonomy',
-  plan: '📋 Plan — plans before changes',
-  normal: '🛡️ Normal — asks before destructive ops',
-  monitor: '🧠 Monitor — steers until complete',
+  auto: '⚡ 自动模式 — 完全自主',
+  plan: '📋 计划模式 — 变更前先规划',
+  normal: '🛡️ 普通模式 — 破坏性操作前确认',
+  monitor: '🧠 监控模式 — 持续引导直到完成',
 };
 
 export const CONTROL_CHANNEL_NAME = 'control';
@@ -206,7 +206,7 @@ export function buildPermissionUpdatePatch(
 
 export function assertUserAllowed(interaction: ChatInputCommandInteraction): boolean {
   if (!isUserAllowed(interaction.user.id, config.allowedUsers, config.allowAllUsers)) {
-    interaction.reply({ content: 'You are not authorized to use this bot.', ephemeral: true });
+    interaction.reply({ content: '你没有权限使用此机器人。', ephemeral: true });
     return false;
   }
   return true;

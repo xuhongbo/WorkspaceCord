@@ -175,7 +175,7 @@ describe('subagent-manager', () => {
     await archiveSubagent(session, thread, 'Task done');
 
     expect(sendSystemNoticeMock).toHaveBeenCalledWith(
-      thread, 'sub-1', '*Subagent complete: Task done*',
+      thread, 'sub-1', '*子任务完成：Task done*',
     );
     expect(thread.setArchived).toHaveBeenCalledWith(true, 'Subagent task completed');
     expect(endSessionMock).toHaveBeenCalledWith('sub-1');

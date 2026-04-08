@@ -13,7 +13,7 @@ export async function handleShell(interaction: ChatInputCommandInteraction): Pro
   if (!config.shellEnabled) {
     await interaction.reply({
       content:
-        'Shell execution is disabled. Enable it with `workspacecord config set SHELL_ENABLED true` and set SHELL_ALLOWED_USERS.',
+        'Shell 执行已禁用。请使用 `workspacecord config set SHELL_ENABLED true` 启用，并设置 SHELL_ALLOWED_USERS。',
       ephemeral: true,
     });
     return;
@@ -23,7 +23,7 @@ export async function handleShell(interaction: ChatInputCommandInteraction): Pro
     config.shellAllowedUsers.length === 0 || config.shellAllowedUsers.includes(interaction.user.id);
   if (!allowedByShellList) {
     await interaction.reply({
-      content: 'You are not authorized for shell access.',
+      content: '你没有 Shell 访问权限。',
       ephemeral: true,
     });
     return;
@@ -38,7 +38,7 @@ export async function handleShell(interaction: ChatInputCommandInteraction): Pro
     case 'kill':
       return handleShellKill(interaction);
     default:
-      await interaction.reply({ content: `Unknown subcommand: ${sub}`, ephemeral: true });
+      await interaction.reply({ content: `未知子命令：${sub}`, ephemeral: true });
   }
 }
 
@@ -46,7 +46,7 @@ export async function handleShellRun(interaction: ChatInputCommandInteraction): 
   const command = interaction.options.getString('command', true);
   const channel = interaction.channel;
   if (!channel) {
-    await interaction.reply({ content: 'No channel context.', ephemeral: true });
+    await interaction.reply({ content: '无频道上下文。', ephemeral: true });
     return;
   }
 
@@ -63,7 +63,7 @@ export async function handleShellRun(interaction: ChatInputCommandInteraction): 
   }
 
   await interaction.deferReply();
-  await interaction.editReply(`Running: \`${command}\``);
+  await interaction.editReply(`执行中：\`${command}\``);
 
   await executeShellCommand(command, cwd, channel as SessionChannel);
 }
@@ -71,18 +71,18 @@ export async function handleShellRun(interaction: ChatInputCommandInteraction): 
 async function handleShellProcesses(interaction: ChatInputCommandInteraction): Promise<void> {
   const procs = listProcesses();
   if (procs.length === 0) {
-    await interaction.reply({ content: 'No running shell processes.', ephemeral: true });
+    await interaction.reply({ content: '没有运行中的 Shell 进程。', ephemeral: true });
     return;
   }
   const lines = procs.map((p) => `**PID ${p.pid}** — \`${p.command}\` (${formatUptime(p.startedAt)})`);
-  await interaction.reply({ content: `Running processes:\n${lines.join('\n')}`, ephemeral: true });
+  await interaction.reply({ content: `运行中的进程：\n${lines.join('\n')}`, ephemeral: true });
 }
 
 async function handleShellKill(interaction: ChatInputCommandInteraction): Promise<void> {
   const pid = interaction.options.getInteger('pid', true);
   const killed = killProcess(pid);
   await interaction.reply({
-    content: killed ? `Process ${pid} killed.` : `Process ${pid} not found.`,
+    content: killed ? `进程 ${pid} 已终止。` : `进程 ${pid} 未找到。`,
     ephemeral: true,
   });
 }

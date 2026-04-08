@@ -14,6 +14,11 @@ let server: ReturnType<typeof createServer> | null = null;
 let discordClient: Client | null = null;
 let activeSocketPath: string | null = null;
 
+// IPC 事件节流：同一 session 的同类事件 500ms 内只处理一次
+const IPC_THROTTLE_MS = 500;
+const UNTHROTTLED_EVENTS = new Set(['awaiting_human', 'session_ended', 'errored', 'human_resolved']);
+const lastIpcEventTime = new Map<string, number>();
+
 function isSessionChannel(channel: unknown): channel is SessionChannel {
   if (!channel || typeof channel !== 'object') return false;
   const obj = channel as Record<string, unknown>;
@@ -102,6 +107,17 @@ async function handleHookEvent(payload: Record<string, unknown>): Promise<void> 
   if (!event.sessionId || !event.type) {
     console.warn('[IpcServer] Hook event missing sessionId or type');
     return;
+  }
+
+  // 节流：非关键事件 500ms 内去重
+  if (!UNTHROTTLED_EVENTS.has(event.type)) {
+    const throttleKey = `${event.sessionId}:${event.type}`;
+    const now = Date.now();
+    const lastTime = lastIpcEventTime.get(throttleKey) ?? 0;
+    if (now - lastTime < IPC_THROTTLE_MS) {
+      return;
+    }
+    lastIpcEventTime.set(throttleKey, now);
   }
 
   console.log(`[IpcServer] Received ${event.source} event: ${event.type} for session ${event.sessionId}`);

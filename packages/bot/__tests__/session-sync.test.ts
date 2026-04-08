@@ -41,7 +41,7 @@ vi.mock('../src/archive-manager.ts', () => ({
   isArchivedProviderSession,
 }));
 
-const { startSync, stopSync } = await import('../src/session-sync.ts');
+const { startSync, stopSync, runSync } = await import('../src/session-sync.ts');
 
 describe('session-sync', () => {
   beforeEach(() => {
@@ -97,9 +97,7 @@ describe('session-sync', () => {
       },
     };
 
-    startSync(client as Parameters<typeof startSync>[0]);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    stopSync();
+    await runSync(client as Parameters<typeof startSync>[0]);
 
     expect(createSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -153,9 +151,7 @@ describe('session-sync', () => {
       },
     };
 
-    startSync(client as Parameters<typeof startSync>[0]);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    stopSync();
+    await runSync(client as Parameters<typeof startSync>[0]);
 
     expect(isArchivedProviderSession).toHaveBeenCalledWith('codex', 'codex-archived-1');
     expect(createSession).not.toHaveBeenCalled();
@@ -206,9 +202,7 @@ describe('session-sync', () => {
       },
     };
 
-    startSync(client as Parameters<typeof startSync>[0]);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    stopSync();
+    await runSync(client as Parameters<typeof startSync>[0]);
 
     expect(createSession).not.toHaveBeenCalled();
   });
@@ -257,9 +251,7 @@ describe('session-sync', () => {
       },
     };
 
-    startSync(client as Parameters<typeof startSync>[0]);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    stopSync();
+    await runSync(client as Parameters<typeof startSync>[0]);
 
     expect(createSession).not.toHaveBeenCalled();
   });
@@ -311,9 +303,7 @@ describe('session-sync', () => {
       },
     };
 
-    startSync(client as Parameters<typeof startSync>[0]);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    stopSync();
+    await runSync(client as Parameters<typeof startSync>[0]);
 
     expect(createSession).toHaveBeenCalledWith(
       expect.objectContaining({

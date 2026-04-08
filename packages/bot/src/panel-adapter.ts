@@ -77,6 +77,8 @@ function createStatusCardProjectionContext(sessionId: string) {
     remoteHumanControl: session?.remoteHumanControl,
     provider: session?.provider,
     permissionsSummary: session ? getSessionPermissionSummary(session) : undefined,
+    verbose: session?.verbose,
+    monitorGoal: session?.monitorGoal,
   };
 }
 
@@ -222,9 +224,23 @@ export async function updateSessionState(
     return getSessionProjection(sessionId);
   }
 
+  // 获取旧状态用于去重比较
+  const previousProjection = getSessionProjection(sessionId);
+
   const projection = stateMachine.applyPlatformEvent(platformEvent);
   cacheProjection(sessionId, projection);
-  await scheduleProjectionRender(sessionId, projection, updateKey);
+
+  // 状态未变时跳过渲染，避免不必要的 Discord API 调用
+  const stateChanged =
+    projection.state !== previousProjection.state ||
+    projection.turn !== previousProjection.turn ||
+    projection.phase !== previousProjection.phase;
+
+  if (stateChanged) {
+    await scheduleProjectionRender(sessionId, projection, updateKey);
+  } else {
+    performanceTracker.endStateUpdate(updateKey, { skipped: true });
+  }
   persistTurnState(sessionId, projection);
 
   return projection;

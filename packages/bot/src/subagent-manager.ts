@@ -71,7 +71,7 @@ export async function archiveSubagent(
   summary?: string,
 ): Promise<void> {
   if (summary) {
-    await sendSystemNotice(thread, session.id, `*Subagent complete: ${summary}*`);
+    await sendSystemNotice(thread, session.id, `*子任务完成：${summary}*`);
   }
 
   try {
@@ -134,6 +134,40 @@ export async function runSubagentWatchdog(
   }
 
   console.log(`[SubagentWatchdog] Watchdog run: checked ${checked.size} subagents, archived ${archived}, errors ${errors}`);
+}
+
+export async function autoSpawnSubagentThread(
+  parentSession: ThreadSession,
+  taskId: string,
+  description: string,
+  sessionChannel: TextChannel,
+): Promise<{ threadId: string; session: ThreadSession } | null> {
+  if (parentSession.type === 'subagent') return null;
+  if (!canSpawnSubagent(parentSession)) return null;
+
+  const threadName = `[task] ${description}`.slice(0, 100);
+  const thread = await sessionChannel.threads.create({
+    name: threadName,
+    type: ChannelType.PublicThread,
+    autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
+    reason: `Auto-created for task ${taskId} in session ${parentSession.id}`,
+  });
+
+  const session = await createSession({
+    channelId: thread.id,
+    categoryId: parentSession.categoryId,
+    projectName: parentSession.projectName,
+    agentLabel: description,
+    provider: parentSession.provider,
+    directory: parentSession.directory,
+    type: 'subagent',
+    parentChannelId: parentSession.channelId,
+    subagentDepth: (parentSession.subagentDepth || 0) + 1,
+    mode: parentSession.mode,
+  });
+
+  console.log(`[SubagentManager] Auto-spawned thread for task ${taskId} session ${session.id} thread ${thread.id}`);
+  return { threadId: thread.id, session };
 }
 
 function getSubagentSessions(): ThreadSession[] {

@@ -2,6 +2,7 @@ import type { SessionChannel } from './discord-types.ts';
 import { existsSync } from 'node:fs';
 import { config, truncate, isAbortError } from '@workspacecord/core';
 import type { ProviderEvent, ProviderName } from '@workspacecord/providers';
+import type { TextChannel } from 'discord.js';
 import {
   renderCommandExecutionEmbed,
   renderFileChangesEmbed,
@@ -9,6 +10,7 @@ import {
   renderCodexTodoListEmbed,
 } from './codex-renderer.ts';
 import { getSession } from '@workspacecord/engine/session-registry';
+import { autoSpawnSubagentThread } from './subagent-manager.ts';
 import {
   initializeSessionPanel,
   updateSessionState,
@@ -66,6 +68,7 @@ export async function handleOutputStream(
   const recentCommands: string[] = [];
   const changedFiles: string[] = [];
   const pendingAttachments: string[] = [];
+  const taskThreadMap = new Map<string, string>();
   let deferredResult:
     | {
         event: Extract<ProviderEvent, { type: 'result' }>;
@@ -135,6 +138,11 @@ export async function handleOutputStream(
             kind: 'subagent',
             text: `子代理启动：${truncate(event.description, 80)}`,
           });
+          if (session && channel.type !== undefined) {
+            autoSpawnSubagentThread(session, event.taskId, event.description, channel as TextChannel)
+              .then(result => { if (result) taskThreadMap.set(event.taskId, result.threadId); })
+              .catch(err => console.warn(`[OutputHandler] Failed to auto-spawn thread for task ${event.taskId}: ${(err as Error).message}`));
+          }
           break;
         }
 
@@ -145,6 +153,13 @@ export async function handleOutputStream(
               text: `子代理进展：${truncate(event.summary, 100)}`,
             });
           }
+          const progressThreadId = taskThreadMap.get(event.taskId);
+          if (progressThreadId && event.summary) {
+            const thread = (channel as TextChannel).threads?.cache.get(progressThreadId);
+            if (thread) {
+              thread.send(`📝 ${truncate(event.summary, 1900)}`).catch(() => {});
+            }
+          }
           break;
         }
 
@@ -154,6 +169,15 @@ export async function handleOutputStream(
             kind: 'subagent',
             text: `子代理${event.status === 'completed' ? '完成' : '结束'}：${truncate(event.summary || 'No summary.', 100)}`,
           });
+          const doneThreadId = taskThreadMap.get(event.taskId);
+          if (doneThreadId) {
+            const thread = (channel as TextChannel).threads?.cache.get(doneThreadId);
+            if (thread) {
+              const statusEmoji = event.status === 'completed' ? '✅' : '❌';
+              thread.send(`${statusEmoji} 子任务${event.status === 'completed' ? '完成' : '结束'}：${truncate(event.summary || '', 1900)}`).catch(() => {});
+            }
+            taskThreadMap.delete(event.taskId);
+          }
           break;
         }
 
@@ -241,11 +265,11 @@ export async function handleOutputStream(
           const turns = event.numTurns || 0;
           const modeLabel =
             (
-              { auto: 'Auto', plan: 'Plan', normal: 'Normal', monitor: 'Monitor' } as Record<
+              { auto: '自动', plan: '计划', normal: '普通', monitor: '监控' } as Record<
                 string,
                 string
               >
-            )[mode] || 'Auto';
+            )[mode] || '自动';
           const statusLine = event.success
             ? `-# $${cost} | ${duration} | ${turns} turns | ${modeLabel}`
             : `-# Error | $${cost} | ${duration} | ${turns} turns`;
@@ -306,7 +330,7 @@ export async function handleOutputStream(
         }
       }
 
-      if (session && Date.now() - lastDigestFlushAt >= 15000) {
+      if (session && Date.now() - lastDigestFlushAt >= 8000) {
         await flushDigest(sessionId);
         lastDigestFlushAt = Date.now();
       }

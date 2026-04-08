@@ -51,14 +51,20 @@ export async function handleMessage(message: Message): Promise<void> {
 
   if (!isUserAllowed(message.author.id, config.allowedUsers, config.allowAllUsers)) {
     console.warn(`[MessageHandler] Unauthorized attempt by user ${message.author.id} in channel ${channel.id} (session ${session.id})`);
-    await sendSystemNotice(channel as SessionChannel, session.id, 'You are not authorized to use this bot.');
+    await sendSystemNotice(channel as SessionChannel, session.id, '你没有权限使用此 Bot。');
     return;
   }
 
   const rateKey = `${message.author.id}:${channel.id}`;
   const now = Date.now();
   const last = lastMessageTime.get(rateKey) || 0;
-  if (now - last < config.rateLimitMs) return;
+  if (now - last < config.rateLimitMs) {
+    const remaining = Math.ceil((config.rateLimitMs - (now - last)) / 1000);
+    (channel as SessionChannel).send(`⏳ 发送过于频繁，请 ${remaining} 秒后再试。`)
+      .then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000))
+      .catch(() => {});
+    return;
+  }
   lastMessageTime.set(rateKey, now);
 
   if (session.isGenerating) {
@@ -66,7 +72,7 @@ export async function handleMessage(message: Message): Promise<void> {
     await sendSystemNotice(
       channel as SessionChannel,
       session.id,
-      '*Agent is already generating. Stop it first with `/agent stop`.*',
+      '*Agent 正在执行中，请先使用 `/agent stop` 停止。*',
       message.reference?.messageId ?? undefined,
     );
     return;
@@ -116,8 +122,8 @@ export async function handleMessage(message: Message): Promise<void> {
         sessionId: session.id,
         chatId: parentChannel.id,
         text: [
-          `✅ Subagent Finished: ${session.agentLabel}`,
-          `<#${session.channelId}> has completed a pass. Review the thread for output.`,
+          `✅ 子任务完成：${session.agentLabel}`,
+          `<#${session.channelId}> 已完成一轮执行，请查看子频道了解详情。`,
         ].join('\n\n'),
         files: [],
         mode: 'system_notice',

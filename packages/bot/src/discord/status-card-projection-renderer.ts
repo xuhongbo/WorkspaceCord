@@ -11,12 +11,18 @@ export interface StatusCardProjectionContext {
         remoteHumanControl?: boolean;
         provider?: 'claude' | 'codex';
         permissionsSummary?: string;
+        verbose?: boolean;
+        monitorGoal?: string;
+        monitorIteration?: number;
+        maxMonitorIterations?: number;
       },
     ): Promise<void>;
   };
   remoteHumanControl?: boolean;
   provider?: 'claude' | 'codex';
   permissionsSummary?: string;
+  verbose?: boolean;
+  monitorGoal?: string;
 }
 
 export class StatusCardProjectionRenderer {
@@ -37,6 +43,8 @@ export class StatusCardProjectionRenderer {
         remoteHumanControl: context.remoteHumanControl,
         provider: context.provider,
         permissionsSummary: context.permissionsSummary,
+        verbose: context.verbose,
+        monitorGoal: context.monitorGoal,
       });
     } catch (error) {
       console.error(`状态卡更新失败 (${sessionId}):`, error);

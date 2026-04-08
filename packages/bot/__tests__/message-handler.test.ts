@@ -45,7 +45,7 @@ function makeMessage(overrides: Record<string, unknown> = {}) {
       id: 'channel-1',
       type: ChannelType.GuildText,
       isThread: () => false,
-      send: vi.fn(),
+      send: vi.fn(async () => ({ delete: vi.fn(async () => {}) })),
     },
     attachments: new Map(),
     react: vi.fn(),
@@ -105,7 +105,7 @@ describe('message-handler', () => {
       id: 'channel-1',
       type: ChannelType.GuildText,
       isThread: () => false,
-      send: vi.fn(async () => undefined),
+      send: vi.fn(async () => ({ delete: vi.fn(async () => {}) })),
     };
     const message = makeMessage({ channel });
 
@@ -114,7 +114,7 @@ describe('message-handler', () => {
     expect(sendSystemNotice).toHaveBeenCalledWith(
       channel,
       's1',
-      'You are not authorized to use this bot.',
+      '你没有权限使用此 Bot。',
     );
     expect(relocateSessionPanelToBottom).not.toHaveBeenCalled();
     expect(channel.send).not.toHaveBeenCalled();
@@ -126,7 +126,7 @@ describe('message-handler', () => {
       id: 'channel-1',
       type: ChannelType.GuildText,
       isThread: () => false,
-      send: vi.fn(async () => undefined),
+      send: vi.fn(async () => ({ delete: vi.fn(async () => {}) })),
     };
     getSessionByChannel.mockReturnValue({ id: 's1', channelId: 'channel-1', type: 'persistent', isGenerating: true });
     const message = makeMessage({ channel });
@@ -136,7 +136,7 @@ describe('message-handler', () => {
     expect(sendSystemNotice).toHaveBeenCalledWith(
       channel,
       's1',
-      '*Agent is already generating. Stop it first with `/agent stop`.*',
+      '*Agent 正在执行中，请先使用 `/agent stop` 停止。*',
       undefined,
     );
     expect(relocateSessionPanelToBottom).not.toHaveBeenCalled();

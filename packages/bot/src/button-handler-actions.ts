@@ -88,7 +88,7 @@ export async function handleStopButton(interaction: ButtonInteraction): Promise<
   const stopped = abortSession(sessionId);
   console.log(`[ButtonHandler] Stop button pressed by ${interaction.user.tag} — session ${sessionId} ${stopped ? 'stopped' : 'was not generating'}`);
   await interaction.reply({
-    content: stopped ? 'Generation stopped.' : 'Session was not generating.',
+    content: stopped ? '已停止生成。' : '会话未在执行中。',
     ephemeral: true,
   });
   return true;
@@ -206,18 +206,18 @@ export async function handleContinueButton(interaction: ButtonInteraction): Prom
   const sessionId = customId.slice(9);
   const session = getSession(sessionId);
   if (!session) {
-    await interaction.reply({ content: 'Session not found.', ephemeral: true });
+    await interaction.reply({ content: '会话不存在。', ephemeral: true });
     return true;
   }
   if (session.isGenerating) {
-    await interaction.reply({ content: 'Session is already generating.', ephemeral: true });
+    await interaction.reply({ content: '会话正在执行中。', ephemeral: true });
     return true;
   }
   console.log(`[ButtonHandler] Continue button pressed for session ${sessionId}`);
   await interaction.deferReply();
   try {
     const channel = interaction.channel as SessionChannel;
-    await interaction.editReply('Continuing...');
+    await interaction.editReply('继续中...');
     await executeSessionContinue(session, channel);
     console.log(`[ButtonHandler] Session ${sessionId} continued successfully`);
   } catch (err: unknown) {
@@ -233,7 +233,7 @@ export async function handleExpandButton(interaction: ButtonInteraction): Promis
   const contentId = customId.slice(7);
   const content = getExpandableContent(contentId);
   if (!content) {
-    await interaction.reply({ content: 'Content expired.', ephemeral: true });
+    await interaction.reply({ content: '内容已过期。', ephemeral: true });
     return true;
   }
   const display = truncate(content, 1950);
@@ -283,7 +283,7 @@ export async function handleCleanupButtons(interaction: ButtonInteraction): Prom
       return true;
     }
     if (!interaction.guild) {
-      await interaction.reply({ content: 'Guild context required.', ephemeral: true });
+      await interaction.reply({ content: '需要服务器上下文。', ephemeral: true });
       return true;
     }
     if (!acquireCleanupLock(request.categoryId)) {
@@ -318,19 +318,19 @@ export async function handleModeButton(interaction: ButtonInteraction): Promise<
   const newMode = parts[2] as 'auto' | 'plan' | 'normal' | 'monitor';
   const session = getSession(sessionId);
   if (!session) {
-    await interaction.reply({ content: 'Session not found.', ephemeral: true });
+    await interaction.reply({ content: '会话不存在。', ephemeral: true });
     return true;
   }
   const oldMode = session.mode;
   setMode(sessionId, newMode);
   console.log(`[ButtonHandler] Mode switched for session ${sessionId}: ${oldMode} → ${newMode}`);
   const labels: Record<string, string> = {
-    auto: '⚡ Auto — full autonomy',
-    plan: '📋 Plan — plans before changes',
-    normal: '🛡️ Normal — asks before destructive ops',
-    monitor: '🧠 Monitor — keeps steering toward completion',
+    auto: '⚡ 自动模式 — 完全自主',
+    plan: '📋 计划模式 — 变更前先规划',
+    normal: '🛡️ 普通模式 — 破坏性操作前确认',
+    monitor: '🧠 监控模式 — 持续引导直到完成',
   };
-  await interaction.reply({ content: `Mode switched to **${labels[newMode]}**`, ephemeral: true });
+  await interaction.reply({ content: `已切换至 **${labels[newMode]}**`, ephemeral: true });
   try {
     const original = interaction.message;
     const liveSession = getSession(sessionId);
@@ -359,7 +359,7 @@ export async function handleSelectMenuAction(interaction: StringSelectMenuIntera
     const selected = interaction.values[0];
     const session = getSession(sessionId);
     if (!session) {
-      await interaction.reply({ content: 'Session not found.', ephemeral: true });
+      await interaction.reply({ content: '会话不存在。', ephemeral: true });
       return true;
     }
     setPendingAnswer(sessionId, questionIndex, selected);
@@ -373,7 +373,7 @@ export async function handleSelectMenuAction(interaction: StringSelectMenuIntera
         if (!('components' in row)) return row as unknown as EditableRow;
         const comp = asComponentLike(row.components?.[0]);
         if (comp?.customId !== customId) return row as unknown as EditableRow;
-        const menu = new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder(`Selected: ${selected.slice(0, 80)}`);
+        const menu = new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder(`已选择：${selected.slice(0, 80)}`);
         for (const opt of comp.options || []) {
           menu.addOptions({
             label: opt.label,
@@ -390,7 +390,7 @@ export async function handleSelectMenuAction(interaction: StringSelectMenuIntera
     }
 
     await interaction.reply({
-      content: `Selected for Q${questionIndex + 1}: **${truncate(selected, 100)}** (${answeredCount}/${totalQuestions} answered)`,
+      content: `问题 ${questionIndex + 1} 已选：**${truncate(selected, 100)}**（${answeredCount}/${totalQuestions} 已回答）`,
       ephemeral: true,
     });
     return true;
@@ -402,14 +402,14 @@ export async function handleSelectMenuAction(interaction: StringSelectMenuIntera
     const selected = interaction.values[0];
     const session = getSession(sessionId);
     if (!session) {
-      await interaction.reply({ content: 'Session not found.', ephemeral: true });
+      await interaction.reply({ content: '会话不存在。', ephemeral: true });
       return true;
     }
     await interaction.deferReply();
     try {
       await resolveAwaitingHumanIfNeeded(sessionId);
       const channel = interaction.channel as SessionChannel;
-      await interaction.editReply(`Answered: **${truncate(selected, 100)}**`);
+      await interaction.editReply(`已回答：**${truncate(selected, 100)}**`);
       await executeSessionPrompt(session, channel, selected);
     } catch (err: unknown) {
       await interaction.editReply(`Error: ${(err as Error).message}`);
@@ -422,14 +422,14 @@ export async function handleSelectMenuAction(interaction: StringSelectMenuIntera
     const selected = interaction.values[0];
     const session = getSession(sessionId);
     if (!session) {
-      await interaction.reply({ content: 'Session not found.', ephemeral: true });
+      await interaction.reply({ content: '会话不存在。', ephemeral: true });
       return true;
     }
     await interaction.deferReply();
     try {
       await resolveAwaitingHumanIfNeeded(sessionId);
       const channel = interaction.channel as SessionChannel;
-      await interaction.editReply(`Selected: ${truncate(selected, 100)}`);
+      await interaction.editReply(`已选择：${truncate(selected, 100)}`);
       await executeSessionPrompt(session, channel, selected);
     } catch (err: unknown) {
       await interaction.editReply(`Error: ${(err as Error).message}`);

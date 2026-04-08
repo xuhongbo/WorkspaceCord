@@ -35,6 +35,11 @@ export class InteractionCard {
       .setColor(0xffaa00)
       .setTimestamp();
 
+    embed.addFields(
+      { name: '轮次', value: `#${turn}`, inline: true },
+      { name: '等待自', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+    );
+
     let components: ActionRowBuilder<ButtonBuilder>[] = [];
 
     // 受管会话：显示可用的允许/拒绝按钮

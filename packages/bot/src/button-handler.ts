@@ -18,7 +18,7 @@ import {
 export async function handleButton(interaction: ButtonInteraction): Promise<void> {
   if (!isUserAllowed(interaction.user.id, config.allowedUsers, config.allowAllUsers)) {
     console.warn(`[ButtonHandler] Unauthorized button press by user ${interaction.user.id}: ${interaction.customId}`);
-    await interaction.reply({ content: 'Not authorized.', ephemeral: true });
+    await interaction.reply({ content: '未授权。', ephemeral: true });
     return;
   }
 
@@ -30,16 +30,16 @@ export async function handleButton(interaction: ButtonInteraction): Promise<void
   if (await handleCleanupButtons(interaction)) return;
   if (await handleModeButton(interaction)) return;
 
-  await interaction.reply({ content: 'Unknown button.', ephemeral: true });
+  await interaction.reply({ content: '未知按钮。', ephemeral: true });
 }
 
 export async function handleSelectMenu(interaction: StringSelectMenuInteraction): Promise<void> {
   if (!isUserAllowed(interaction.user.id, config.allowedUsers, config.allowAllUsers)) {
-    await interaction.reply({ content: 'Not authorized.', ephemeral: true });
+    await interaction.reply({ content: '未授权。', ephemeral: true });
     return;
   }
 
   if (await handleSelectMenuAction(interaction)) return;
 
-  await interaction.reply({ content: 'Unknown selection.', ephemeral: true });
+  await interaction.reply({ content: '未知选择。', ephemeral: true });
 }
