@@ -83,13 +83,24 @@ async function readFirstLine(file: string): Promise<string | null> {
   try {
     const fh = await open(file, 'r');
     try {
-      // Read only the first 8KB — enough for any session_meta line
-      const buf = Buffer.alloc(8192);
-      const { bytesRead } = await fh.read(buf, 0, 8192, 0);
-      if (bytesRead === 0) return null;
-      const text = buf.toString('utf-8', 0, bytesRead);
-      const newline = text.indexOf('\n');
-      return newline >= 0 ? text.slice(0, newline) : text;
+      // Read in 8KB chunks until we find a newline or hit EOF (max 256KB)
+      const CHUNK = 8192;
+      const MAX = 256 * 1024;
+      let accumulated = '';
+      let offset = 0;
+      while (offset < MAX) {
+        const buf = Buffer.alloc(CHUNK);
+        const { bytesRead } = await fh.read(buf, 0, CHUNK, offset);
+        if (bytesRead === 0) break;
+        const text = buf.toString('utf-8', 0, bytesRead);
+        const newline = text.indexOf('\n');
+        if (newline >= 0) {
+          return accumulated + text.slice(0, newline);
+        }
+        accumulated += text;
+        offset += bytesRead;
+      }
+      return accumulated || null;
     } finally {
       await fh.close();
     }

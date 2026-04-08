@@ -137,7 +137,7 @@ export class CodexLogMonitor {
   private getSessionDirs(): string[] {
     const dirs: string[] = [];
     const now = new Date();
-    for (let daysAgo = 0; daysAgo <= 1; daysAgo++) {
+    for (let daysAgo = 0; daysAgo <= 7; daysAgo++) {
       const d = new Date(now);
       d.setDate(d.getDate() - daysAgo);
       const yyyy = d.getFullYear();
