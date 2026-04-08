@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { existsSync, createReadStream } from 'node:fs';
+import { readFile, open } from 'node:fs/promises';
 import { glob } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
@@ -79,10 +79,28 @@ export async function readSessionIndex(codexHome = join(homedir(), '.codex')): P
   return out;
 }
 
+async function readFirstLine(file: string): Promise<string | null> {
+  try {
+    const fh = await open(file, 'r');
+    try {
+      // Read only the first 8KB — enough for any session_meta line
+      const buf = Buffer.alloc(8192);
+      const { bytesRead } = await fh.read(buf, 0, 8192, 0);
+      if (bytesRead === 0) return null;
+      const text = buf.toString('utf-8', 0, bytesRead);
+      const newline = text.indexOf('\n');
+      return newline >= 0 ? text.slice(0, newline) : text;
+    } finally {
+      await fh.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
 async function readSessionMetaRecord(file: string): Promise<SessionMetaRecord | null> {
   try {
-    const content = await readFile(file, 'utf-8');
-    const firstLine = content.split('\n').find(Boolean);
+    const firstLine = await readFirstLine(file);
     if (!firstLine) return null;
     const first = JSON.parse(firstLine);
     if (first.type !== 'session_meta') return null;
