@@ -18,26 +18,30 @@ vi.mock('../src/command-handlers.ts', () => ({
 }));
 vi.mock('../src/message-handler.ts', () => ({ handleMessage }));
 vi.mock('../src/button-handler.ts', () => ({ handleButton, handleSelectMenu }));
-vi.mock('../src/config.ts', () => ({
-  config: {
-    dataDir: '/tmp/workspacecord-test',
-    token: 'token',
-    clientId: 'client',
-    guildId: 'guild',
-    healthReportEnabled: false,
-    messageRetentionDays: 0,
-    autoArchiveDays: 0,
-    maxActiveSessionsPerProject: 0,
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config: {
+      dataDir: '/tmp/workspacecord-test',
+      token: 'token',
+      clientId: 'client',
+      guildId: 'guild',
+      healthReportEnabled: false,
+      messageRetentionDays: 0,
+      autoArchiveDays: 0,
+      maxActiveSessionsPerProject: 0,
+    },
+  };
+});
 vi.mock('../src/commands.ts', () => ({ registerCommands: vi.fn() }));
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   loadSessions: vi.fn(),
   getAllSessions: vi.fn(() => []),
   endSession: vi.fn(),
   getSessionByChannel: vi.fn(),
 }));
-vi.mock('../src/project-manager.ts', () => ({ loadProjects: vi.fn() }));
+vi.mock('@workspacecord/engine/project-manager', () => ({ loadProjects: vi.fn() }));
 vi.mock('../src/subagent-manager.ts', () => ({ runSubagentWatchdog: vi.fn() }));
 vi.mock('../src/archive-manager.ts', () => ({ loadArchived: vi.fn(), checkAutoArchive: vi.fn() }));
 vi.mock('../src/session-sync.ts', () => ({ startSync: vi.fn(), stopSync: vi.fn() }));

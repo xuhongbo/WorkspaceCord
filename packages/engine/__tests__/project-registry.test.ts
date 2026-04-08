@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-import { _setDataDirForTest } from '../src/persistence.ts';
+import { _setDataDirForTest } from '@workspacecord/core';
 import {
   loadRegistry,
   registerProject,

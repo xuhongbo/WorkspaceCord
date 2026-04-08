@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('session-message-context', () => {
   it('生成稳定的 discord 语义提示片段', async () => {
-    const mod = await import('../src/discord/session-message-context.ts');
+    const mod = await import('@workspacecord/bot/discord/session-message-context');
     const text = mod.buildDiscordSessionMessageContext();
 
     expect(text).toContain('Discord');

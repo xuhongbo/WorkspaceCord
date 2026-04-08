@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TextChannel, ThreadChannel } from 'discord.js';
-import type { ThreadSession } from '../src/types.ts';
+import type { ThreadSession } from '@workspacecord/core';
 
 const { createSessionMock, endSessionMock, getAllSessionsMock, sendSystemNoticeMock } = vi.hoisted(() => ({
   createSessionMock: vi.fn(),
@@ -9,13 +9,17 @@ const { createSessionMock, endSessionMock, getAllSessionsMock, sendSystemNoticeM
   sendSystemNoticeMock: vi.fn(),
 }));
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    maxSubagentDepth: 3,
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config: {
+      maxSubagentDepth: 3,
+    },
+  };
+});
 
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   createSession: createSessionMock,
   endSession: endSessionMock,
   getAllSessions: getAllSessionsMock,

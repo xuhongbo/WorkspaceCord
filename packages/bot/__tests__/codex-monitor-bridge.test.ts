@@ -5,13 +5,17 @@ const normalizeCodexEvent = vi.fn();
 const registerExistingStatusCard = vi.fn();
 const updateSessionState = vi.fn();
 
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   resolveCodexSessionFromMonitor,
 }));
 
-vi.mock('../src/state/event-normalizer.ts', () => ({
-  normalizeCodexEvent,
-}));
+vi.mock('@workspacecord/state', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    normalizeCodexEvent,
+  };
+});
 
 vi.mock('../src/panel-adapter.ts', () => ({
   registerExistingStatusCard,

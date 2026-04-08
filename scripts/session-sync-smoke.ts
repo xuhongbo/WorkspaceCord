@@ -1,12 +1,13 @@
+try { process.loadEnvFile(); } catch {}
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client, GatewayIntentBits } from 'discord.js';
-import { config } from '../src/config.ts';
-import { getAllRegisteredProjects, loadRegistry } from '../src/project-registry.ts';
-import { loadSessions, getAllSessions } from '../src/thread-manager.ts';
-import { listCodexSessionsForProjects } from '../src/codex-session-discovery.ts';
-import { startSync, stopSync } from '../src/session-sync.ts';
-import { cleanupSessionsById } from '../src/session-housekeeping.ts';
+import { config } from '../packages/core/src/config.ts';
+import { getAllRegisteredProjects, loadRegistry } from '../packages/engine/src/project-registry.ts';
+import { loadSessions, getAllSessions } from '../packages/engine/src/session-registry.ts';
+import { listCodexSessionsForProjects } from '../packages/bot/src/codex-session-discovery.ts';
+import { startSync, stopSync } from '../packages/bot/src/session-sync.ts';
+import { cleanupSessionsById } from '../packages/bot/src/session-housekeeping.ts';
 
 const outDir = join(process.cwd(), 'local-acceptance');
 mkdirSync(outDir, { recursive: true });

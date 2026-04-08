@@ -18,12 +18,25 @@
     "test:multi-session:smoke": "node --experimental-strip-types scripts/multi-session-smoke.ts",
     "test:session-sync:smoke": "node --experimental-strip-types scripts/session-sync-smoke.ts",
     "test:monitor:e2e": "node --experimental-strip-types scripts/monitor-e2e.ts",
+    "test:output-port:e2e": "node --experimental-strip-types scripts/output-port-e2e.ts",
+    "test:startup-flow:e2e": "node --experimental-strip-types scripts/startup-flow-e2e.ts",
+    "test:gate:e2e": "node --experimental-strip-types scripts/gate-e2e.ts",
     "test:acceptance:local": "node --experimental-strip-types scripts/local-acceptance-suite.ts",
     "release": "node --experimental-strip-types scripts/release.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.85",
+    "@clack/prompts": "^1.1.0",
+    "cac": "^7.0.0",
+    "configstore": "^8.0.0",
+    "discord.js": "^14.25.1",
+    "execa": "^9.6.1",
+    "pino": "^10.3.1",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fetchRegisteredAttachments = vi.fn();
 
-vi.mock('../src/discord/attachment-inbox.ts', () => ({
+vi.mock('@workspacecord/bot/discord/attachment-inbox', () => ({
   fetchRegisteredAttachments,
 }));
 

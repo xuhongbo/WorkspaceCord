@@ -3,7 +3,9 @@ import type { Client } from 'discord.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ServiceBus, intervalService, config } from '@workspacecord/core';
+import { registerOutputPort } from '@workspacecord/engine';
 import { gateCoordinator } from '@workspacecord/state';
+import { DiscordOutputPort } from './discord-output-port.ts';
 import { LogBuffer } from './bot-log-buffer.ts';
 import { PresenceManager } from './bot-presence.ts';
 import { reconcileSessionRecordsWithGuild } from './session-housekeeping.ts';
@@ -49,6 +51,7 @@ export class BotServicesOrchestrator {
   #serviceBus = new ServiceBus();
 
   async setupServices(client: Client): Promise<ServiceContainer> {
+    registerOutputPort(new DiscordOutputPort());
     await registerCommands();
     await loadProjects();
     await loadSessions();

@@ -47,7 +47,7 @@ vi.mock('../src/discord/interaction-card.ts', () => ({
   },
 }));
 
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   getSession,
   getSessionPermissionSummary,
   updateSession,
@@ -55,12 +55,16 @@ vi.mock('../src/session-registry.ts', () => ({
   setCurrentInteractionMessage,
 }));
 
-vi.mock('../src/state/gate-coordinator.ts', () => ({
-  gateCoordinator: {
-    createGate: gateCreate,
-    bindDiscordMessage: gateBindDiscordMessage,
-  },
-}));
+vi.mock('@workspacecord/state', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    gateCoordinator: {
+      createGate: gateCreate,
+      bindDiscordMessage: gateBindDiscordMessage,
+    },
+  };
+});
 
 const {
   initializeSessionPanel,
@@ -70,7 +74,7 @@ const {
   updateSessionState,
   getStateMachine,
 } = await import('../src/panel-adapter.ts');
-const { stateMachine } = await import('../src/state/state-machine.ts');
+const { stateMachine } = await import('@workspacecord/state');
 
 function createChannel() {
   return {

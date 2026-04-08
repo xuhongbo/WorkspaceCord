@@ -1,3 +1,4 @@
+try { process.loadEnvFile(); } catch {}
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -7,13 +8,12 @@ import {
   type TextChannel,
   type CategoryChannel,
 } from 'discord.js';
-import { config } from '../src/config.ts';
-import { handleAgent, handleProject } from '../src/command-handlers.ts';
-import { getProjectByName } from '../src/project-registry.ts';
-import { loadRegistry } from '../src/project-registry.ts';
-import { loadProjects } from '../src/project-manager.ts';
-import { loadSessions, getSessionsByCategory } from '../src/thread-manager.ts';
-import { cleanupSessionsById } from '../src/session-housekeeping.ts';
+import { config } from '../packages/core/src/config.ts';
+import { handleAgent, handleProject } from '../packages/bot/src/command-handlers.ts';
+import { getProjectByName, loadRegistry } from '../packages/engine/src/project-registry.ts';
+import { loadProjects } from '../packages/engine/src/project-manager.ts';
+import { loadSessions, getSessionsByCategory } from '../packages/engine/src/session-registry.ts';
+import { cleanupSessionsById } from '../packages/bot/src/session-housekeeping.ts';
 
 function makeOptions(subcommand: string, values: Record<string, string | null | undefined>) {
   return {

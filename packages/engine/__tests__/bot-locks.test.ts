@@ -3,13 +3,17 @@ import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { acquireLock, releaseLock, isLocked, getLockInfo } from '../src/bot-locks.ts';
-import { config } from '../src/config.ts';
+import { config } from '@workspacecord/core';
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    dataDir: '',
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@workspacecord/core')>();
+  return {
+    ...actual,
+    config: {
+      dataDir: '',
+    },
+  };
+});
 
 describe('bot-locks', () => {
   let tempDir = '';
@@ -25,7 +29,10 @@ describe('bot-locks', () => {
   });
 
   it('acquires lock when no lock file exists', async () => {
-    vi.doMock('../src/config.ts', () => ({ config: { dataDir: tempDir } }));
+    vi.doMock('@workspacecord/core', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@workspacecord/core')>();
+      return { ...actual, config: { dataDir: tempDir } };
+    });
     const { acquireLock, releaseLock, isLocked } = await import('../src/bot-locks.ts');
 
     expect(acquireLock()).toBe(true);
@@ -36,7 +43,10 @@ describe('bot-locks', () => {
   });
 
   it('blocks acquire when lock is held by running process', async () => {
-    vi.doMock('../src/config.ts', () => ({ config: { dataDir: tempDir } }));
+    vi.doMock('@workspacecord/core', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@workspacecord/core')>();
+      return { ...actual, config: { dataDir: tempDir } };
+    });
     const { acquireLock, releaseLock } = await import('../src/bot-locks.ts');
 
     acquireLock();
@@ -47,7 +57,10 @@ describe('bot-locks', () => {
   });
 
   it('releases lock only for same PID', async () => {
-    vi.doMock('../src/config.ts', () => ({ config: { dataDir: tempDir } }));
+    vi.doMock('@workspacecord/core', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@workspacecord/core')>();
+      return { ...actual, config: { dataDir: tempDir } };
+    });
     const { acquireLock, releaseLock, isLocked } = await import('../src/bot-locks.ts');
 
     acquireLock();
@@ -56,7 +69,10 @@ describe('bot-locks', () => {
   });
 
   it('getLockInfo returns lock data when file exists', async () => {
-    vi.doMock('../src/config.ts', () => ({ config: { dataDir: tempDir } }));
+    vi.doMock('@workspacecord/core', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@workspacecord/core')>();
+      return { ...actual, config: { dataDir: tempDir } };
+    });
     const { acquireLock, getLockInfo, releaseLock } = await import('../src/bot-locks.ts');
 
     acquireLock();
@@ -70,7 +86,10 @@ describe('bot-locks', () => {
   });
 
   it('getLockInfo returns null when no lock file', async () => {
-    vi.doMock('../src/config.ts', () => ({ config: { dataDir: tempDir } }));
+    vi.doMock('@workspacecord/core', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@workspacecord/core')>();
+      return { ...actual, config: { dataDir: tempDir } };
+    });
     const { getLockInfo } = await import('../src/bot-locks.ts');
 
     expect(getLockInfo()).toBeNull();

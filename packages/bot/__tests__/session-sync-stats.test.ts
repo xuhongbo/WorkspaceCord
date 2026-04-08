@@ -6,8 +6,8 @@ const listCodexSessionsForProjects = vi.fn();
 const isArchivedProviderSession = vi.fn(() => false);
 const listSessions = vi.fn(async () => []);
 
-vi.mock('../src/project-registry.ts', () => ({ getAllRegisteredProjects }));
-vi.mock('../src/session-registry.ts', () => ({ getAllSessions }));
+vi.mock('@workspacecord/engine/project-registry', () => ({ getAllRegisteredProjects }));
+vi.mock('@workspacecord/engine/session-registry', () => ({ getAllSessions }));
 vi.mock('../src/codex-session-discovery.ts', () => ({ listCodexSessionsForProjects }));
 vi.mock('../src/archive-manager.ts', () => ({ isArchivedProviderSession }));
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({ listSessions }));

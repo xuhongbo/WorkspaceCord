@@ -1,42 +1,54 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 
-// Mock persistence Store
-vi.mock('../src/persistence.ts', () => ({
-  Store: class {
-    private data: any[] = [];
-    async read() { return this.data.length ? this.data : null; }
-    async write(d: any[]) { this.data = d; return Promise.resolve(); }
-  },
-  _setDataDirForTest: () => {},
+// Mock output-port to avoid "OutputPort not registered" errors
+vi.mock('../src/output-port.ts', () => ({
+  getOutputPort: () => ({
+    cleanupPanel: vi.fn(),
+    initializePanel: vi.fn(),
+    updateState: vi.fn(),
+    handleResult: vi.fn(),
+    handleAwaitingHuman: vi.fn(),
+    relocatePanel: vi.fn(),
+    getProjection: vi.fn(() => ({})),
+    handleOutputStream: vi.fn(),
+    queueDigest: vi.fn(),
+    flushDigest: vi.fn(),
+  }),
 }));
 
-// Mock config
-vi.mock('../src/config.ts', () => ({
-  config: {
-    allowedUsers: [],
-    allowAllUsers: true,
-    defaultMode: 'auto' as const,
-    defaultProvider: 'codex' as const,
-    claudePermissionMode: 'normal' as const,
-    codexSandboxMode: 'workspace-write' as const,
-    codexApprovalPolicy: 'on-failure' as const,
-    codexNetworkAccessEnabled: true,
-    codexWebSearchMode: 'live' as const,
-  },
-}));
-
-// Mock utils to avoid filesystem checks
-vi.mock('../src/utils.ts', () => ({
-  sanitizeName: (name: string) => {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 50) || 'session';
-  },
-  resolvePath: (p: string) => p.startsWith('/') ? p : `/tmp/${p}`,
-}));
+// Mock @workspacecord/core (persistence Store, config, utils)
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@workspacecord/core')>();
+  return {
+    ...actual,
+    Store: class {
+      private data: any[] = [];
+      async read() { return this.data.length ? this.data : null; }
+      async write(d: any[]) { this.data = d; return Promise.resolve(); }
+    },
+    _setDataDirForTest: () => {},
+    config: {
+      allowedUsers: [],
+      allowAllUsers: true,
+      defaultMode: 'auto' as const,
+      defaultProvider: 'codex' as const,
+      claudePermissionMode: 'normal' as const,
+      codexSandboxMode: 'workspace-write' as const,
+      codexApprovalPolicy: 'on-failure' as const,
+      codexNetworkAccessEnabled: true,
+      codexWebSearchMode: 'live' as const,
+    },
+    sanitizeName: (name: string) => {
+      return name
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 50) || 'session';
+    },
+    resolvePath: (p: string) => p.startsWith('/') ? p : `/tmp/${p}`,
+  };
+});
 
 import {
   createSession,

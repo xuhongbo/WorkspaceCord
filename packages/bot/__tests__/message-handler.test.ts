@@ -12,24 +12,27 @@ const deliver = vi.fn();
 const sendSystemNotice = vi.fn();
 const relocateSessionPanelToBottom = vi.fn();
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    allowedUsers: [],
-    allowAllUsers: true,
-    rateLimitMs: 1000,
-    ackReaction: '👀',
-  },
-}));
-vi.mock('../src/session-registry.ts', () => ({ getSessionByChannel, updateSession }));
-vi.mock('../src/session-executor.ts', () => ({ executeSessionPrompt }));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config: {
+      allowedUsers: [],
+      allowAllUsers: true,
+      rateLimitMs: 1000,
+      ackReaction: '👀',
+    },
+    isUserAllowed,
+    isAbortError: vi.fn(() => false),
+  };
+});
+vi.mock('@workspacecord/engine/session-registry', () => ({ getSessionByChannel, updateSession }));
+vi.mock('@workspacecord/engine/session-executor', () => ({ executeSessionPrompt }));
 vi.mock('../src/discord/delivery-policy.ts', () => ({ buildDeliveryPlan }));
 vi.mock('../src/discord/delivery.ts', () => ({ sendTyping, sendAckReaction, deliver }));
 vi.mock('../src/discord/delivery-notices.ts', () => ({ sendSystemNotice }));
 vi.mock('../src/panel-adapter.ts', () => ({ relocateSessionPanelToBottom }));
-vi.mock('../src/utils.ts', () => ({
-  isUserAllowed,
-  isAbortError: vi.fn(() => false),
-}));
+// utils mocking handled by @workspacecord/core mock above
 
 const { handleMessage, resetMessageHandlerState } = await import('../src/message-handler.ts');
 

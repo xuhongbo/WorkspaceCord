@@ -95,21 +95,25 @@ vi.mock('discord.js', async () => ({
   },
 }));
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    dataDir: '/tmp/workspacecord-test-bot-startup',
-    token: 'token',
-    clientId: 'client',
-    guildId: 'guild',
-    healthReportEnabled: false,
-    messageRetentionDays: 0,
-    autoArchiveDays: 0,
-    maxActiveSessionsPerProject: 0,
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config: {
+      dataDir: '/tmp/workspacecord-test-bot-startup',
+      token: 'token',
+      clientId: 'client',
+      guildId: 'guild',
+      healthReportEnabled: false,
+      messageRetentionDays: 0,
+      autoArchiveDays: 0,
+      maxActiveSessionsPerProject: 0,
+    },
+  };
+});
 vi.mock('../src/commands.ts', () => ({ registerCommands }));
-vi.mock('../src/project-manager.ts', () => ({ loadProjects }));
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/project-manager', () => ({ loadProjects }));
+vi.mock('@workspacecord/engine/session-registry', () => ({
   loadSessions,
   getAllSessions,
   endSession: vi.fn(),
@@ -158,12 +162,16 @@ vi.mock('../src/panel-adapter.ts', () => ({
 }));
 vi.mock('../src/discord/delivery-policy.ts', () => ({ buildDeliveryPlan }));
 vi.mock('../src/discord/delivery.ts', () => ({ deliver }));
-vi.mock('../src/state/gate-coordinator.ts', () => ({
-  gateCoordinator: {
-    invalidateAllOnRestart,
-    getGate: vi.fn(),
-  },
-}));
+vi.mock('@workspacecord/state', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    gateCoordinator: {
+      invalidateAllOnRestart,
+      getGate: vi.fn(),
+    },
+  };
+});
 
 const { startBot } = await import('../src/bot.ts');
 

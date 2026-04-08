@@ -12,24 +12,25 @@ const updateSessionPermissions = vi.fn();
 const getSessionPermissionSummary = vi.fn(() => 'normal');
 const getSessionPermissionDetails = vi.fn(() => 'Claude: normal');
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    allowedUsers: [],
-    allowAllUsers: true,
-    defaultProvider: 'claude',
-    defaultMode: 'auto',
-    claudePermissionMode: 'normal',
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config: {
+      allowedUsers: [],
+      allowAllUsers: true,
+      defaultProvider: 'claude',
+      defaultMode: 'auto',
+      claudePermissionMode: 'normal',
+    },
+    isUserAllowed: () => true,
+    resolvePath: (value: string) => value,
+    formatUptime: () => '1m',
+    formatRelative: () => 'just now',
+  };
+});
 
-vi.mock('../src/utils.ts', () => ({
-  isUserAllowed: () => true,
-  resolvePath: (value: string) => value,
-  formatUptime: () => '1m',
-  formatRelative: () => 'just now',
-}));
-
-vi.mock('../src/project-manager.ts', () => ({
+vi.mock('@workspacecord/engine/project-manager', () => ({
   getProject,
   setHistoryChannelId,
   setControlChannelId,
@@ -45,7 +46,7 @@ vi.mock('../src/project-manager.ts', () => ({
   getMcpServers: vi.fn(() => []),
 }));
 
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   createSession,
   getSession,
   getSessionByChannel,
@@ -71,7 +72,7 @@ vi.mock('../src/archive-manager.ts', () => ({
   archiveSession: vi.fn(),
 }));
 
-vi.mock('../src/session-executor.ts', () => ({
+vi.mock('@workspacecord/engine/session-executor', () => ({
   executeSessionPrompt: vi.fn(),
   executeSessionContinue: vi.fn(),
 }));
@@ -150,7 +151,7 @@ describe('command-handlers', () => {
   });
 
   it('在 project setup 时把当前频道记录为控制频道', async () => {
-    const bindMountedProjectToCategory = (await import('../src/project-manager.ts'))
+    const bindMountedProjectToCategory = (await import('@workspacecord/engine/project-manager'))
       .bindMountedProjectToCategory as unknown as ReturnType<typeof vi.fn>;
     bindMountedProjectToCategory.mockResolvedValue({
       name: 'demo',

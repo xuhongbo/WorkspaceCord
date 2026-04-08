@@ -1,7 +1,8 @@
+try { process.loadEnvFile(); } catch {}
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import * as sessions from '../src/thread-manager.ts';
-import { executeSessionPrompt } from '../src/session-executor.ts';
+import * as sessions from '../packages/engine/src/session-registry.ts';
+import { executeSessionPrompt } from '../packages/engine/src/session-executor.ts';
 
 const baseDir = join(process.cwd(), 'local-acceptance', 'monitor-e2e-workspace');
 mkdirSync(baseDir, { recursive: true });

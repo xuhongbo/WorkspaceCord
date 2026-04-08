@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const registerLocalSession = vi.fn();
 
-vi.mock('../src/session/session-local-registration.ts', () => ({
+vi.mock('../src/session-local-registration.ts', () => ({
   registerLocalSession,
 }));
 

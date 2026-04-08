@@ -2,7 +2,7 @@
 // 验证设计文档 13.5 节的性能标准
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { performanceTracker } from '../src/monitoring/performance-tracker.ts';
+import { performanceTracker } from '@workspacecord/bot/monitoring/performance-tracker';
 import {
   initializeSessionPanel,
   updateSessionState,
@@ -11,7 +11,7 @@ import {
   getPerformanceStats,
   startPerformanceMonitoring,
   stopPerformanceMonitoring,
-} from '../src/panel-adapter.ts';
+} from '@workspacecord/bot/panel-adapter';
 
 // Mock Discord.js
 vi.mock('discord.js', () => ({

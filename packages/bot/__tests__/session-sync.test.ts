@@ -12,9 +12,13 @@ const configMock = {
   sessionSyncRecentDays: 3,
 };
 
-vi.mock('../src/config.ts', () => ({
-  config: configMock,
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config: configMock,
+  };
+});
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   listSessions,
@@ -24,11 +28,11 @@ vi.mock('../src/codex-session-discovery.ts', () => ({
   listCodexSessionsForProjects,
 }));
 
-vi.mock('../src/project-registry.ts', () => ({
+vi.mock('@workspacecord/engine/project-registry', () => ({
   getAllRegisteredProjects,
 }));
 
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   getAllSessions,
   createSession,
 }));

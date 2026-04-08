@@ -24,6 +24,15 @@ const commands = [
     cmd: ['node', '--experimental-strip-types', 'scripts/session-sync-smoke.ts'],
   },
   { name: 'monitor-e2e', cmd: ['node', '--experimental-strip-types', 'scripts/monitor-e2e.ts'] },
+  {
+    name: 'output-port-e2e',
+    cmd: ['node', '--experimental-strip-types', 'scripts/output-port-e2e.ts'],
+  },
+  {
+    name: 'startup-flow-e2e',
+    cmd: ['node', '--experimental-strip-types', 'scripts/startup-flow-e2e.ts'],
+  },
+  { name: 'gate-e2e', cmd: ['node', '--experimental-strip-types', 'scripts/gate-e2e.ts'] },
 ];
 
 const results: Array<{

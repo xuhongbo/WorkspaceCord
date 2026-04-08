@@ -14,19 +14,20 @@ const acquireCleanupLock = vi.fn();
 const releaseCleanupLock = vi.fn();
 const archiveSessionsById = vi.fn();
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    allowedUsers: [],
-    allowAllUsers: true,
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config: {
+      allowedUsers: [],
+      allowAllUsers: true,
+    },
+    isUserAllowed: () => true,
+    truncate: (text: string) => text,
+  };
+});
 
-vi.mock('../src/utils.ts', () => ({
-  isUserAllowed: () => true,
-  truncate: (text: string) => text,
-}));
-
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   getSession,
   updateSession,
   abortSession: vi.fn(() => false),
@@ -42,7 +43,7 @@ vi.mock('../src/output-handler.ts', () => ({
   getQuestionCount: vi.fn(() => 0),
 }));
 
-vi.mock('../src/session-executor.ts', () => ({
+vi.mock('@workspacecord/engine/session-executor', () => ({
   executeSessionContinue,
   executeSessionPrompt,
 }));
@@ -52,7 +53,7 @@ vi.mock('../src/panel-adapter.ts', () => ({
   updateSessionState,
   getSessionProjection,
 }));
-vi.mock('../src/agent-cleanup-request-store.ts', () => ({
+vi.mock('@workspacecord/engine/agent-cleanup-request-store', () => ({
   getCleanupRequest,
   deleteCleanupRequest,
   acquireCleanupLock,
@@ -62,13 +63,17 @@ vi.mock('../src/session-housekeeping.ts', () => ({
   archiveSessionsById,
 }));
 
-vi.mock('../src/state/gate-coordinator.ts', () => ({
-  gateCoordinator: {
-    getGate,
-    getActiveGateForSession,
-    resolveFromDiscord,
-  },
-}));
+vi.mock('@workspacecord/state', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    gateCoordinator: {
+      getGate,
+      getActiveGateForSession,
+      resolveFromDiscord,
+    },
+  };
+});
 
 const { handleButton } = await import('../src/button-handler.ts');
 

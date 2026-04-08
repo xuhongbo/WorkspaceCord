@@ -40,25 +40,29 @@ vi.mock('discord.js', async () => ({
   ChannelType: { GuildText: 0 },
 }));
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    dataDir: '/tmp/workspacecord-test-bot-hint',
-    token: 'token',
-    clientId: 'client',
-    guildId: 'guild',
-    healthReportEnabled: false,
-    messageRetentionDays: 0,
-    autoArchiveDays: 0,
-    maxActiveSessionsPerProject: 0,
-    textChunkLimit: 2000,
-    chunkMode: 'length',
-    replyToMode: 'first',
-    ackReaction: '👀',
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config: {
+      dataDir: '/tmp/workspacecord-test-bot-hint',
+      token: 'token',
+      clientId: 'client',
+      guildId: 'guild',
+      healthReportEnabled: false,
+      messageRetentionDays: 0,
+      autoArchiveDays: 0,
+      maxActiveSessionsPerProject: 0,
+      textChunkLimit: 2000,
+      chunkMode: 'length',
+      replyToMode: 'first',
+      ackReaction: '👀',
+    },
+  };
+});
 
 vi.mock('../src/commands.ts', () => ({ registerCommands: vi.fn() }));
-vi.mock('../src/project-manager.ts', () => ({ loadProjects: vi.fn() }));
+vi.mock('@workspacecord/engine/project-manager', () => ({ loadProjects: vi.fn() }));
 vi.mock('../src/archive-manager.ts', () => ({ loadArchived: vi.fn(), checkAutoArchive: vi.fn() }));
 vi.mock('../src/session-sync.ts', () => ({ startSync: vi.fn(), stopSync: vi.fn() }));
 vi.mock('../src/health-monitor.ts', () => ({ startHealthMonitor: vi.fn(), stopHealthMonitor: vi.fn(), setBotStartTime: vi.fn() }));
@@ -76,14 +80,20 @@ vi.mock('../src/command-handlers.ts', () => ({
 }));
 vi.mock('../src/codex-monitor-bridge.ts', () => ({ handleCodexMonitorStateChange: vi.fn() }));
 vi.mock('../src/panel-adapter.ts', () => ({ startPerformanceMonitoring: vi.fn(), stopPerformanceMonitoring: vi.fn() }));
-vi.mock('../src/state/gate-coordinator.ts', () => ({ gateCoordinator: { invalidateAllOnRestart: vi.fn(() => []), getGate: vi.fn() } }));
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/state', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    gateCoordinator: { invalidateAllOnRestart: vi.fn(() => []), getGate: vi.fn() },
+  };
+});
+vi.mock('@workspacecord/engine/session-registry', () => ({
   loadSessions: vi.fn(),
   getAllSessions: vi.fn(() => []),
   endSession: vi.fn(),
   getSessionByChannel: vi.fn(),
 }));
-vi.mock('../src/session/session-local-registration.ts', () => ({
+vi.mock('../src/session-local-registration.ts', () => ({
   registerLocalSession,
 }));
 vi.mock('../src/monitors/codex-log-monitor.ts', () => ({

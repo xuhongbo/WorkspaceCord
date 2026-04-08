@@ -2,17 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { _setDataDirForTest } from '../src/persistence.ts';
+import { _setDataDirForTest } from '@workspacecord/core';
 
-vi.mock('../src/providers/index.ts', () => ({
+vi.mock('@workspacecord/providers', () => ({
   ensureProvider: vi.fn(async () => undefined),
 }));
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    defaultMode: 'auto',
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@workspacecord/core')>();
+  return {
+    ...actual,
+    config: {
+      defaultMode: 'auto',
+    },
+  };
+});
 
 describe('thread-manager 本地感知字段持久化', () => {
   let dataDir = '';

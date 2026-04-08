@@ -67,8 +67,18 @@ const killProcess = vi.fn();
 const isUserAllowed = vi.fn(() => true);
 const registerExistingStatusCard = vi.fn();
 
-vi.mock('../src/config.ts', () => ({ config }));
-vi.mock('../src/project-manager.ts', () => ({
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config,
+    isUserAllowed,
+    resolvePath: (value: string) => value,
+    formatUptime: () => '1m',
+    formatRelative: () => 'just now',
+  };
+});
+vi.mock('@workspacecord/engine/project-manager', () => ({
   getProject,
   bindMountedProjectToCategory,
   setHistoryChannelId,
@@ -83,7 +93,7 @@ vi.mock('../src/project-manager.ts', () => ({
   removeMcpServer,
   getMcpServers,
 }));
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   createSession,
   getSession,
   getSessionByChannel,
@@ -106,21 +116,16 @@ vi.mock('../src/archive-manager.ts', () => ({ archiveSession }));
 vi.mock('../src/session-housekeeping.ts', () => ({
   buildProjectCleanupPreview,
 }));
-vi.mock('../src/agent-cleanup-request-store.ts', () => ({
+vi.mock('@workspacecord/engine/agent-cleanup-request-store', () => ({
   createCleanupRequest,
 }));
-vi.mock('../src/session-executor.ts', () => ({ executeSessionPrompt, executeSessionContinue }));
+vi.mock('@workspacecord/engine/session-executor', () => ({ executeSessionPrompt, executeSessionContinue }));
 vi.mock('../src/output-handler.ts', () => ({ makeModeButtons, resolveEffectiveClaudePermissionMode }));
 vi.mock('../src/shell-handler.ts', () => ({ executeShellCommand, listProcesses, killProcess }));
 vi.mock('../src/panel-adapter.ts', () => ({
   registerExistingStatusCard,
 }));
-vi.mock('../src/utils.ts', () => ({
-  isUserAllowed,
-  resolvePath: (value: string) => value,
-  formatUptime: () => '1m',
-  formatRelative: () => 'just now',
-}));
+// utils mocking is handled by @workspacecord/core mock above
 
 const {
   handleProject,

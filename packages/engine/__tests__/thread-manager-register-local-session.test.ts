@@ -2,17 +2,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+vi.mock('discord.js', () => ({
+  ChannelType: {
+    GuildCategory: 4,
+    GuildText: 0,
+    PublicThread: 11,
+  },
+  ThreadAutoArchiveDuration: {
+    OneHour: 60,
+  },
+}));
+
 import { ChannelType, ThreadAutoArchiveDuration, type Guild } from 'discord.js';
 
-vi.mock('../src/providers/index.ts', () => ({
+vi.mock('@workspacecord/providers', () => ({
   ensureProvider: vi.fn(async () => undefined),
 }));
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    defaultMode: 'auto',
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@workspacecord/core')>();
+  return {
+    ...actual,
+    config: {
+      defaultMode: 'auto',
+    },
+  };
+});
 
 describe('thread-manager registerLocalSession', () => {
   let dataDir = '';
@@ -21,7 +36,7 @@ describe('thread-manager registerLocalSession', () => {
 
   beforeEach(() => {
     vi.resetModules();
-    vi.doMock('../src/archive-manager.ts', () => ({
+    vi.doMock('@workspacecord/bot/archive-manager', () => ({
       isArchivedProviderSession: vi.fn(() => false),
     }));
     dataDir = mkdtempSync(join(tmpdir(), 'workspacecord-reg-local-data-'));
@@ -31,18 +46,18 @@ describe('thread-manager registerLocalSession', () => {
   });
 
   afterEach(async () => {
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core');
     _setDataDirForTest(null);
     rmSync(dataDir, { recursive: true, force: true });
     rmSync(rootDir, { recursive: true, force: true });
   });
 
   it('嵌套项目场景下优先归属到最长路径匹配的项目', async () => {
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core');
     _setDataDirForTest(dataDir);
 
     const projectRegistry = await import('../src/project-registry.ts');
-    const sessionLocal = await import('../src/session/session-local-registration.ts');
+    const sessionLocal = await import('@workspacecord/bot/session-local-registration');
 
     await projectRegistry.loadRegistry();
     await projectRegistry.registerProject('root-project', rootDir);
@@ -98,15 +113,15 @@ describe('thread-manager registerLocalSession', () => {
   });
 
   it('已归档的 provider 会话不会被自动重新注册', async () => {
-    vi.doMock('../src/archive-manager.ts', () => ({
+    vi.doMock('@workspacecord/bot/archive-manager', () => ({
       isArchivedProviderSession: vi.fn(() => true),
     }));
 
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core');
     _setDataDirForTest(dataDir);
 
     const projectRegistry = await import('../src/project-registry.ts');
-    const sessionLocal = await import('../src/session/session-local-registration.ts');
+    const sessionLocal = await import('@workspacecord/bot/session-local-registration');
 
     await projectRegistry.loadRegistry();
     await projectRegistry.registerProject('demo-project', rootDir);
@@ -146,12 +161,12 @@ describe('thread-manager registerLocalSession', () => {
   });
 
   it('子代理元数据命中父会话时会在父频道下创建线程', async () => {
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core');
     _setDataDirForTest(dataDir);
 
     const projectRegistry = await import('../src/project-registry.ts');
     const sessionRegistry = await import('../src/session-registry.ts');
-    const sessionLocal = await import('../src/session/session-local-registration.ts');
+    const sessionLocal = await import('@workspacecord/bot/session-local-registration');
 
     await projectRegistry.loadRegistry();
     await projectRegistry.registerProject('demo-project', rootDir);
@@ -228,12 +243,12 @@ describe('thread-manager registerLocalSession', () => {
   });
 
   it('Claude 子代理会使用 agentId 生成独立 providerSessionId', async () => {
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core');
     _setDataDirForTest(dataDir);
 
     const projectRegistry = await import('../src/project-registry.ts');
     const sessionRegistry = await import('../src/session-registry.ts');
-    const sessionLocal = await import('../src/session/session-local-registration.ts');
+    const sessionLocal = await import('@workspacecord/bot/session-local-registration');
 
     await projectRegistry.loadRegistry();
     await projectRegistry.registerProject('demo-project', rootDir);
@@ -298,12 +313,12 @@ describe('thread-manager registerLocalSession', () => {
   });
 
   it('父会话位于线程内时也能继续注册下级子代理', async () => {
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core');
     _setDataDirForTest(dataDir);
 
     const projectRegistry = await import('../src/project-registry.ts');
     const sessionRegistry = await import('../src/session-registry.ts');
-    const sessionLocal = await import('../src/session/session-local-registration.ts');
+    const sessionLocal = await import('@workspacecord/bot/session-local-registration');
 
     await projectRegistry.loadRegistry();
     await projectRegistry.registerProject('demo-project', rootDir);

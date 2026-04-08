@@ -8,11 +8,11 @@ const normalizeCodexEvent = vi.fn();
 const registerExistingStatusCard = vi.fn();
 const updateSessionState = vi.fn();
 
-vi.mock('../../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   resolveCodexSessionFromMonitor,
 }));
 
-vi.mock('../../src/state/event-normalizer.ts', () => ({
+vi.mock('@workspacecord/state/event-normalizer', () => ({
   normalizeCodexEvent,
 }));
 

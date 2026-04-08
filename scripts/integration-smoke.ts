@@ -1,3 +1,4 @@
+try { process.loadEnvFile(); } catch {}
 import { mkdirSync, mkdtempSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -11,9 +12,9 @@ import {
   type AnyThreadChannel,
   type Guild,
 } from 'discord.js';
-import { config } from '../src/config.ts';
-import { handleProject, handleAgent, handleSubagent, handleShell } from '../src/command-handlers.ts';
-import { executeSessionPrompt } from '../src/session-executor.ts';
+import { config } from '../packages/core/src/config.ts';
+import { handleProject, handleAgent, handleSubagent, handleShell } from '../packages/bot/src/command-handlers.ts';
+import { executeSessionPrompt } from '../packages/engine/src/session-executor.ts';
 import {
   loadRegistry,
   getProjectByName,
@@ -23,13 +24,13 @@ import {
   bindProjectCategory,
   setProjectHistoryChannel,
   setProjectControlChannel,
-} from '../src/project-registry.ts';
-import { loadProjects } from '../src/project-manager.ts';
-import { loadSessions, getSession, getSessionsByCategory } from '../src/thread-manager.ts';
-import { loadArchived, getArchivedSessions } from '../src/archive-manager.ts';
-import { CodexLogMonitor } from '../src/monitors/codex-log-monitor.ts';
-import { handleCodexMonitorStateChange } from '../src/codex-monitor-bridge.ts';
-import { cleanupSessionsById } from '../src/session-housekeeping.ts';
+} from '../packages/engine/src/project-registry.ts';
+import { loadProjects } from '../packages/engine/src/project-manager.ts';
+import { loadSessions, getSession, getSessionsByCategory } from '../packages/engine/src/session-registry.ts';
+import { loadArchived, getArchivedSessions } from '../packages/bot/src/archive-manager.ts';
+import { CodexLogMonitor } from '../packages/bot/src/monitors/codex-log-monitor.ts';
+import { handleCodexMonitorStateChange } from '../packages/bot/src/codex-monitor-bridge.ts';
+import { cleanupSessionsById } from '../packages/bot/src/session-housekeeping.ts';
 
 type OptionMap = Record<string, string | null | undefined>;
 

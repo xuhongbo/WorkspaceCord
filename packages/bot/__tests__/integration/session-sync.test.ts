@@ -16,7 +16,7 @@ const configMock = {
   sessionSyncRecentDays: 3,
 };
 
-vi.mock('../../src/config.ts', () => ({
+vi.mock('@workspacecord/core/config', () => ({
   config: configMock,
 }));
 
@@ -28,11 +28,11 @@ vi.mock('../../src/codex-session-discovery.ts', () => ({
   listCodexSessionsForProjects,
 }));
 
-vi.mock('../../src/project-registry.ts', () => ({
+vi.mock('@workspacecord/engine/project-registry', () => ({
   getAllRegisteredProjects,
 }));
 
-vi.mock('../../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   getAllSessions,
   getSession,
   createSession,

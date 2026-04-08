@@ -33,7 +33,7 @@ export {
   splitMessage,
   formatCost,
 } from './utils.ts';
-export { Store, getDataDir } from './persistence.ts';
+export { Store, getDataDir, _setDataDirForTest } from './persistence.ts';
 export { EventBus } from './event-bus.ts';
 export * from './events.ts';
 export { createLogger, getLogger, type Logger } from './logger.ts';

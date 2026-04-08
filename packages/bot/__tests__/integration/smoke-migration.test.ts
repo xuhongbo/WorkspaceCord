@@ -16,7 +16,7 @@ const mockConfig = {
   maxActiveSessionsPerProject: 0,
 };
 
-vi.mock('../../src/config.ts', () => ({
+vi.mock('@workspacecord/core/config', () => ({
   config: mockConfig,
 }));
 
@@ -30,7 +30,7 @@ function resetSessions() {
   storedSessions.length = 0;
 }
 
-vi.mock('../../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   getAllSessions: mockGetAllSessions,
   getSessionsByCategory: mockGetSessionsByCategory,
   getSession: vi.fn(),
@@ -74,7 +74,7 @@ vi.mock('../../src/session-registry.ts', () => ({
 
 // ─── Project registry ────────────────────────────────────────────────────────
 
-vi.mock('../../src/project-registry.ts', () => ({
+vi.mock('@workspacecord/engine/project-registry', () => ({
   loadRegistry: vi.fn().mockResolvedValue(undefined),
   registerProject: vi.fn(async (name: string, path: string) => ({
     name,
@@ -109,7 +109,7 @@ vi.mock('../../src/archive-manager.ts', () => ({
 
 // ─── Other external dependencies ─────────────────────────────────────────────
 
-vi.mock('../../src/project-manager.ts', () => ({
+vi.mock('@workspacecord/engine/project-manager', () => ({
   loadProjects: vi.fn(),
   getPersonality: vi.fn(),
   getProject: vi.fn(),
@@ -122,7 +122,7 @@ vi.mock('../../src/subagent-manager.ts', () => ({
   getSubagents: vi.fn().mockReturnValue([]),
 }));
 
-vi.mock('../../src/session-executor.ts', () => ({
+vi.mock('@workspacecord/engine/session-executor', () => ({
   executeSessionPrompt: vi.fn(),
   executeSessionContinue: vi.fn(),
 }));
@@ -144,7 +144,7 @@ vi.mock('../../src/shell-handler.ts', () => ({
   killProcess: vi.fn(),
 }));
 
-vi.mock('../../src/agent-cleanup-request-store.ts', () => ({
+vi.mock('@workspacecord/engine/agent-cleanup-request-store', () => ({
   createCleanupRequest: vi.fn(),
 }));
 
@@ -161,7 +161,7 @@ vi.mock('../../src/session-housekeeping.ts', () => ({
   reconcileSessionRecordsWithGuild: vi.fn(),
 }));
 
-vi.mock('../../src/utils.ts', () => ({
+vi.mock('@workspacecord/core/utils', () => ({
   isUserAllowed: vi.fn().mockReturnValue(true),
   resolvePath: vi.fn((p: string) => p),
   formatUptime: vi.fn().mockReturnValue('0m'),
@@ -336,8 +336,8 @@ describe('smoke-migration: integration workflows', () => {
   });
 
   it('project mount: real handleProject calls registerProject with cwd', async () => {
-    const { handleProject } = await import('../../src/project-cli.ts');
-    const { registerProject } = await import('../../src/project-registry.ts');
+    const { handleProject } = await import('@workspacecord/cli/project-cli');
+    const { registerProject } = await import('@workspacecord/engine/project-registry');
 
     await captureConsole(() => handleProject(['init']));
 
@@ -368,7 +368,7 @@ describe('smoke-migration: integration workflows', () => {
       return ch;
     });
 
-    const { getProject } = await import('../../src/project-manager.ts');
+    const { getProject } = await import('@workspacecord/engine/project-manager');
     vi.mocked(getProject).mockReturnValue({
       name: 'test-project',
       path: '/test/project',
@@ -415,7 +415,7 @@ describe('smoke-migration: integration workflows', () => {
       return ch;
     });
 
-    const { getProject } = await import('../../src/project-manager.ts');
+    const { getProject } = await import('@workspacecord/engine/project-manager');
     vi.mocked(getProject).mockReturnValue({
       name: 'test-project',
       path: '/test/project',
@@ -481,7 +481,7 @@ describe('smoke-migration: integration workflows', () => {
     (guild as any).channels.cache.get.mockImplementation((id: string) => chMap.get(id));
 
     // Make getSessionByChannel return the parent session
-    const { getSessionByChannel, createSession } = await import('../../src/session-registry.ts');
+    const { getSessionByChannel, createSession } = await import('@workspacecord/engine/session-registry');
     vi.mocked(getSessionByChannel).mockReturnValue(parentSession as any);
     // Make spawnSubagent call createSession directly (simulating real flow)
     const { spawnSubagent } = await import('../../src/subagent-manager.ts');
@@ -571,8 +571,8 @@ describe('smoke-migration: integration workflows', () => {
     const expectedName = cwd.split('/').pop() || 'workspacecord';
 
     // Mount
-    const { handleProject } = await import('../../src/project-cli.ts');
-    const { registerProject } = await import('../../src/project-registry.ts');
+    const { handleProject } = await import('@workspacecord/cli/project-cli');
+    const { registerProject } = await import('@workspacecord/engine/project-registry');
     await captureConsole(() => handleProject(['init']));
     expect(registerProject).toHaveBeenCalledWith(expectedName, cwd);
 
@@ -595,7 +595,7 @@ describe('smoke-migration: integration workflows', () => {
       return ch;
     });
 
-    const { getProject } = await import('../../src/project-manager.ts');
+    const { getProject } = await import('@workspacecord/engine/project-manager');
     vi.mocked(getProject).mockReturnValue({
       name: expectedName,
       path: cwd,

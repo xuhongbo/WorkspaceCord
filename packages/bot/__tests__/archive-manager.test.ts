@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ChannelType } from 'discord.js';
-import { _setDataDirForTest } from '../src/persistence.ts';
+import { _setDataDirForTest } from '@workspacecord/core/persistence';
 
 const getProject = vi.fn();
 const setHistoryChannelId = vi.fn();
@@ -11,23 +11,27 @@ const endSession = vi.fn();
 const getAllSessions = vi.fn();
 const getSessionsByCategory = vi.fn();
 
-vi.mock('../src/project-manager.ts', () => ({
+vi.mock('@workspacecord/engine/project-manager', () => ({
   getProject,
   setHistoryChannelId,
 }));
 
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   endSession,
   getAllSessions,
   getSessionsByCategory,
 }));
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    autoArchiveDays: 0,
-    maxActiveSessionsPerProject: 0,
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config: {
+      autoArchiveDays: 0,
+      maxActiveSessionsPerProject: 0,
+    },
+  };
+});
 
 describe('archive-manager', () => {
   let dataDir = '';

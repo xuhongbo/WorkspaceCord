@@ -14,9 +14,13 @@ vi.mock('node:fs', () => ({
   existsSync: existsSyncMock,
 }));
 
-vi.mock('../src/global-config.ts', () => ({
-  getConfigValue: getConfigValueMock,
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@workspacecord/core')>();
+  return {
+    ...actual,
+    getConfigValue: getConfigValueMock,
+  };
+});
 
 describe('codex-launcher', () => {
   beforeEach(() => {
@@ -31,7 +35,7 @@ describe('codex-launcher', () => {
     process.env.CODEX_PATH = '/custom/env-codex';
     getConfigValueMock.mockReturnValue('/custom/config-codex');
 
-    const { launchManagedCodex } = await import('../src/cli/codex-launcher.ts');
+    const { launchManagedCodex } = await import('../src/codex-launcher.ts');
     await launchManagedCodex({ cwd: '/repo' });
 
     expect(spawnMock).toHaveBeenCalledWith(
@@ -52,7 +56,7 @@ describe('codex-launcher', () => {
       key === 'CODEX_PATH' ? '/custom/config-codex' : undefined,
     );
 
-    const { launchManagedCodex } = await import('../src/cli/codex-launcher.ts');
+    const { launchManagedCodex } = await import('../src/codex-launcher.ts');
     await launchManagedCodex({ cwd: '/repo' });
 
     expect(spawnMock).toHaveBeenCalledWith(
@@ -63,7 +67,7 @@ describe('codex-launcher', () => {
   });
 
   it('环境变量与全局配置都缺失时回退到默认 codex', async () => {
-    const { launchManagedCodex } = await import('../src/cli/codex-launcher.ts');
+    const { launchManagedCodex } = await import('../src/codex-launcher.ts');
     await launchManagedCodex({ cwd: '/repo' });
 
     expect(spawnMock).toHaveBeenCalledWith(
@@ -78,7 +82,7 @@ describe('codex-launcher', () => {
     const exitMock = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const { launchManagedCodex } = await import('../src/cli/codex-launcher.ts');
+    const { launchManagedCodex } = await import('../src/codex-launcher.ts');
     await launchManagedCodex({ cwd: '/nonexistent' });
 
     expect(exitMock).toHaveBeenCalledWith(1);
@@ -89,7 +93,7 @@ describe('codex-launcher', () => {
   });
 
   it('传递 model 和 sandbox 模式参数', async () => {
-    const { launchManagedCodex } = await import('../src/cli/codex-launcher.ts');
+    const { launchManagedCodex } = await import('../src/codex-launcher.ts');
     await launchManagedCodex({
       cwd: '/repo',
       model: 'gpt-4',
@@ -107,7 +111,7 @@ describe('codex-launcher', () => {
   });
 
   it('附加用户自定义参数', async () => {
-    const { launchManagedCodex } = await import('../src/cli/codex-launcher.ts');
+    const { launchManagedCodex } = await import('../src/codex-launcher.ts');
     await launchManagedCodex({
       cwd: '/repo',
       args: ['--verbose', '--config', 'custom.json'],
@@ -120,7 +124,7 @@ describe('codex-launcher', () => {
   });
 
   it('isManagedSession 检测环境变量标记', async () => {
-    const { isManagedSession } = await import('../src/cli/codex-launcher.ts');
+    const { isManagedSession } = await import('../src/codex-launcher.ts');
 
     process.env.workspacecord_MANAGED = '1';
     expect(isManagedSession()).toBe(true);
@@ -130,7 +134,7 @@ describe('codex-launcher', () => {
   });
 
   it('getManagedSessionCwd 返回环境变量中的工作目录', async () => {
-    const { getManagedSessionCwd } = await import('../src/cli/codex-launcher.ts');
+    const { getManagedSessionCwd } = await import('../src/codex-launcher.ts');
 
     process.env.workspacecord_SESSION_CWD = '/my/project';
     expect(getManagedSessionCwd()).toBe('/my/project');
@@ -140,7 +144,7 @@ describe('codex-launcher', () => {
   });
 
   it('handleCodexCommand 解析参数并启动会话', async () => {
-    const { handleCodexCommand } = await import('../src/cli/codex-launcher.ts');
+    const { handleCodexCommand } = await import('../src/codex-launcher.ts');
     await handleCodexCommand(['--cwd', '/my/project', '--model', 'gpt-4o']);
 
     expect(spawnMock).toHaveBeenCalledWith(
@@ -156,7 +160,7 @@ describe('codex-launcher', () => {
   it('handleCodexCommand 的 --help 仅打印帮助不启动', async () => {
     const consoleLogMock = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    const { handleCodexCommand } = await import('../src/cli/codex-launcher.ts');
+    const { handleCodexCommand } = await import('../src/codex-launcher.ts');
     await handleCodexCommand(['--help']);
 
     expect(consoleLogMock).toHaveBeenCalledWith(expect.stringContaining('workspacecord codex'));

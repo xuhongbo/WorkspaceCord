@@ -7,6 +7,31 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.2.85
+        version: 0.2.85(zod@4.3.6)
+      '@clack/prompts':
+        specifier: ^1.1.0
+        version: 1.1.0
+      cac:
+        specifier: ^7.0.0
+        version: 7.0.0
+      configstore:
+        specifier: ^8.0.0
+        version: 8.0.0
+      discord.js:
+        specifier: ^14.25.1
+        version: 14.25.1
+      execa:
+        specifier: ^9.6.1
+        version: 9.6.1
+      pino:
+        specifier: ^10.3.1
+        version: 10.3.1
+      sharp:
+        specifier: ^0.34.5
+        version: 0.34.5
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1

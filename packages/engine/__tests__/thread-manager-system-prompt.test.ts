@@ -13,7 +13,7 @@ const ensureProviderMock = vi.fn(async () => ({
   supports: supportsMock,
 }));
 
-vi.mock('../src/providers/index.ts', () => ({
+vi.mock('@workspacecord/providers', () => ({
   ensureProvider: ensureProviderMock,
 }));
 
@@ -25,17 +25,21 @@ vi.mock('../src/project-manager.ts', () => ({
   getPersonality: vi.fn(() => undefined),
 }));
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    defaultMode: 'auto',
-    codexSandboxMode: 'workspace-write',
-    codexApprovalPolicy: 'on-failure',
-    codexNetworkAccessEnabled: true,
-    codexWebSearchMode: 'live',
-    codexReasoningEffort: '',
-    claudePermissionMode: 'normal',
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@workspacecord/core')>();
+  return {
+    ...actual,
+    config: {
+      defaultMode: 'auto',
+      codexSandboxMode: 'workspace-write',
+      codexApprovalPolicy: 'on-failure',
+      codexNetworkAccessEnabled: true,
+      codexWebSearchMode: 'live',
+      codexReasoningEffort: '',
+      claudePermissionMode: 'normal',
+    },
+  };
+});
 
 describe('thread-manager system prompt', () => {
   let dataDir = '';
@@ -52,17 +56,17 @@ describe('thread-manager system prompt', () => {
   });
 
   afterEach(async () => {
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core');
     _setDataDirForTest(null);
     rmSync(dataDir, { recursive: true, force: true });
     rmSync(workDir, { recursive: true, force: true });
   });
 
-  it('把 discord 交互语义注入 systemPromptParts', async () => {
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+  it('engine 层 systemPromptParts 不含 discord 特定内容（已移至 bot 层）', async () => {
+    const { _setDataDirForTest } = await import('@workspacecord/core');
     _setDataDirForTest(dataDir);
     const sessionRegistry = await import('../src/session-registry.ts');
-    const sessionRuntime = await import('../src/session/session-provider-runtime.ts');
+    const sessionRuntime = await import('../src/session/provider-runtime.ts');
 
     const session = await sessionRegistry.createSession({
       channelId: 'channel-1',
@@ -81,17 +85,15 @@ describe('thread-manager system prompt', () => {
     expect(sendPromptMock).toHaveBeenCalled();
     const options = sendPromptMock.mock.calls.at(-1)?.[1];
     const promptText = String(options?.systemPromptParts?.join('\n') ?? '');
-    expect(promptText).toContain('Discord');
-    expect(promptText).toContain('附件默认不自动下载');
-    expect(promptText).toContain('workspacecord attachment fetch');
-    expect(promptText).toContain('新的可见消息');
+    // Discord 特定内容已迁至 bot 层的 buildDiscordSessionMessageContext()
+    expect(promptText).not.toContain('附件默认不自动下载');
   });
 
-  it('monitor 模式也注入 discord 交互语义', async () => {
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+  it('monitor 模式 systemPromptParts 不含 discord 特定内容', async () => {
+    const { _setDataDirForTest } = await import('@workspacecord/core');
     _setDataDirForTest(dataDir);
     const sessionRegistry = await import('../src/session-registry.ts');
-    const sessionRuntime = await import('../src/session/session-provider-runtime.ts');
+    const sessionRuntime = await import('../src/session/provider-runtime.ts');
 
     const session = await sessionRegistry.createSession({
       channelId: 'channel-2',
@@ -110,16 +112,14 @@ describe('thread-manager system prompt', () => {
 
     const options = sendPromptMock.mock.calls.at(-1)?.[1];
     const promptText = String(options?.systemPromptParts?.join('\n') ?? '');
-    expect(promptText).toContain('Discord');
-    expect(promptText).toContain('附件默认不自动下载');
-    expect(promptText).toContain('workspacecord attachment fetch');
+    expect(promptText).not.toContain('附件默认不自动下载');
   });
 
   it('codex 会话级权限会覆盖默认 provider 选项，bypass 会强制全开', async () => {
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core');
     _setDataDirForTest(dataDir);
     const sessionRegistry = await import('../src/session-registry.ts');
-    const sessionRuntime = await import('../src/session/session-provider-runtime.ts');
+    const sessionRuntime = await import('../src/session/provider-runtime.ts');
 
     const session = await sessionRegistry.createSession({
       channelId: 'channel-3',

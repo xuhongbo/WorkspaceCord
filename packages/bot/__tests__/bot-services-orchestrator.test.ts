@@ -72,25 +72,29 @@ vi.mock('discord.js', async () => ({
   ChannelType: { GuildText: 0 },
 }));
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    dataDir: '/tmp/workspacecord-test-orchestrator',
-    token: 'token',
-    clientId: 'client',
-    guildId: 'guild',
-    healthReportEnabled: false,
-    messageRetentionDays: 0,
-    autoArchiveDays: 0,
-    maxActiveSessionsPerProject: 0,
-    textChunkLimit: 2000,
-    chunkMode: 'length',
-    replyToMode: 'first',
-    ackReaction: '👀',
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config: {
+      dataDir: '/tmp/workspacecord-test-orchestrator',
+      token: 'token',
+      clientId: 'client',
+      guildId: 'guild',
+      healthReportEnabled: false,
+      messageRetentionDays: 0,
+      autoArchiveDays: 0,
+      maxActiveSessionsPerProject: 0,
+      textChunkLimit: 2000,
+      chunkMode: 'length',
+      replyToMode: 'first',
+      ackReaction: '👀',
+    },
+  };
+});
 
 vi.mock('../src/commands.ts', () => ({ registerCommands }));
-vi.mock('../src/project-manager.ts', () => ({ loadProjects }));
+vi.mock('@workspacecord/engine/project-manager', () => ({ loadProjects }));
 vi.mock('../src/archive-manager.ts', () => ({ loadArchived, checkAutoArchive }));
 vi.mock('../src/session-sync.ts', () => ({ startSync, stopSync }));
 vi.mock('../src/health-monitor.ts', () => ({ startHealthMonitor, stopHealthMonitor, setBotStartTime }));
@@ -101,24 +105,28 @@ vi.mock('../src/codex-monitor-bridge.ts', () => ({ handleCodexMonitorStateChange
 vi.mock('../src/panel-adapter.ts', () => ({ startPerformanceMonitoring, stopPerformanceMonitoring }));
 vi.mock('../src/discord/delivery-policy.ts', () => ({ buildDeliveryPlan }));
 vi.mock('../src/discord/delivery.ts', () => ({ deliver }));
-vi.mock('../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   loadSessions,
   getAllSessions,
   endSession: vi.fn(),
   getSessionByChannel: vi.fn(),
   getSession: vi.fn(),
 }));
-vi.mock('../src/session/session-local-registration.ts', () => ({
+vi.mock('../src/session-local-registration.ts', () => ({
   registerLocalSession: vi.fn(),
 }));
-vi.mock('../src/state/gate-coordinator.ts', () => ({
-  gateCoordinator: {
-    invalidateAllOnRestart,
-    cleanupExpired,
-    archiveResolved,
-    getGate,
-  },
-}));
+vi.mock('@workspacecord/state', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    gateCoordinator: {
+      invalidateAllOnRestart,
+      cleanupExpired,
+      archiveResolved,
+      getGate,
+    },
+  };
+});
 vi.mock('../src/monitors/codex-log-monitor.ts', () => ({
   CodexLogMonitor: MockCodexLogMonitor,
 }));
@@ -246,22 +254,26 @@ describe('BotServicesOrchestrator', () => {
   });
 
   it('healthReportEnabled 为 true 时注册 health-monitor', async () => {
-    vi.doMock('../src/config.ts', () => ({
-      config: {
-        dataDir: '/tmp/workspacecord-test-orchestrator',
-        token: 'token',
-        clientId: 'client',
-        guildId: 'guild',
-        healthReportEnabled: true,
-        messageRetentionDays: 0,
-        autoArchiveDays: 0,
-        maxActiveSessionsPerProject: 0,
-        textChunkLimit: 2000,
-        chunkMode: 'length',
-        replyToMode: 'first',
-        ackReaction: '👀',
-      },
-    }));
+    vi.doMock('@workspacecord/core', async (importOriginal) => {
+      const actual = await importOriginal<Record<string, unknown>>();
+      return {
+        ...actual,
+        config: {
+          dataDir: '/tmp/workspacecord-test-orchestrator',
+          token: 'token',
+          clientId: 'client',
+          guildId: 'guild',
+          healthReportEnabled: true,
+          messageRetentionDays: 0,
+          autoArchiveDays: 0,
+          maxActiveSessionsPerProject: 0,
+          textChunkLimit: 2000,
+          chunkMode: 'length',
+          replyToMode: 'first',
+          ackReaction: '👀',
+        },
+      };
+    });
     vi.resetModules();
 
     // Re-import mocks after reset

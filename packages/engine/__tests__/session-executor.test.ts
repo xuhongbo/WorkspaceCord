@@ -15,21 +15,29 @@ const handleResultEvent = vi.fn();
 const handleAwaitingHuman = vi.fn();
 const registerReceiptHandle = vi.fn();
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    claudePermissionMode: 'normal',
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@workspacecord/core')>();
+  return {
+    ...actual,
+    config: {
+      claudePermissionMode: 'normal',
+    },
+  };
+});
 
-vi.mock('../src/output-handler.ts', () => ({
-  handleOutputStream,
-}));
-
-vi.mock('../src/panel-adapter.ts', () => ({
-  updateSessionState,
-  queueDigest,
-  handleResultEvent,
-  handleAwaitingHuman,
+vi.mock('../src/output-port.ts', () => ({
+  getOutputPort: () => ({
+    handleOutputStream,
+    updateState: updateSessionState,
+    handleResult: handleResultEvent,
+    handleAwaitingHuman,
+    queueDigest,
+    flushDigest: vi.fn(),
+    initializePanel: vi.fn(),
+    relocatePanel: vi.fn(),
+    cleanupPanel: vi.fn(),
+    getProjection: vi.fn(() => ({})),
+  }),
 }));
 
 vi.mock('../src/session-registry.ts', () => ({
@@ -39,18 +47,22 @@ vi.mock('../src/session-registry.ts', () => ({
   consumeAbortReason,
   abortSessionWithReason: vi.fn(),
 }));
-vi.mock('../src/session/session-provider-runtime.ts', () => ({
+vi.mock('../src/session/provider-runtime.ts', () => ({
   sendPrompt,
   continueSession,
   continueSessionWithOverrides,
   sendMonitorPrompt,
 }));
 
-vi.mock('../src/state/gate-coordinator.ts', () => ({
-  gateCoordinator: {
-    registerReceiptHandle,
-  },
-}));
+vi.mock('@workspacecord/state', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@workspacecord/state')>();
+  return {
+    ...actual,
+    gateCoordinator: {
+      registerReceiptHandle,
+    },
+  };
+});
 const { executeSessionPrompt, executeSessionContinue } = await import('../src/session-executor.ts');
 
 describe('executeSessionPrompt', () => {

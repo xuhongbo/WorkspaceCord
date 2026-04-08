@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ProviderEvent } from '../../src/providers/types.ts';
+import type { ProviderEvent } from '@workspacecord/providers/types';
 
 // ── Hoisted mocks ─────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ vi.mock('../../src/discord/delivery-policy.ts', () => ({
 vi.mock('../../src/discord/delivery.ts', () => ({
   deliver: deliveryMocks.deliver,
 }));
-vi.mock('../../src/session-registry.ts', () => ({
+vi.mock('@workspacecord/engine/session-registry', () => ({
   getSession: mocks.getSession,
   updateSession: mocks.updateSession,
   getSessionByChannel: vi.fn(),

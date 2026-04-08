@@ -1,13 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { HumanGateRegistry } from '../src/human-gate.ts';
 
-vi.mock('../src/persistence.ts', () => ({
-  Store: class {
-    private data: any[] = [];
-    async read() { return this.data.length ? this.data : null; }
-    async write(d: any[]) { this.data = d; }
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@workspacecord/core')>();
+  return {
+    ...actual,
+    Store: class {
+      private data: any[] = [];
+      async read() { return this.data.length ? this.data : null; }
+      async write(d: any[]) { this.data = d; }
+    },
+  };
+});
 
 describe('HumanGateRegistry', () => {
   let registry: HumanGateRegistry;

@@ -8,9 +8,13 @@ const testConfig = {
   socketPath: '/tmp/workspacecord.sock',
 };
 
-vi.mock('../src/config.ts', () => ({
-  get config() { return testConfig; },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    get config() { return testConfig; },
+  };
+});
 
 const mockClient = {
   channels: { cache: new Map() },

@@ -86,7 +86,7 @@ describe('CodexProvider', () => {
   // ── Basic properties ──────────────────────────────────────────
 
   it('has name = "codex"', async () => {
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const provider = new CodexProvider();
     expect(provider.name).toBe('codex');
   });
@@ -94,32 +94,32 @@ describe('CodexProvider', () => {
   // ── supports() ────────────────────────────────────────────────
 
   it('supports command_execution', async () => {
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     expect(new CodexProvider().supports('command_execution')).toBe(true);
   });
 
   it('supports file_changes', async () => {
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     expect(new CodexProvider().supports('file_changes')).toBe(true);
   });
 
   it('supports reasoning', async () => {
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     expect(new CodexProvider().supports('reasoning')).toBe(true);
   });
 
   it('supports todo_list', async () => {
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     expect(new CodexProvider().supports('todo_list')).toBe(true);
   });
 
   it('supports continue', async () => {
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     expect(new CodexProvider().supports('continue')).toBe(true);
   });
 
   it('does not support unknown features', async () => {
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     expect(new CodexProvider().supports('nonexistent')).toBe(false);
     expect(new CodexProvider().supports('ask_user')).toBe(false);
   });
@@ -128,7 +128,7 @@ describe('CodexProvider', () => {
 
   it('sendPrompt calls startThread (not resumeThread) when no providerSessionId', async () => {
     mockSuccess();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const provider = new CodexProvider();
 
     await collectEvents(provider.sendPrompt('hello', makeOptions({ directory: repoDir })));
@@ -139,7 +139,7 @@ describe('CodexProvider', () => {
 
   it('sendPrompt calls resumeThread when providerSessionId is provided', async () => {
     mockSuccess();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const provider = new CodexProvider();
 
     await collectEvents(
@@ -154,7 +154,7 @@ describe('CodexProvider', () => {
 
   it('passes sandbox mode and approval policy to thread options', async () => {
     mockSuccess();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const provider = new CodexProvider();
 
     await collectEvents(
@@ -172,7 +172,7 @@ describe('CodexProvider', () => {
 
   it('passes network access and web search to thread options', async () => {
     mockSuccess();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const provider = new CodexProvider();
 
     await collectEvents(
@@ -190,7 +190,7 @@ describe('CodexProvider', () => {
 
   it('passes model and reasoning effort to thread options', async () => {
     mockSuccess();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const provider = new CodexProvider();
 
     await collectEvents(
@@ -214,7 +214,7 @@ describe('CodexProvider', () => {
         yield { type: 'thread.started', thread_id: 'abc-123' };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -229,7 +229,7 @@ describe('CodexProvider', () => {
         yield { type: 'item.updated', item: { id: 'm1', type: 'agent_message', text: 'Hello' } };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -255,7 +255,7 @@ describe('CodexProvider', () => {
         };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -281,7 +281,7 @@ describe('CodexProvider', () => {
         };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -301,7 +301,7 @@ describe('CodexProvider', () => {
         };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -318,7 +318,7 @@ describe('CodexProvider', () => {
         };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -338,7 +338,7 @@ describe('CodexProvider', () => {
         };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -368,7 +368,7 @@ describe('CodexProvider', () => {
         };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -402,7 +402,7 @@ describe('CodexProvider', () => {
         };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -420,7 +420,7 @@ describe('CodexProvider', () => {
         };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -437,7 +437,7 @@ describe('CodexProvider', () => {
         };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -454,7 +454,7 @@ describe('CodexProvider', () => {
         };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -477,7 +477,7 @@ describe('CodexProvider', () => {
         yield { type: 'turn.failed', error: 'rate limited' };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -493,7 +493,7 @@ describe('CodexProvider', () => {
         yield { type: 'error', message: 'network error' };
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -509,7 +509,7 @@ describe('CodexProvider', () => {
         throw new Error('stream crashed');
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -529,7 +529,7 @@ describe('CodexProvider', () => {
         throw new Error('should be suppressed');
       })(),
     });
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir, abortController: ac })),
     );
@@ -547,7 +547,7 @@ describe('CodexProvider', () => {
       })(),
     });
     ac.abort();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir, abortController: ac })),
     );
@@ -559,7 +559,7 @@ describe('CodexProvider', () => {
   // ── continueSession ───────────────────────────────────────────
 
   it('continueSession yields error when no providerSessionId', async () => {
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().continueSession(makeOptions({ directory: repoDir })),
     );
@@ -572,7 +572,7 @@ describe('CodexProvider', () => {
 
   it('continueSession calls resumeThread with providerSessionId', async () => {
     mockSuccess('continued-thread');
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const events = await collectEvents(
       new CodexProvider().continueSession(
         makeOptions({ directory: repoDir, providerSessionId: 'old-thread' }),
@@ -588,7 +588,7 @@ describe('CodexProvider', () => {
 
   it('continueSession sends "Continue from where you left off." as input', async () => {
     mockSuccess();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     await collectEvents(
       new CodexProvider().continueSession(
         makeOptions({ directory: repoDir, providerSessionId: 'old-thread' }),
@@ -614,7 +614,7 @@ describe('CodexProvider', () => {
       })(),
     });
 
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({
         directory: repoDir,
@@ -634,7 +634,7 @@ describe('CodexProvider', () => {
     writeFileSync(agentsPath, '# Project rules\nAlways use TypeScript.\n', 'utf8');
 
     mockSuccess();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );
@@ -649,7 +649,7 @@ describe('CodexProvider', () => {
 
   it('writes base64 image to temp file and passes as local_image', async () => {
     mockSuccess();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
 
     const events = await collectEvents(
       new CodexProvider().sendPrompt(
@@ -682,7 +682,7 @@ describe('CodexProvider', () => {
 
   it('passes plain string prompt as-is when no images', async () => {
     mockSuccess();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     await collectEvents(
       new CodexProvider().sendPrompt('just text', makeOptions({ directory: repoDir })),
     );
@@ -696,7 +696,7 @@ describe('CodexProvider', () => {
     mockSuccess();
     const agentsPath = join(repoDir, 'AGENTS.md');
 
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({
         directory: repoDir,
@@ -711,7 +711,7 @@ describe('CodexProvider', () => {
 
   it('creates Codex instance on each sendPrompt call', async () => {
     mockSuccess();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     const provider = new CodexProvider();
 
     await collectEvents(provider.sendPrompt('a', makeOptions({ directory: repoDir })));
@@ -722,7 +722,7 @@ describe('CodexProvider', () => {
 
   it('passes skipGitRepoCheck: true to thread options', async () => {
     mockSuccess();
-    const { CodexProvider } = await import('../src/providers/codex-provider.ts');
+    const { CodexProvider } = await import('../src/codex-provider.ts');
     await collectEvents(
       new CodexProvider().sendPrompt('x', makeOptions({ directory: repoDir })),
     );

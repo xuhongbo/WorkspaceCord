@@ -13,12 +13,12 @@ describe('attachment-inbox', () => {
   beforeEach(async () => {
     vi.resetModules();
     dataDir = mkdtempSync(join(tmpdir(), 'workspacecord-attachment-inbox-'));
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core/persistence');
     _setDataDirForTest(dataDir);
   });
 
   afterEach(async () => {
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core/persistence');
     _setDataDirForTest(null);
     rmSync(dataDir, { recursive: true, force: true });
     vi.restoreAllMocks();
@@ -190,7 +190,7 @@ describe('attachment-inbox', () => {
 
   it('拒绝非 HTTP/HTTPS 协议', async () => {
     const mod = await import('../src/discord/attachment-inbox.ts');
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core/persistence');
     await mod.registerMessageAttachments('session-4', 'msg-4', [
       {
         id: 'att-1',
@@ -214,7 +214,7 @@ describe('attachment-inbox', () => {
   it('下载超时会报错', async () => {
     process.env.WORKSPACECORD_ATTACHMENT_FETCH_TIMEOUT_MS = '10';
     vi.resetModules();
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core/persistence');
     _setDataDirForTest(dataDir);
     const mod = await import('../src/discord/attachment-inbox.ts');
     vi.stubGlobal(
@@ -253,7 +253,7 @@ describe('attachment-inbox', () => {
   it('请求建立阶段超时也会报错', async () => {
     process.env.WORKSPACECORD_ATTACHMENT_FETCH_TIMEOUT_MS = '10';
     vi.resetModules();
-    const { _setDataDirForTest } = await import('../src/persistence.ts');
+    const { _setDataDirForTest } = await import('@workspacecord/core/persistence');
     _setDataDirForTest(dataDir);
     const mod = await import('../src/discord/attachment-inbox.ts');
     vi.stubGlobal(

@@ -1,14 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LogBuffer } from '../src/bot-log-buffer.ts';
 
-vi.mock('../src/config.ts', () => ({
-  config: {
-    textChunkLimit: 2000,
-    chunkMode: 'none',
-    replyToMode: 'off',
-    ackReaction: false,
-  },
-}));
+vi.mock('@workspacecord/core', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    config: {
+      textChunkLimit: 2000,
+      chunkMode: 'none',
+      replyToMode: 'off',
+      ackReaction: false,
+    },
+  };
+});
 
 vi.mock('../src/discord/delivery-policy.ts', () => ({
   buildDeliveryPlan: vi.fn(() => ({ plan: 'mock' })),
