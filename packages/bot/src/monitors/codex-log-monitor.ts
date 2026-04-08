@@ -7,9 +7,9 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 
 const APPROVAL_HEURISTIC_MS = 2000;
-const POLL_INTERVAL_ACTIVE_MS = 500; // 活跃会话轮询间隔
-const POLL_INTERVAL_IDLE_MS = 2000; // 空闲会话轮询间隔
-const STALE_CLEANUP_MS = 300000; // 5 分钟无活动后清理
+const POLL_INTERVAL_ACTIVE_MS = 2000; // 活跃会话轮询间隔（有追踪文件时）
+const POLL_INTERVAL_IDLE_MS = 5000; // 空闲轮询间隔（无追踪文件时）
+const STALE_CLEANUP_MS = 120000; // 2 分钟无活动后清理
 const MAX_LINES_PER_POLL = 100; // 单次轮询最多读取行数
 const MAX_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB 缓冲区限制
 
@@ -50,6 +50,7 @@ type RegistrationCallback = (
 export class CodexLogMonitor {
   private tracked = new Map<string, TrackedFile>();
   private interval: NodeJS.Timeout | null = null;
+  private polling = false;
   private baseDir: string;
   private onStateChange: StateChangeCallback;
   private onRegisterSession?: RegistrationCallback;
@@ -70,13 +71,22 @@ export class CodexLogMonitor {
     if (this.interval) return;
     console.log(`[CodexLogMonitor] Starting monitor — base directory: ${this.baseDir}`);
     this.poll();
-    this.interval = setInterval(() => this.poll(), POLL_INTERVAL_ACTIVE_MS);
+    this.schedulePoll();
+  }
+
+  private schedulePoll(): void {
+    if (this.interval) clearTimeout(this.interval);
+    const delay = this.tracked.size > 0 ? POLL_INTERVAL_ACTIVE_MS : POLL_INTERVAL_IDLE_MS;
+    this.interval = setTimeout(() => {
+      this.poll();
+      this.schedulePoll();
+    }, delay);
   }
 
   stop(): void {
     const trackedCount = this.tracked.size;
     if (this.interval) {
-      clearInterval(this.interval);
+      clearTimeout(this.interval);
       this.interval = null;
     }
     for (const tracked of this.tracked.values()) {
@@ -87,36 +97,47 @@ export class CodexLogMonitor {
   }
 
   private poll(): void {
-    const dirs = this.getSessionDirs();
-    for (const dir of dirs) {
-      let files: string[];
-      try {
-        files = readdirSync(dir);
-      } catch {
-        continue;
+    if (this.polling) return; // 重入保护：上次 poll 未完成时跳过
+    this.polling = true;
+    try {
+      // 先轮询已追踪的文件（快速路径，无目录扫描）
+      for (const [filePath, tracked] of this.tracked) {
+        const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
+        this.pollFile(filePath, fileName);
       }
+      // 再扫描目录发现新文件
+      const dirs = this.getSessionDirs();
       const now = Date.now();
-      for (const file of files) {
-        if (!file.startsWith('rollout-') || !file.endsWith('.jsonl')) continue;
-        const filePath = join(dir, file);
-        if (!this.tracked.has(filePath)) {
+      for (const dir of dirs) {
+        let files: string[];
+        try {
+          files = readdirSync(dir);
+        } catch {
+          continue;
+        }
+        for (const file of files) {
+          if (!file.startsWith('rollout-') || !file.endsWith('.jsonl')) continue;
+          const filePath = join(dir, file);
+          if (this.tracked.has(filePath)) continue; // 已追踪的跳过
           try {
             const mtime = statSync(filePath).mtimeMs;
-            if (now - mtime > 120000) continue;
+            if (now - mtime > STALE_CLEANUP_MS) continue; // 跳过不活跃的旧文件
           } catch {
             continue;
           }
+          this.pollFile(filePath, file);
         }
-        this.pollFile(filePath, file);
       }
+      this.cleanStaleFiles();
+    } finally {
+      this.polling = false;
     }
-    this.cleanStaleFiles();
   }
 
   private getSessionDirs(): string[] {
     const dirs: string[] = [];
     const now = new Date();
-    for (let daysAgo = 0; daysAgo <= 7; daysAgo++) {
+    for (let daysAgo = 0; daysAgo <= 1; daysAgo++) {
       const d = new Date(now);
       d.setDate(d.getDate() - daysAgo);
       const yyyy = d.getFullYear();

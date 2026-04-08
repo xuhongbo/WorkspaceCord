@@ -196,11 +196,14 @@ export async function createSession(params: CreateSessionParams): Promise<Thread
   }
 
   // Derive a unique internal ID from the agentLabel (auto-deduplicate)
-  let id = sanitizeName(agentLabel);
+  const baseId = sanitizeName(agentLabel);
+  let id = baseId;
   let suffix = 1;
   while (idToChannelId.has(id)) {
     suffix++;
-    id = sanitizeName(`${agentLabel}-${suffix}`);
+    // Append suffix to the already-sanitized base (avoiding re-truncation that loses the suffix)
+    const suffixStr = `-${suffix}`;
+    id = baseId.slice(0, 50 - suffixStr.length) + suffixStr;
   }
 
   const session: ThreadSession = {

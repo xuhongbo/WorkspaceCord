@@ -16,6 +16,7 @@ import { config } from '@workspacecord/core';
 import { isArchivedProviderSession } from './archive-manager.ts';
 
 const SYNC_INTERVAL_MS = config.sessionSyncIntervalMs;
+const MAX_SESSIONS_PER_SYNC = 5; // 每次 sync 最多创建 5 个 session，避免 Discord 速率限制
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let syncInProgress = false;
 
@@ -257,9 +258,12 @@ export async function runSync(client: Client): Promise<void> {
         .filter(Boolean),
     );
 
+    let createdThisRun = 0;
+
     try {
       const claudeSdk = await import('@anthropic-ai/claude-agent-sdk');
       for (const project of projects) {
+        if (createdThisRun >= MAX_SESSIONS_PER_SYNC) break;
         const category = guild.channels.cache.get(project.discordCategoryId!) as
           | CategoryChannel
           | undefined;
@@ -271,6 +275,7 @@ export async function runSync(client: Client): Promise<void> {
         try {
           const claudeSessions = await claudeSdk.listSessions({ dir: project.path, limit: 50 });
           for (const item of claudeSessions) {
+            if (createdThisRun >= MAX_SESSIONS_PER_SYNC) break;
             recordScan('claude');
             if (!item?.sessionId) continue;
             if (existingProviderIds.has(item.sessionId)) {
@@ -296,6 +301,7 @@ export async function runSync(client: Client): Promise<void> {
                 item.summary || item.firstPrompt || item.sessionId,
               );
               existingProviderIds.add(item.sessionId);
+              createdThisRun++;
               recordCreatedSession();
             } catch (err) {
               console.error(
@@ -325,6 +331,7 @@ export async function runSync(client: Client): Promise<void> {
     }
 
     for (const session of codexSessions) {
+      if (createdThisRun >= MAX_SESSIONS_PER_SYNC) break;
       recordScan('codex');
       if (existingProviderIds.has(session.id)) {
         recordSkip('alreadySynced');
@@ -361,6 +368,7 @@ export async function runSync(client: Client): Promise<void> {
           session.threadName,
         );
         existingProviderIds.add(session.id);
+        createdThisRun++;
         recordCreatedSession();
       } catch (err) {
         console.error(
@@ -369,6 +377,10 @@ export async function runSync(client: Client): Promise<void> {
         recordSkip('sessionCreationFailed');
         recordError(err);
       }
+    }
+
+    if (createdThisRun >= MAX_SESSIONS_PER_SYNC) {
+      console.log(`[SessionSync] Reached per-sync limit (${MAX_SESSIONS_PER_SYNC}), deferring remaining to next run`);
     }
   } finally {
     sessionSyncStats.lastRunDurationMs = Date.now() - start;
