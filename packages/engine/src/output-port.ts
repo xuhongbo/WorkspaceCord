@@ -27,7 +27,7 @@ export interface OutputStreamResult {
 export interface SessionOutputPort {
   // ─── 面板生命周期 ────────────────────────────────────────────────────
   initializePanel(session: ThreadSession, channel: unknown): Promise<void>;
-  updateState(sessionId: string, event: PlatformEvent): Promise<void>;
+  updateState(sessionId: string, event: PlatformEvent, options?: { channel?: unknown }): Promise<void>;
   handleResult(sessionId: string, resultEvent: ProviderEvent, summary?: string): Promise<void>;
   handleAwaitingHuman(
     sessionId: string,

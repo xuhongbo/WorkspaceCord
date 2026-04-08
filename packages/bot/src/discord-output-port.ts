@@ -29,8 +29,8 @@ export class DiscordOutputPort implements SessionOutputPort {
     await initializeSessionPanel(session.id, channel as SessionChannel);
   }
 
-  async updateState(sessionId: string, event: PlatformEvent): Promise<void> {
-    await updateSessionState(sessionId, event);
+  async updateState(sessionId: string, event: PlatformEvent, options?: { channel?: unknown }): Promise<void> {
+    await updateSessionState(sessionId, event, options?.channel ? { channel: options.channel as SessionChannel } : undefined);
   }
 
   async handleResult(

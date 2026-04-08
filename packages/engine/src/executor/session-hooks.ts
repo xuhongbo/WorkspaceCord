@@ -44,5 +44,6 @@ export async function updatePanelState(
       confidence: 'high',
       timestamp: Date.now(),
     },
+    channel ? { channel } : undefined,
   );
 }

@@ -41,12 +41,14 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@workspacecord/core": "workspace:*",
-    "@workspacecord/engine": "workspace:*",
-    "@workspacecord/bot": "workspace:*",
     "discord.js": "^14.25.1",
     "cac": "^7.0.0",
     "@clack/prompts": "^1.1.0"
+  },
+  "devDependencies": {
+    "@workspacecord/core": "workspace:*",
+    "@workspacecord/engine": "workspace:*",
+    "@workspacecord/bot": "workspace:*"
   },
   "engines": {
     "node": ">=22.6.0"
