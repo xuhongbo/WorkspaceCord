@@ -1,7 +1,29 @@
+try { process.loadEnvFile(); } catch { /* .env not required */ }
 import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import * as sessions from '../src/thread-manager.ts';
-import { executeSessionPrompt } from '../src/session-executor.ts';
+import * as sessions from '../packages/engine/src/session-registry.ts';
+import { executeSessionPrompt } from '../packages/engine/src/session-executor.ts';
+import { registerOutputPort } from '../packages/engine/src/output-port.ts';
+import type { SessionOutputPort } from '../packages/engine/src/output-port.ts';
+
+// Register a minimal stub output port so executeSessionPrompt can call getOutputPort()
+registerOutputPort({
+  async initializePanel() {},
+  async updateState() {},
+  async handleResult() {},
+  async handleAwaitingHuman() {},
+  async relocatePanel() {},
+  cleanupPanel() {},
+  getProjection() { return {} as ReturnType<SessionOutputPort['getProjection']>; },
+  async handleOutputStream(_stream, _channel, _sessionId) {
+    // Drain the stream so the provider generator runs to completion
+    const events = _stream as AsyncGenerator<unknown>;
+    for await (const _event of events) { /* consume */ }
+    return { text: '', askedUser: false, hadError: false, success: true, commandCount: 0, fileChangeCount: 0, recentCommands: [], changedFiles: [] };
+  },
+  queueDigest() {},
+  async flushDigest() {},
+} satisfies SessionOutputPort);
 
 const baseDir = join(process.cwd(), 'local-acceptance', 'monitor-e2e-workspace');
 mkdirSync(baseDir, { recursive: true });

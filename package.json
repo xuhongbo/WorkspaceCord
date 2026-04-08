@@ -1,49 +1,26 @@
 {
-  "name": "workspacecord",
-  "version": "1.1.0",
-  "description": "Turn Discord into a local workspace control plane for multi-agent coding sessions.",
+  "name": "workspacecord-monorepo",
+  "private": true,
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/xuhongbo/WorkspaceCord.git"
   },
-  "homepage": "https://github.com/xuhongbo/WorkspaceCord#readme",
-  "bugs": {
-    "url": "https://github.com/xuhongbo/WorkspaceCord/issues"
-  },
-  "keywords": [
-    "discord",
-    "bot",
-    "ai",
-    "claude",
-    "codex",
-    "coding-assistant",
-    "agent",
-    "multi-agent",
-    "cli"
-  ],
-  "files": [
-    "dist",
-    "README.md",
-    "README.zh-CN.md",
-    "LICENSE"
-  ],
-  "bin": {
-    "workspacecord": "./dist/cli.js",
-    "wsc": "./dist/cli.js"
-  },
   "scripts": {
-    "build": "tsup",
-    "start": "NODE_ENV=development node --experimental-strip-types src/cli.ts",
-    "dev": "tsup --watch",
-    "typecheck": "tsc --noEmit",
+    "build": "pnpm --filter workspacecord run build",
+    "start": "NODE_ENV=development node --experimental-strip-types packages/cli/src/cli.ts",
+    "dev": "pnpm --filter workspacecord run dev",
+    "typecheck": "tsc -b",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:integration:smoke": "node --experimental-strip-types scripts/integration-smoke.ts",
     "test:multi-session:smoke": "node --experimental-strip-types scripts/multi-session-smoke.ts",
     "test:session-sync:smoke": "node --experimental-strip-types scripts/session-sync-smoke.ts",
     "test:monitor:e2e": "node --experimental-strip-types scripts/monitor-e2e.ts",
+    "test:output-port:e2e": "node --experimental-strip-types scripts/output-port-e2e.ts",
+    "test:startup-flow:e2e": "node --experimental-strip-types scripts/startup-flow-e2e.ts",
+    "test:gate:e2e": "node --experimental-strip-types scripts/gate-e2e.ts",
     "test:acceptance:local": "node --experimental-strip-types scripts/local-acceptance-suite.ts",
     "release": "node --experimental-strip-types scripts/release.ts",
     "lint": "eslint .",
@@ -74,9 +51,6 @@
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.57.2",
     "vitest": "^4.1.2"
-  },
-  "optionalDependencies": {
-    "@openai/codex-sdk": "^0.117.0"
   },
   "engines": {
     "node": ">=22.6.0"

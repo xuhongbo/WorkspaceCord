@@ -1,0 +1,56 @@
+{
+  "name": "workspacecord",
+  "version": "1.1.0",
+  "description": "Turn Discord into a local workspace control plane for multi-agent coding sessions.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xuhongbo/WorkspaceCord.git"
+  },
+  "homepage": "https://github.com/xuhongbo/WorkspaceCord#readme",
+  "bugs": {
+    "url": "https://github.com/xuhongbo/WorkspaceCord/issues"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "ai",
+    "claude",
+    "codex",
+    "coding-assistant",
+    "agent",
+    "multi-agent",
+    "cli"
+  ],
+  "files": [
+    "dist",
+    "../../README.md",
+    "../../README.zh-CN.md",
+    "../../LICENSE"
+  ],
+  "bin": {
+    "workspacecord": "./dist/cli.js",
+    "wsc": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "discord.js": "^14.25.1",
+    "cac": "^7.0.0",
+    "@clack/prompts": "^1.1.0"
+  },
+  "devDependencies": {
+    "@workspacecord/core": "workspace:*",
+    "@workspacecord/engine": "workspace:*",
+    "@workspacecord/bot": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  }
+}

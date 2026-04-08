@@ -5,7 +5,7 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'coverage/**', 'node_modules/**', '.worktrees/**', 'tmp/**', 'site/**'],
+    ignores: ['**/dist/**', 'coverage/**', 'node_modules/**', '.worktrees/**', 'tmp/**', 'site/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -38,7 +38,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['test/**/*.{ts,tsx,js,mjs,cjs}'],
+    files: ['test/**/*.{ts,tsx,js,mjs,cjs}', 'packages/*/__tests__/**/*.{ts,tsx,js,mjs,cjs}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
     },
