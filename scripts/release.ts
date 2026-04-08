@@ -43,7 +43,7 @@ function getLatestTag(): string {
 }
 
 function getCurrentVersion(): string {
-  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8'));
+  const pkg = JSON.parse(readFileSync(join(root, 'packages/cli/package.json'), 'utf-8'));
   return pkg.version;
 }
 
@@ -207,17 +207,25 @@ async function main() {
     process.exit(0);
   }
 
-  // Step 5: Execute release
-  console.log('\n📝 Bumping version in package.json...');
-  const pkgPath = join(root, 'package.json');
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-  pkg.version = newVersion;
-  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+  // Step 5: Execute release — bump both root and CLI package.json
+  console.log('\n📝 Bumping version in package.json files...');
 
-  console.log(`📌 Committing & tagging ${newVersion}...`);
-  run(`git add package.json`);
-  run(`git commit -m "chore: release ${newVersion}"`);
-  run(`git tag ${newVersion}`);
+  const pkgPaths = [
+    join(root, 'package.json'),
+    join(root, 'packages/cli/package.json'),
+  ];
+
+  for (const pkgPath of pkgPaths) {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    pkg.version = newVersion;
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+  }
+
+  const tag = `v${newVersion}`;
+  console.log(`📌 Committing & tagging ${tag}...`);
+  run(`git add package.json packages/cli/package.json`);
+  run(`git commit -m "chore: release ${tag}"`);
+  run(`git tag ${tag}`);
 
   console.log('🚀 Pushing to remote...');
   try {
@@ -236,10 +244,10 @@ async function main() {
   writeFileSync(notesFile, releaseNotes + '\n');
 
   try {
-    run(`gh release create ${newVersion} --title "Release ${newVersion}" --notes-file "${notesFile}"`);
+    run(`gh release create ${tag} --title "Release ${tag}" --notes-file "${notesFile}"`);
   } catch {
     console.log('  Release already exists, updating notes...');
-    run(`gh release edit ${newVersion} --notes-file "${notesFile}"`);
+    run(`gh release edit ${tag} --notes-file "${notesFile}"`);
   } finally {
     try {
       rmSync(tmpDir, { recursive: true, force: true });
@@ -248,7 +256,7 @@ async function main() {
     }
   }
 
-  outro(`🎉 Release ${newVersion} complete!`);
+  outro(`🎉 Release ${tag} complete!`);
 }
 
 function buildReleaseNotesPrompt(commits: string, version: string): string {
