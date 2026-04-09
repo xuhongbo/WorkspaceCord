@@ -164,6 +164,8 @@ export async function autoSpawnSubagentThread(
     parentChannelId: parentSession.channelId,
     subagentDepth: (parentSession.subagentDepth || 0) + 1,
     mode: parentSession.mode,
+    claudePermissionMode:
+      parentSession.provider === 'claude' ? parentSession.claudePermissionMode : undefined,
   });
 
   console.log(`[SubagentManager] Auto-spawned thread for task ${taskId} session ${session.id} thread ${thread.id}`);
