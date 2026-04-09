@@ -119,7 +119,7 @@ export async function runSubagentWatchdog(
 
     const thread = getThread(session.channelId);
     if (!thread) {
-      await endSession(session.id).catch(() => {});
+      await endSession(session.id).catch((e) => console.warn(`[SubagentWatchdog] Failed to end orphaned subagent ${session.id}: ${(e as Error).message}`));
       console.log(`[SubagentWatchdog] Ended orphaned subagent ${session.id} — thread ${session.channelId} not found`);
       continue;
     }

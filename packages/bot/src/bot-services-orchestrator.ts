@@ -15,6 +15,7 @@ import { handleCodexMonitorStateChange } from './codex-monitor-bridge.ts';
 import { startIpcServer, stopIpcServer } from './ipc-server.ts';
 import { startHealthMonitor, stopHealthMonitor, setBotStartTime } from './health-monitor.ts';
 import { startPerformanceMonitoring, stopPerformanceMonitoring } from './panel-adapter.ts';
+import { stopMessageHandler } from './message-handler.ts';
 import { runSubagentWatchdog } from './subagent-manager.ts';
 import { loadArchived, checkAutoArchive } from './archive-manager.ts';
 import { loadProjects } from '@workspacecord/engine/project-manager';
@@ -126,6 +127,7 @@ export class BotServicesOrchestrator {
     logBuffer: LogBuffer,
     presence: PresenceManager,
   ): void {
+    this.#serviceBus.register({ name: 'message-handler', start() { /* started on module load */ }, stop() { stopMessageHandler(); } });
     this.#serviceBus.register({ name: 'session-sync', start() { startSync(client); }, stop() { stopSync(); } });
 
     const codexBaseDir = join(homedir(), '.codex', 'sessions');

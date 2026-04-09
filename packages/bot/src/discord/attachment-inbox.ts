@@ -101,6 +101,21 @@ export async function resetAttachmentInboxState(): Promise<void> {
   await writeIndex({});
 }
 
+/** Remove all attachment index entries for a given session */
+export async function cleanupSessionAttachments(sessionId: string): Promise<number> {
+  const index = await readIndex();
+  const prefix = `${sessionId}:`;
+  let removed = 0;
+  for (const key of Object.keys(index)) {
+    if (key.startsWith(prefix)) {
+      delete index[key];
+      removed++;
+    }
+  }
+  if (removed > 0) await writeIndex(index);
+  return removed;
+}
+
 export async function registerMessageAttachments(
   sessionId: string,
   messageId: string,

@@ -13,9 +13,11 @@ import type { PlatformEvent } from '@workspacecord/state';
 let server: ReturnType<typeof createServer> | null = null;
 let discordClient: Client | null = null;
 let activeSocketPath: string | null = null;
+const activeSockets = new Set<Socket>();
 
 // IPC 事件节流：同一 session 的同类事件 500ms 内只处理一次
 const IPC_THROTTLE_MS = 500;
+const THROTTLE_MAP_MAX_SIZE = 500;
 const UNTHROTTLED_EVENTS = new Set(['awaiting_human', 'session_ended', 'errored', 'human_resolved']);
 const lastIpcEventTime = new Map<string, number>();
 
@@ -42,6 +44,7 @@ export function startIpcServer(client: Client): void {
   }
 
   server = createServer((socket: Socket) => {
+    activeSockets.add(socket);
     let buffer = '';
 
     socket.on('data', async (chunk: Buffer) => {
@@ -72,6 +75,10 @@ export function startIpcServer(client: Client): void {
     socket.on('error', (err) => {
       console.error('[IpcServer] Socket error:', err);
     });
+
+    socket.on('close', () => {
+      activeSockets.delete(socket);
+    });
   });
 
   server.listen(socketPath, () => {
@@ -84,6 +91,10 @@ export function startIpcServer(client: Client): void {
 }
 
 export function stopIpcServer(): void {
+  for (const socket of activeSockets) {
+    socket.destroy();
+  }
+  activeSockets.clear();
   if (server) {
     server.close();
     server = null;
@@ -93,6 +104,7 @@ export function stopIpcServer(): void {
   }
   activeSocketPath = null;
   discordClient = null;
+  lastIpcEventTime.clear();
 }
 
 async function handleHookEvent(payload: Record<string, unknown>): Promise<void> {
@@ -118,6 +130,13 @@ async function handleHookEvent(payload: Record<string, unknown>): Promise<void> 
       return;
     }
     lastIpcEventTime.set(throttleKey, now);
+    // 防止 throttle map 无限增长
+    if (lastIpcEventTime.size > THROTTLE_MAP_MAX_SIZE) {
+      const cutoff = now - IPC_THROTTLE_MS * 10;
+      for (const [key, time] of lastIpcEventTime) {
+        if (time < cutoff) lastIpcEventTime.delete(key);
+      }
+    }
   }
 
   console.log(`[IpcServer] Received ${event.source} event: ${event.type} for session ${event.sessionId}`);

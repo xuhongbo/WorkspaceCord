@@ -20,7 +20,7 @@ const RATE_LIMIT_TTL_MS = 60 * 60 * 1000; // 1 hour
 const RELOCATION_COOLDOWN_MS = 10_000; // 10 seconds between relocations per session
 
 // Periodically prune stale rate-limit entries to prevent unbounded growth
-setInterval(() => {
+let pruneInterval: ReturnType<typeof setInterval> | null = setInterval(() => {
   const cutoff = Date.now() - RATE_LIMIT_TTL_MS;
   for (const [key, time] of lastMessageTime) {
     if (time < cutoff) lastMessageTime.delete(key);
@@ -31,6 +31,15 @@ setInterval(() => {
 }, RATE_LIMIT_TTL_MS);
 
 export function resetMessageHandlerState(): void {
+  lastMessageTime.clear();
+  lastRelocationTime.clear();
+}
+
+export function stopMessageHandler(): void {
+  if (pruneInterval) {
+    clearInterval(pruneInterval);
+    pruneInterval = null;
+  }
   lastMessageTime.clear();
   lastRelocationTime.clear();
 }
@@ -61,8 +70,8 @@ export async function handleMessage(message: Message): Promise<void> {
   if (now - last < config.rateLimitMs) {
     const remaining = Math.ceil((config.rateLimitMs - (now - last)) / 1000);
     (channel as SessionChannel).send(`⏳ 发送过于频繁，请 ${remaining} 秒后再试。`)
-      .then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000))
-      .catch(() => {});
+      .then(msg => setTimeout(() => msg.delete().catch((e) => console.warn(`[MessageHandler] Failed to delete rate-limit notice: ${(e as Error).message}`)), 5000))
+      .catch((e) => console.warn(`[MessageHandler] Failed to send rate-limit notice: ${(e as Error).message}`));
     return;
   }
   lastMessageTime.set(rateKey, now);
@@ -108,7 +117,7 @@ export async function handleMessage(message: Message): Promise<void> {
     lastRelocationTime.set(session.id, now);
     await Promise.resolve(
       relocateSessionPanelToBottom(session.id, channel as SessionChannel),
-    ).catch(() => {});
+    ).catch((e) => console.warn(`[MessageHandler] Panel relocation failed (${session.id}): ${(e as Error).message}`));
   }
   await executeSessionPrompt(session, channel as SessionChannel, envelope.renderedPrompt);
 
@@ -134,7 +143,7 @@ export async function handleMessage(message: Message): Promise<void> {
           ackReaction: config.ackReaction ?? '👀',
         },
       });
-      await deliver(parentChannel, plan).catch(() => {});
+      await deliver(parentChannel, plan).catch((e) => console.warn(`[MessageHandler] Parent channel notification failed (${session.id}): ${(e as Error).message}`));
     }
   }
 }

@@ -19,6 +19,7 @@ import { performanceTracker } from './monitoring/performance-tracker.ts';
 import { clearPendingAnswers } from '@workspacecord/engine/output/answer-store';
 import { cleanupSessionDeliveryState } from './discord/delivery.ts';
 import { clearCodexHint } from './bot-services-helpers.ts';
+import { cleanupSessionAttachments } from './discord/attachment-inbox.ts';
 
 // 会话面板组件映射（替代原来的 5 个 Map）
 const sessionPanels = new Map<string, SessionPanelComponent>();
@@ -365,6 +366,8 @@ export async function handleAwaitingHuman(
   return messageId;
 }
 
+const RELOCATION_TIMEOUT_MS = 15_000;
+
 export async function relocateSessionPanelToBottom(
   sessionId: string,
   channel?: SessionChannel,
@@ -372,10 +375,14 @@ export async function relocateSessionPanelToBottom(
   let panel = getPanel(sessionId);
   if (!panel && channel) {
     const session = getSession(sessionId);
-    await initializeSessionPanel(sessionId, channel, {
+    const initPromise = initializeSessionPanel(sessionId, channel, {
       statusCardMessageId: session?.statusCardMessageId,
       initialTurn: session?.currentTurn || 1,
     });
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Panel initialization timeout')), RELOCATION_TIMEOUT_MS),
+    );
+    await Promise.race([initPromise, timeout]);
     panel = getPanel(sessionId);
   }
   if (!panel) return;
@@ -401,7 +408,7 @@ export async function relocateSessionPanelToBottom(
     console.warn(`摘要消息迁移失败 (${sessionId})：`, error);
     if (statusRelocation?.oldMessageId && statusRelocation.newMessageId) {
       panel.statusCard.adopt(statusRelocation.oldMessageId);
-      await panel.channel.messages.delete(statusRelocation.newMessageId).catch(() => {});
+      await panel.channel.messages.delete(statusRelocation.newMessageId).catch((e) => console.warn(`[PanelAdapter] Failed to cleanup new status card (${sessionId}): ${(e as Error).message}`));
     }
     return;
   }
@@ -413,10 +420,10 @@ export async function relocateSessionPanelToBottom(
   }
 
   if (statusRelocation?.oldMessageId) {
-    await panel.channel.messages.delete(statusRelocation.oldMessageId).catch(() => {});
+    await panel.channel.messages.delete(statusRelocation.oldMessageId).catch((e) => console.warn(`[PanelAdapter] Failed to delete old status card (${sessionId}): ${(e as Error).message}`));
   }
   for (const messageId of digestRelocation.oldMessageIds) {
-    await panel.channel.messages.delete(messageId).catch(() => {});
+    await panel.channel.messages.delete(messageId).catch((e) => console.warn(`[PanelAdapter] Failed to delete old digest (${sessionId}): ${(e as Error).message}`));
   }
 }
 
@@ -466,11 +473,12 @@ export function cleanupSessionPanel(sessionId: string): void {
   clearPendingAnswers(sessionId);
   cleanupSessionDeliveryState(sessionId);
   clearCodexHint(sessionId);
+  cleanupSessionAttachments(sessionId).catch((e) => console.warn(`[PanelAdapter] Failed to cleanup attachments (${sessionId}): ${(e as Error).message}`));
 
   // Invalidate any pending human gates for this session
   const activeGate = gateCoordinator.getActiveGateForSession(sessionId);
   if (activeGate) {
-    gateCoordinator.resolveFromDiscord(activeGate.id, 'reject').catch(() => {});
+    gateCoordinator.resolveFromDiscord(activeGate.id, 'reject').catch((e) => console.warn(`[PanelAdapter] Failed to invalidate gate on cleanup (${sessionId}): ${(e as Error).message}`));
   }
 }
 

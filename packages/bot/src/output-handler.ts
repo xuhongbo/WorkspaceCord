@@ -157,7 +157,7 @@ export async function handleOutputStream(
           if (progressThreadId && event.summary) {
             const thread = (channel as TextChannel).threads?.cache.get(progressThreadId);
             if (thread) {
-              thread.send(`📝 ${truncate(event.summary, 1900)}`).catch(() => {});
+              thread.send(`📝 ${truncate(event.summary, 1900)}`).catch((e) => console.warn(`[OutputHandler] Failed to send progress to thread: ${(e as Error).message}`));
             }
           }
           break;
@@ -174,7 +174,7 @@ export async function handleOutputStream(
             const thread = (channel as TextChannel).threads?.cache.get(doneThreadId);
             if (thread) {
               const statusEmoji = event.status === 'completed' ? '✅' : '❌';
-              thread.send(`${statusEmoji} 子任务${event.status === 'completed' ? '完成' : '结束'}：${truncate(event.summary || '', 1900)}`).catch(() => {});
+              thread.send(`${statusEmoji} 子任务${event.status === 'completed' ? '完成' : '结束'}：${truncate(event.summary || '', 1900)}`).catch((e) => console.warn(`[OutputHandler] Failed to send task done to thread: ${(e as Error).message}`));
             }
             taskThreadMap.delete(event.taskId);
           }
