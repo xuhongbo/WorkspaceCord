@@ -153,20 +153,30 @@ export async function autoSpawnSubagentThread(
     reason: `Auto-created for task ${taskId} in session ${parentSession.id}`,
   });
 
-  const session = await createSession({
-    channelId: thread.id,
-    categoryId: parentSession.categoryId,
-    projectName: parentSession.projectName,
-    agentLabel: description,
-    provider: parentSession.provider,
-    directory: parentSession.directory,
-    type: 'subagent',
-    parentChannelId: parentSession.channelId,
-    subagentDepth: (parentSession.subagentDepth || 0) + 1,
-    mode: parentSession.mode,
-    claudePermissionMode:
-      parentSession.provider === 'claude' ? parentSession.claudePermissionMode : undefined,
-  });
+  let session: ThreadSession;
+  try {
+    session = await createSession({
+      channelId: thread.id,
+      categoryId: parentSession.categoryId,
+      projectName: parentSession.projectName,
+      agentLabel: description,
+      provider: parentSession.provider,
+      directory: parentSession.directory,
+      type: 'subagent',
+      parentChannelId: parentSession.channelId,
+      subagentDepth: (parentSession.subagentDepth || 0) + 1,
+      mode: parentSession.mode,
+      claudePermissionMode:
+        parentSession.provider === 'claude' ? parentSession.claudePermissionMode : undefined,
+    });
+  } catch (err) {
+    // Thread was created but session registration failed — clean up the orphan
+    console.warn(`[SubagentManager] createSession failed for auto-spawned task ${taskId}, deleting orphan thread ${thread.id}: ${err instanceof Error ? err.message : String(err)}`);
+    await thread.delete('Session creation failed').catch((deleteErr) =>
+      console.warn(`[SubagentManager] Failed to delete orphan thread ${thread.id}: ${deleteErr instanceof Error ? deleteErr.message : String(deleteErr)}`),
+    );
+    throw err;
+  }
 
   console.log(`[SubagentManager] Auto-spawned thread for task ${taskId} session ${session.id} thread ${thread.id}`);
   return { threadId: thread.id, session };

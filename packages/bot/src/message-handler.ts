@@ -29,6 +29,8 @@ let pruneInterval: ReturnType<typeof setInterval> | null = setInterval(() => {
     if (time < cutoff) lastRelocationTime.delete(key);
   }
 }, RATE_LIMIT_TTL_MS);
+// Don't keep the process alive just for the prune interval
+pruneInterval.unref?.();
 
 export function resetMessageHandlerState(): void {
   lastMessageTime.clear();

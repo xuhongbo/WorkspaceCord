@@ -379,10 +379,18 @@ export async function relocateSessionPanelToBottom(
       statusCardMessageId: session?.statusCardMessageId,
       initialTurn: session?.currentTurn || 1,
     });
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Panel initialization timeout')), RELOCATION_TIMEOUT_MS),
-    );
-    await Promise.race([initPromise, timeout]);
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(
+        () => reject(new Error('Panel initialization timeout')),
+        RELOCATION_TIMEOUT_MS,
+      );
+    });
+    try {
+      await Promise.race([initPromise, timeout]);
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
     panel = getPanel(sessionId);
   }
   if (!panel) return;

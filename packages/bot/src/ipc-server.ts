@@ -132,9 +132,18 @@ async function handleHookEvent(payload: Record<string, unknown>): Promise<void> 
     lastIpcEventTime.set(throttleKey, now);
     // 防止 throttle map 无限增长
     if (lastIpcEventTime.size > THROTTLE_MAP_MAX_SIZE) {
+      // 先剪掉过期条目
       const cutoff = now - IPC_THROTTLE_MS * 10;
       for (const [key, time] of lastIpcEventTime) {
         if (time < cutoff) lastIpcEventTime.delete(key);
+      }
+      // 若突发高负载导致所有条目都很新，强制按时间淘汰最旧的 N 条，保证严格上限
+      if (lastIpcEventTime.size > THROTTLE_MAP_MAX_SIZE) {
+        const entries = [...lastIpcEventTime.entries()].sort((a, b) => a[1] - b[1]);
+        const toRemove = entries.length - THROTTLE_MAP_MAX_SIZE;
+        for (let i = 0; i < toRemove; i++) {
+          lastIpcEventTime.delete(entries[i][0]);
+        }
       }
     }
   }
