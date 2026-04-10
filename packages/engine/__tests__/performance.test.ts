@@ -41,6 +41,8 @@ describe('性能与限流控制', () => {
 
   afterEach(() => {
     stopPerformanceMonitoring();
+    // Safety net: restore real timers in case a test using fake timers fails mid-way
+    vi.useRealTimers();
   });
 
   describe('会话发现延迟', () => {

@@ -71,7 +71,7 @@ export async function archiveSubagent(
   summary?: string,
 ): Promise<void> {
   if (summary) {
-    await sendSystemNotice(thread, session.id, `*Subagent complete: ${summary}*`);
+    await sendSystemNotice(thread, session.id, `*子任务完成：${summary}*`);
   }
 
   try {
@@ -119,7 +119,7 @@ export async function runSubagentWatchdog(
 
     const thread = getThread(session.channelId);
     if (!thread) {
-      await endSession(session.id).catch(() => {});
+      await endSession(session.id).catch((e) => console.warn(`[SubagentWatchdog] Failed to end orphaned subagent ${session.id}: ${(e as Error).message}`));
       console.log(`[SubagentWatchdog] Ended orphaned subagent ${session.id} — thread ${session.channelId} not found`);
       continue;
     }
@@ -134,6 +134,52 @@ export async function runSubagentWatchdog(
   }
 
   console.log(`[SubagentWatchdog] Watchdog run: checked ${checked.size} subagents, archived ${archived}, errors ${errors}`);
+}
+
+export async function autoSpawnSubagentThread(
+  parentSession: ThreadSession,
+  taskId: string,
+  description: string,
+  sessionChannel: TextChannel,
+): Promise<{ threadId: string; session: ThreadSession } | null> {
+  if (parentSession.type === 'subagent') return null;
+  if (!canSpawnSubagent(parentSession)) return null;
+
+  const threadName = `[task] ${description}`.slice(0, 100);
+  const thread = await sessionChannel.threads.create({
+    name: threadName,
+    type: ChannelType.PublicThread,
+    autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
+    reason: `Auto-created for task ${taskId} in session ${parentSession.id}`,
+  });
+
+  let session: ThreadSession;
+  try {
+    session = await createSession({
+      channelId: thread.id,
+      categoryId: parentSession.categoryId,
+      projectName: parentSession.projectName,
+      agentLabel: description,
+      provider: parentSession.provider,
+      directory: parentSession.directory,
+      type: 'subagent',
+      parentChannelId: parentSession.channelId,
+      subagentDepth: (parentSession.subagentDepth || 0) + 1,
+      mode: parentSession.mode,
+      claudePermissionMode:
+        parentSession.provider === 'claude' ? parentSession.claudePermissionMode : undefined,
+    });
+  } catch (err) {
+    // Thread was created but session registration failed — clean up the orphan
+    console.warn(`[SubagentManager] createSession failed for auto-spawned task ${taskId}, deleting orphan thread ${thread.id}: ${err instanceof Error ? err.message : String(err)}`);
+    await thread.delete('Session creation failed').catch((deleteErr) =>
+      console.warn(`[SubagentManager] Failed to delete orphan thread ${thread.id}: ${deleteErr instanceof Error ? deleteErr.message : String(deleteErr)}`),
+    );
+    throw err;
+  }
+
+  console.log(`[SubagentManager] Auto-spawned thread for task ${taskId} session ${session.id} thread ${thread.id}`);
+  return { threadId: thread.id, session };
 }
 
 function getSubagentSessions(): ThreadSession[] {

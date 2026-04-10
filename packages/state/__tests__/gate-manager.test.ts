@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { GateManager } from '../src/gate-manager.ts';
 import { HumanGateRegistry } from '../src/human-gate.ts';
 import { EventBus } from '@workspacecord/core';
@@ -19,6 +19,11 @@ describe('GateManager', () => {
     eventBus = new EventBus();
     const registry = new HumanGateRegistry();
     gateManager = new GateManager(registry, eventBus);
+  });
+
+  afterEach(() => {
+    // Safety net: restore real timers in case a test that uses fake timers fails mid-way
+    vi.useRealTimers();
   });
 
   describe('createGate', () => {

@@ -295,6 +295,41 @@ describe('attachment-inbox', () => {
     delete process.env.WORKSPACECORD_ATTACHMENT_FETCH_TIMEOUT_MS;
   });
 
+  it('cleanupSessionAttachments 仅移除指定 session 的索引', async () => {
+    const mod = await import('../src/discord/attachment-inbox.ts');
+
+    await mod.registerMessageAttachments('session-a', 'msg-1', [
+      { id: 'att-1', name: 'a1.md', contentType: 'text/markdown', size: 1, url: 'https://x/a1' },
+    ]);
+    await mod.registerMessageAttachments('session-a', 'msg-2', [
+      { id: 'att-2', name: 'a2.md', contentType: 'text/markdown', size: 1, url: 'https://x/a2' },
+    ]);
+    await mod.registerMessageAttachments('session-b', 'msg-3', [
+      { id: 'att-3', name: 'b1.md', contentType: 'text/markdown', size: 1, url: 'https://x/b1' },
+    ]);
+
+    const removed = await mod.cleanupSessionAttachments('session-a');
+    expect(removed).toBe(2);
+
+    // session-a 的索引已清空
+    expect(await mod.getMessageAttachments('session-a', 'msg-1')).toEqual([]);
+    expect(await mod.getMessageAttachments('session-a', 'msg-2')).toEqual([]);
+    // session-b 的索引保留
+    const remaining = await mod.getMessageAttachments('session-b', 'msg-3');
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].attachmentId).toBe('att-3');
+
+    // 持久化文件中也应反映
+    const persisted = JSON.parse(readFileSync(fileFromDataDir('attachment-inbox.json'), 'utf8'));
+    expect(Object.keys(persisted)).toEqual(['session-b:msg-3']);
+  });
+
+  it('cleanupSessionAttachments 在不存在索引时返回 0', async () => {
+    const mod = await import('../src/discord/attachment-inbox.ts');
+    const removed = await mod.cleanupSessionAttachments('non-existent-session');
+    expect(removed).toBe(0);
+  });
+
   it('实际下载体积超过限制时会中止', async () => {
     const mod = await import('../src/discord/attachment-inbox.ts');
     vi.stubGlobal(

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ServiceBus, intervalService, type Service, type ServiceHealth } from '../src/service-bus.ts';
 
 function createMockService(name: string, opts: { startThrows?: boolean; stopThrows?: boolean; healthStatus?: ServiceHealth['status'] } = {}): Service & { startCount: number; stopCount: number } {
@@ -25,6 +25,11 @@ describe('ServiceBus', () => {
 
   beforeEach(() => {
     bus = new ServiceBus();
+  });
+
+  afterEach(() => {
+    // Safety net: restore real timers in case a test using fake timers fails mid-way
+    vi.useRealTimers();
   });
 
   describe('register', () => {

@@ -100,7 +100,7 @@ export class SessionPanelComponent {
 
     this.digestQueue.push({ kind: item.kind, text });
     if (this.digestQueue.length > MAX_DIGEST_QUEUE_SIZE) {
-      this.digestQueue.splice(0, this.digestQueue.length - MAX_DIGEST_QUEUE_SIZE);
+      this.digestQueue = this.digestQueue.slice(-MAX_DIGEST_QUEUE_SIZE);
     }
   }
 

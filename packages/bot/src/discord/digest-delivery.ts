@@ -41,7 +41,7 @@ export class DigestDelivery {
     }
 
     for (const staleId of [...replacedMessageIds, ...this.messageIds.slice(chunks.length)]) {
-      await this.channel.messages.delete(staleId).catch(() => {});
+      await this.channel.messages.delete(staleId).catch((e) => console.warn(`[DigestDelivery] Failed to delete message: ${(e as Error).message}`));
     }
 
     this.messageIds = nextMessageIds;
@@ -64,7 +64,7 @@ export class DigestDelivery {
       }
     } catch (error) {
       for (const messageId of newMessageIds) {
-        await this.channel.messages.delete(messageId).catch(() => {});
+        await this.channel.messages.delete(messageId).catch((e) => console.warn(`[DigestDelivery] Failed to delete message: ${(e as Error).message}`));
       }
       throw error;
     }

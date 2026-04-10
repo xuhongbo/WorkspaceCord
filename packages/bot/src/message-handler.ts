@@ -20,7 +20,7 @@ const RATE_LIMIT_TTL_MS = 60 * 60 * 1000; // 1 hour
 const RELOCATION_COOLDOWN_MS = 10_000; // 10 seconds between relocations per session
 
 // Periodically prune stale rate-limit entries to prevent unbounded growth
-setInterval(() => {
+let pruneInterval: ReturnType<typeof setInterval> | null = setInterval(() => {
   const cutoff = Date.now() - RATE_LIMIT_TTL_MS;
   for (const [key, time] of lastMessageTime) {
     if (time < cutoff) lastMessageTime.delete(key);
@@ -29,8 +29,19 @@ setInterval(() => {
     if (time < cutoff) lastRelocationTime.delete(key);
   }
 }, RATE_LIMIT_TTL_MS);
+// Don't keep the process alive just for the prune interval
+pruneInterval.unref?.();
 
 export function resetMessageHandlerState(): void {
+  lastMessageTime.clear();
+  lastRelocationTime.clear();
+}
+
+export function stopMessageHandler(): void {
+  if (pruneInterval) {
+    clearInterval(pruneInterval);
+    pruneInterval = null;
+  }
   lastMessageTime.clear();
   lastRelocationTime.clear();
 }
@@ -51,14 +62,20 @@ export async function handleMessage(message: Message): Promise<void> {
 
   if (!isUserAllowed(message.author.id, config.allowedUsers, config.allowAllUsers)) {
     console.warn(`[MessageHandler] Unauthorized attempt by user ${message.author.id} in channel ${channel.id} (session ${session.id})`);
-    await sendSystemNotice(channel as SessionChannel, session.id, 'You are not authorized to use this bot.');
+    await sendSystemNotice(channel as SessionChannel, session.id, '你没有权限使用此 Bot。');
     return;
   }
 
   const rateKey = `${message.author.id}:${channel.id}`;
   const now = Date.now();
   const last = lastMessageTime.get(rateKey) || 0;
-  if (now - last < config.rateLimitMs) return;
+  if (now - last < config.rateLimitMs) {
+    const remaining = Math.ceil((config.rateLimitMs - (now - last)) / 1000);
+    (channel as SessionChannel).send(`⏳ 发送过于频繁，请 ${remaining} 秒后再试。`)
+      .then(msg => setTimeout(() => msg.delete().catch((e) => console.warn(`[MessageHandler] Failed to delete rate-limit notice: ${(e as Error).message}`)), 5000))
+      .catch((e) => console.warn(`[MessageHandler] Failed to send rate-limit notice: ${(e as Error).message}`));
+    return;
+  }
   lastMessageTime.set(rateKey, now);
 
   if (session.isGenerating) {
@@ -66,7 +83,7 @@ export async function handleMessage(message: Message): Promise<void> {
     await sendSystemNotice(
       channel as SessionChannel,
       session.id,
-      '*Agent is already generating. Stop it first with `/agent stop`.*',
+      '*Agent 正在执行中，请先使用 `/agent stop` 停止。*',
       message.reference?.messageId ?? undefined,
     );
     return;
@@ -102,7 +119,7 @@ export async function handleMessage(message: Message): Promise<void> {
     lastRelocationTime.set(session.id, now);
     await Promise.resolve(
       relocateSessionPanelToBottom(session.id, channel as SessionChannel),
-    ).catch(() => {});
+    ).catch((e) => console.warn(`[MessageHandler] Panel relocation failed (${session.id}): ${(e as Error).message}`));
   }
   await executeSessionPrompt(session, channel as SessionChannel, envelope.renderedPrompt);
 
@@ -116,8 +133,8 @@ export async function handleMessage(message: Message): Promise<void> {
         sessionId: session.id,
         chatId: parentChannel.id,
         text: [
-          `✅ Subagent Finished: ${session.agentLabel}`,
-          `<#${session.channelId}> has completed a pass. Review the thread for output.`,
+          `✅ 子任务完成：${session.agentLabel}`,
+          `<#${session.channelId}> 已完成一轮执行，请查看子频道了解详情。`,
         ].join('\n\n'),
         files: [],
         mode: 'system_notice',
@@ -128,7 +145,7 @@ export async function handleMessage(message: Message): Promise<void> {
           ackReaction: config.ackReaction ?? '👀',
         },
       });
-      await deliver(parentChannel, plan).catch(() => {});
+      await deliver(parentChannel, plan).catch((e) => console.warn(`[MessageHandler] Parent channel notification failed (${session.id}): ${(e as Error).message}`));
     }
   }
 }

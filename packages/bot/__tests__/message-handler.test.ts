@@ -34,7 +34,7 @@ vi.mock('../src/discord/delivery-notices.ts', () => ({ sendSystemNotice }));
 vi.mock('../src/panel-adapter.ts', () => ({ relocateSessionPanelToBottom }));
 // utils mocking handled by @workspacecord/core mock above
 
-const { handleMessage, resetMessageHandlerState } = await import('../src/message-handler.ts');
+const { handleMessage, resetMessageHandlerState, stopMessageHandler } = await import('../src/message-handler.ts');
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
   return {
@@ -45,7 +45,7 @@ function makeMessage(overrides: Record<string, unknown> = {}) {
       id: 'channel-1',
       type: ChannelType.GuildText,
       isThread: () => false,
-      send: vi.fn(),
+      send: vi.fn(async () => ({ delete: vi.fn(async () => {}) })),
     },
     attachments: new Map(),
     react: vi.fn(),
@@ -105,7 +105,7 @@ describe('message-handler', () => {
       id: 'channel-1',
       type: ChannelType.GuildText,
       isThread: () => false,
-      send: vi.fn(async () => undefined),
+      send: vi.fn(async () => ({ delete: vi.fn(async () => {}) })),
     };
     const message = makeMessage({ channel });
 
@@ -114,7 +114,7 @@ describe('message-handler', () => {
     expect(sendSystemNotice).toHaveBeenCalledWith(
       channel,
       's1',
-      'You are not authorized to use this bot.',
+      '你没有权限使用此 Bot。',
     );
     expect(relocateSessionPanelToBottom).not.toHaveBeenCalled();
     expect(channel.send).not.toHaveBeenCalled();
@@ -126,7 +126,7 @@ describe('message-handler', () => {
       id: 'channel-1',
       type: ChannelType.GuildText,
       isThread: () => false,
-      send: vi.fn(async () => undefined),
+      send: vi.fn(async () => ({ delete: vi.fn(async () => {}) })),
     };
     getSessionByChannel.mockReturnValue({ id: 's1', channelId: 'channel-1', type: 'persistent', isGenerating: true });
     const message = makeMessage({ channel });
@@ -136,7 +136,7 @@ describe('message-handler', () => {
     expect(sendSystemNotice).toHaveBeenCalledWith(
       channel,
       's1',
-      '*Agent is already generating. Stop it first with `/agent stop`.*',
+      '*Agent 正在执行中，请先使用 `/agent stop` 停止。*',
       undefined,
     );
     expect(relocateSessionPanelToBottom).not.toHaveBeenCalled();
@@ -194,5 +194,32 @@ describe('message-handler', () => {
     await handleMessage(message as never);
 
     expect(executeSessionPrompt).not.toHaveBeenCalled();
+  });
+
+  describe('stopMessageHandler', () => {
+    it('清空 rate-limit 状态，使得先前被限流的用户可再次发送', async () => {
+      const message = makeMessage();
+
+      // 第一次调用：成功
+      await handleMessage(message as never);
+      expect(executeSessionPrompt).toHaveBeenCalledTimes(1);
+
+      // 第二次调用：被限流
+      await handleMessage(message as never);
+      expect(executeSessionPrompt).toHaveBeenCalledTimes(1);
+
+      // stopMessageHandler 应重置内部状态
+      stopMessageHandler();
+
+      // 再次调用：应重新成功，因为 rate-limit map 已被清空
+      await handleMessage(message as never);
+      expect(executeSessionPrompt).toHaveBeenCalledTimes(2);
+    });
+
+    it('多次调用不抛出错误（幂等）', () => {
+      stopMessageHandler();
+      expect(() => stopMessageHandler()).not.toThrow();
+      expect(() => stopMessageHandler()).not.toThrow();
+    });
   });
 });

@@ -12,7 +12,7 @@ export function makeStopButton(sessionId: string): ActionRowBuilder<ButtonBuilde
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`stop:${sessionId}`)
-      .setLabel('Stop')
+      .setLabel('停止')
       .setStyle(ButtonStyle.Danger),
   );
 }
@@ -64,9 +64,9 @@ export function makeModeButtons(
     row.addComponents(
       new ButtonBuilder()
         .setCustomId(`mode:${sessionId}:${m.id}`)
-        .setLabel(m.label)
-        .setStyle(m.id === currentMode ? ButtonStyle.Primary : ButtonStyle.Secondary)
-        .setDisabled(m.id === currentMode),
+        .setLabel(m.id === currentMode ? `✓ ${m.label}` : m.label)
+        .setStyle(m.id === currentMode ? ButtonStyle.Success : ButtonStyle.Secondary)
+        .setDisabled(false),
     );
   }
 
@@ -94,11 +94,11 @@ export function makeYesNoButtons(sessionId: string): ActionRowBuilder<ButtonBuil
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(`confirm:${sessionId}:yes`)
-      .setLabel('Yes')
+      .setLabel('是')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`confirm:${sessionId}:no`)
-      .setLabel('No')
+      .setLabel('否')
       .setStyle(ButtonStyle.Danger),
   );
 }
@@ -135,7 +135,7 @@ export function renderAskUserQuestion(
       const q = questions[qi];
       const embed = new EmbedBuilder()
         .setColor(0xf39c12)
-        .setTitle(q.header || 'Question')
+        .setTitle(q.header || '提问')
         .setDescription(q.question);
 
       if (q.options?.length) {
@@ -153,7 +153,7 @@ export function renderAskUserQuestion(
         } else {
           const menu = new StringSelectMenuBuilder()
             .setCustomId(`${selectPrefix}:${sessionId}:${qi}`)
-            .setPlaceholder('Select an option...');
+            .setPlaceholder('请选择...');
           for (const opt of q.options) {
             menu.addOptions({
               label: opt.label.slice(0, 100),
@@ -166,7 +166,7 @@ export function renderAskUserQuestion(
         const optionLines = q.options
           .map((o) => (o.description ? `**${o.label}** — ${o.description}` : `**${o.label}**`))
           .join('\n');
-        embed.addFields({ name: 'Options', value: truncate(optionLines, 1000) });
+        embed.addFields({ name: '选项', value: truncate(optionLines, 1000) });
       }
       embeds.push(embed);
     }
@@ -176,7 +176,7 @@ export function renderAskUserQuestion(
         new ActionRowBuilder<ButtonBuilder>().addComponents(
           new ButtonBuilder()
             .setCustomId(`submit-answers:${sessionId}`)
-            .setLabel('Submit Answers')
+            .setLabel('提交回答')
             .setStyle(ButtonStyle.Success),
         ),
       );
@@ -206,10 +206,10 @@ export function renderTaskToolEmbed(action: string, dataJson: string): EmbedBuil
     if (action === 'TaskCreate') {
       const embed = new EmbedBuilder()
         .setColor(0x3498db)
-        .setTitle('📋 New Task')
-        .setDescription(`**${data.subject || 'Untitled'}**`);
+        .setTitle('📋 新任务')
+        .setDescription(`**${data.subject || '无标题'}**`);
       if (data.description) {
-        embed.addFields({ name: 'Details', value: truncate(data.description, 300) });
+        embed.addFields({ name: '详情', value: truncate(data.description, 300) });
       }
       return embed;
     }
@@ -220,8 +220,8 @@ export function renderTaskToolEmbed(action: string, dataJson: string): EmbedBuil
       if (data.subject) parts.push(data.subject);
       return new EmbedBuilder()
         .setColor(data.status === 'completed' ? 0x2ecc71 : 0xf39c12)
-        .setTitle(`Task #${data.taskId || '?'} Updated`)
-        .setDescription(parts.join(' — ') || 'Updated');
+        .setTitle(`任务 #${data.taskId || '?'} 已更新`)
+        .setDescription(parts.join(' — ') || '已更新');
     }
     return null;
   } catch {
@@ -237,6 +237,6 @@ export function renderTaskListEmbed(resultText: string): EmbedBuilder | null {
   }
   return new EmbedBuilder()
     .setColor(0x9b59b6)
-    .setTitle('📋 Task Board')
+    .setTitle('📋 任务看板')
     .setDescription(truncate(formatted, 4000));
 }

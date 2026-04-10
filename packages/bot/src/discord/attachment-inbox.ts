@@ -91,6 +91,22 @@ async function writeIndex(index: AttachmentIndex): Promise<void> {
   await attachmentStore.write(index);
 }
 
+// Serialize read-modify-write operations on the attachment index to prevent
+// lost updates when cleanupSessionAttachments and registerMessageAttachments
+// race (both read the full index, mutate, and write it back).
+let indexMutationQueue: Promise<unknown> = Promise.resolve();
+
+function mutateIndex<T>(operation: (index: AttachmentIndex) => Promise<T> | T): Promise<T> {
+  const next = indexMutationQueue.then(async () => {
+    const index = await readIndex();
+    const result = await operation(index);
+    await writeIndex(index);
+    return result;
+  });
+  indexMutationQueue = next.catch(() => undefined);
+  return next;
+}
+
 async function appendAudit(entry: AttachmentDownloadAuditEntry): Promise<void> {
   const existing = (await attachmentAuditStore.read()) ?? [];
   existing.push(entry);
@@ -98,7 +114,24 @@ async function appendAudit(entry: AttachmentDownloadAuditEntry): Promise<void> {
 }
 
 export async function resetAttachmentInboxState(): Promise<void> {
-  await writeIndex({});
+  await mutateIndex((index) => {
+    for (const key of Object.keys(index)) delete index[key];
+  });
+}
+
+/** Remove all attachment index entries for a given session */
+export async function cleanupSessionAttachments(sessionId: string): Promise<number> {
+  return mutateIndex((index) => {
+    const prefix = `${sessionId}:`;
+    let removed = 0;
+    for (const key of Object.keys(index)) {
+      if (key.startsWith(prefix)) {
+        delete index[key];
+        removed++;
+      }
+    }
+    return removed;
+  });
 }
 
 export async function registerMessageAttachments(
@@ -106,11 +139,11 @@ export async function registerMessageAttachments(
   messageId: string,
   attachments: RawAttachment[],
 ): Promise<AttachmentRecord[]> {
-  const index = await readIndex();
-  const records = attachments.map((attachment, idx) => normalizeAttachment(attachment, messageId, idx));
-  index[makeKey(sessionId, messageId)] = records;
-  await writeIndex(index);
-  return records;
+  return mutateIndex((index) => {
+    const records = attachments.map((attachment, idx) => normalizeAttachment(attachment, messageId, idx));
+    index[makeKey(sessionId, messageId)] = records;
+    return records;
+  });
 }
 
 export async function getMessageAttachments(

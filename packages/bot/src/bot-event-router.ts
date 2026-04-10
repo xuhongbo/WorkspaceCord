@@ -25,6 +25,12 @@ export class BotEventRouter {
   }
 
   async routeInteraction(interaction: Interaction): Promise<void> {
+    // 丢弃 shard 重连期间积压的过期 interaction（createdTimestamp > 2.5s 前）
+    if (Date.now() - interaction.createdTimestamp > 2500) {
+      console.warn(`[Router] 丢弃过期 interaction (延迟 ${Date.now() - interaction.createdTimestamp}ms): ${interaction.isCommand() ? interaction.commandName : interaction.id}`);
+      return;
+    }
+
     try {
       if (interaction.type === InteractionType.ApplicationCommand && interaction.isChatInputCommand()) {
         const h = this.handlers;
@@ -41,7 +47,7 @@ export class BotEventRouter {
       console.error('Interaction error:', err);
       try {
         if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: 'An error occurred.', ephemeral: true });
+          await interaction.reply({ content: '发生错误。', ephemeral: true });
         }
       } catch {
         /* can't recover */

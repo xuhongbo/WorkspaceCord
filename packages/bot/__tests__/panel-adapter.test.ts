@@ -328,6 +328,30 @@ describe('panel-adapter', () => {
     await Promise.all([first, second]);
   });
 
+  it('初始化挂起时 relocateSessionPanelToBottom 会在 15s 超时保护后退出', async () => {
+    const channel = createChannel();
+
+    // 让 statusInitialize 永不 resolve，模拟初始化挂起
+    statusInitialize.mockImplementationOnce(() => new Promise(() => {}));
+
+    vi.useFakeTimers();
+    try {
+      const relocatePromise = relocateSessionPanelToBottom(
+        'session-timeout',
+        channel as never,
+      );
+      // 先挂上 rejection handler 再推进时间，避免出现短暂的 unhandled rejection
+      const assertion = expect(relocatePromise).rejects.toThrow('Panel initialization timeout');
+
+      // 推进 15s 触发超时
+      await vi.advanceTimersByTimeAsync(15_001);
+
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('并发执行中的 codex 会话不会被监控侧过早标记为完成', async () => {
     const channel = createChannel();
     getSession.mockImplementation((sessionId: string) => ({

@@ -259,14 +259,14 @@ describe('project commands', () => {
     removeSkill.mockReturnValue(false);
     const interaction = makeInteraction({ subcommand: 'skill-remove', values: { name: 'missing' }, channel: makeTextChannel({ parentId: 'cat-1' }) });
     await handleProject(interaction as never);
-    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: 'Skill **missing** not found.' }));
+    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: '技能 **missing** 未找到。' }));
   });
 
   it('skill-list 在为空时给出提示', async () => {
     getSkills.mockReturnValue([]);
     const interaction = makeInteraction({ subcommand: 'skill-list', channel: makeTextChannel({ parentId: 'cat-1' }) });
     await handleProject(interaction as never);
-    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: 'No skills defined. Use `/project skill-add`.' }));
+    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: '未定义技能，请使用 `/project skill-add`。' }));
   });
 
   it('skill-run 在会话频道中执行技能', async () => {
@@ -285,7 +285,7 @@ describe('project commands', () => {
     removeMcpServer.mockResolvedValue(false);
     const interaction = makeInteraction({ subcommand: 'mcp-remove', values: { name: 'missing' }, channel: makeTextChannel({ parentId: 'cat-1' }) });
     await handleProject(interaction as never);
-    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: 'MCP server **missing** not found.' }));
+    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: 'MCP 服务器 **missing** 未找到。' }));
   });
 
   it('mcp-list 返回服务列表', async () => {
@@ -381,7 +381,7 @@ describe('agent commands', () => {
   it('list 在为空时提示', async () => {
     const interaction = makeInteraction({ subcommand: 'list', channel: makeTextChannel({ parentId: 'cat-1' }) });
     await handleAgent(interaction as never);
-    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: 'No active agent sessions in this project.' }));
+    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: '此项目没有活跃的 Agent 会话。' }));
   });
 
   it('stop 在会话存在时调用 abort', async () => {
@@ -404,7 +404,7 @@ describe('agent commands', () => {
     getSessionByChannel.mockReturnValue({ ...session, type: 'subagent' });
     const interaction = makeInteraction({ subcommand: 'archive', channel: makeTextChannel({ id: 'session-channel', parentId: 'cat-1' }) });
     await handleAgent(interaction as never);
-    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining('Only persistent sessions can be archived') }));
+    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining('只有持久会话可以归档') }));
   });
 
   it('cleanup 在有候选时返回预览消息与确认按钮', async () => {
@@ -649,7 +649,7 @@ describe('subagent commands', () => {
   it('list 在为空时提示', async () => {
     const interaction = makeInteraction({ subcommand: 'list', channel: makeTextChannel({ id: 'session-channel' }) });
     await handleSubagent(interaction as never);
-    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: 'No active subagents for this session.' }));
+    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: '当前会话没有活跃的子任务。' }));
   });
 });
 
@@ -672,13 +672,13 @@ describe('shell commands', () => {
     killProcess.mockReturnValue(true);
     const interaction = makeInteraction({ subcommand: 'kill', values: { pid: 123 }, channel: makeTextChannel({ id: 'session-channel' }) });
     await handleShell(interaction as never);
-    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: 'Process 123 killed.', ephemeral: true }));
+    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: '进程 123 已终止。', ephemeral: true }));
   });
 
   it('shell 关闭时拒绝执行', async () => {
     config.shellEnabled = false;
     const interaction = makeInteraction({ subcommand: 'run', values: { command: 'pwd' }, channel: makeTextChannel({ id: 'session-channel' }) });
     await handleShell(interaction as never);
-    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining('Shell execution is disabled') }));
+    expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining('Shell 执行已禁用') }));
   });
 });
