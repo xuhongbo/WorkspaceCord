@@ -1,78 +1,78 @@
 import { describe, it, expect } from 'vitest';
 import {
-  getNextWorkflowIndex,
-  workflowSteps,
+  getNextSceneIndex,
+  remoteControlScenes,
 } from '../src/lib/workflow-steps';
 
-describe('workflow steps', () => {
-  it('定义 6 个电影式分镜并按桌面焦点推进', () => {
-    expect(workflowSteps).toHaveLength(6);
-    expect(workflowSteps.map((step) => step.id)).toEqual([
-      'terminal-boot',
-      'dock-handoff',
-      'discord-launch',
-      'project-map',
-      'session-expand',
-      'history-archive',
+describe('remoteControlScenes', () => {
+  it('定义 4 幕并按 send → parallel → approve → archive 推进', () => {
+    expect(remoteControlScenes).toHaveLength(4);
+    expect(remoteControlScenes.map((scene) => scene.id)).toEqual([
+      'send',
+      'parallel',
+      'approve',
+      'archive',
     ]);
-
-    expect(workflowSteps.map((step) => step.scene.desktopFocus)).toEqual([
-      'terminal',
-      'dock',
-      'discord',
-      'discord',
-      'discord',
-      'discord',
+    expect(remoteControlScenes.map((scene) => scene.label)).toEqual([
+      'SEND',
+      'PARALLEL',
+      'APPROVE',
+      'ARCHIVE',
     ]);
   });
 
-  it('包含桌面窗口状态与多项目到多线程的层级信息', () => {
-    const [terminalStep, dockStep, discordStep, projectStep, sessionStep, historyStep] =
-      workflowSteps;
-
-    expect(terminalStep?.scene.terminal.windowState).toBe('foreground');
-    expect(dockStep?.scene.terminal.windowState).toBe('docked');
-    expect(discordStep?.scene.discord.windowState).toBe('foreground');
-
-    expect(projectStep?.scene.discord.categories.length).toBeGreaterThan(1);
-    expect(projectStep?.scene.discord.selectedCategoryId).toBeNull();
-
-    expect(sessionStep?.scene.discord.selectedCategoryId).toBeTruthy();
-    expect(sessionStep?.scene.discord.mainSession).toBeTruthy();
-    expect(sessionStep?.scene.discord.threads.length).toBeGreaterThan(1);
-
-    expect(historyStep?.scene.discord.history.channel).toBe('#history');
-    expect(historyStep?.scene.discord.history.summary).toContain('summary posted');
+  it('每一幕都有 sidebar、active 频道内容与终端 mock', () => {
+    for (const scene of remoteControlScenes) {
+      expect(scene.sidebar.length).toBeGreaterThanOrEqual(4);
+      expect(scene.activeChannelId).toBeTruthy();
+      expect(scene.activeView.title).toBeTruthy();
+      expect(scene.terminal.title).toContain('coding');
+      expect(scene.terminal.lines.length).toBeGreaterThan(0);
+    }
   });
 
-  it('包含更真实的协作消息流与 Dock 交接状态', () => {
-    const [terminalStep, dockStep, discordStep, , sessionStep, historyStep] = workflowSteps;
-
-    expect(dockStep?.scene.dock.apps.map((app) => app.label)).toEqual(['CLI', 'Discord']);
-    expect(dockStep?.scene.dock.activeApp).toBe('discord');
-    expect(terminalStep?.scene.dock.presentation).toBe('ambient');
-    expect(dockStep?.scene.dock.presentation).toBe('handoff');
-    expect(discordStep?.scene.dock.presentation).toBe('ambient');
-
-    expect(sessionStep?.scene.discord.messages.length).toBeGreaterThan(2);
-    expect(sessionStep?.scene.discord.messages[0]?.author).toBe('main session');
-    expect(
-      sessionStep?.scene.discord.messages.some((message) =>
-        message.author.includes('thread / 验证灰度日志'),
-      ),
-    ).toBe(true);
-
-    expect(
-      historyStep?.scene.discord.messages[
-        (historyStep?.scene.discord.messages.length ?? 1) - 1
-      ]?.author,
-    ).toBe('history summary');
+  it('每一幕 sidebar 都包含被 active 的那个 session 频道', () => {
+    for (const scene of remoteControlScenes) {
+      expect(
+        scene.sidebar.some((channel) => channel.id === scene.activeChannelId),
+      ).toBe(true);
+    }
   });
 
-  it('在最后一步后回到第一步', () => {
-    expect(getNextWorkflowIndex(0, workflowSteps.length)).toBe(1);
-    expect(getNextWorkflowIndex(workflowSteps.length - 1, workflowSteps.length)).toBe(
-      0,
-    );
+  it('4 幕之间会切换 active channel（多 session 的体感）', () => {
+    const activeIds = remoteControlScenes.map((s) => s.activeChannelId);
+    const unique = new Set(activeIds);
+    expect(unique.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it('approve 幕携带 Discord 审批按钮 payload', () => {
+    const approveScene = remoteControlScenes.find((s) => s.id === 'approve');
+    expect(approveScene?.activeView.approval).toBeTruthy();
+    expect(approveScene?.activeView.approval?.title).toContain('src/middleware.ts');
+  });
+
+  it('archive 幕切到 #history 并显示归档列表', () => {
+    const archiveScene = remoteControlScenes.find((s) => s.id === 'archive');
+    expect(archiveScene?.activeChannelId).toBe('history');
+    expect(archiveScene?.activeView.archive?.items.length).toBeGreaterThan(0);
+  });
+
+  it('send 幕的用户消息出现且没有待审批 payload', () => {
+    const sendScene = remoteControlScenes[0];
+    expect(sendScene?.activeView.userMessage).toContain('auth');
+    expect(sendScene?.activeView.approval).toBeUndefined();
+  });
+
+  it('终端 mock 描述 coding category 下的并发 session 状态', () => {
+    for (const scene of remoteControlScenes) {
+      expect(scene.terminal.title).toMatch(/coding · \d+ sessions/);
+    }
+  });
+
+  it('getNextSceneIndex 在最后一幕后回到第一幕', () => {
+    expect(getNextSceneIndex(0, remoteControlScenes.length)).toBe(1);
+    expect(
+      getNextSceneIndex(remoteControlScenes.length - 1, remoteControlScenes.length),
+    ).toBe(0);
   });
 });
