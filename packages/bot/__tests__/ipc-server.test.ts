@@ -138,3 +138,76 @@ describe('IPC server authentication', () => {
     );
   });
 });
+
+describe('IPC server shutdown and resource cleanup', () => {
+  beforeEach(() => {
+    testConfig.hookSecret = '';
+    testConfig.socketPath = '/tmp/workspacecord-cleanup.sock';
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    try {
+      const { stopIpcServer } = await import('../src/ipc-server.ts');
+      stopIpcServer();
+    } catch { /* module may not be loaded */ }
+    const socketPath = testConfig.socketPath;
+    if (existsSync(socketPath)) {
+      try { unlinkSync(socketPath); } catch { /* ignore */ }
+    }
+  });
+
+  it('removes the socket file on stopIpcServer', async () => {
+    const { socketPath, stopIpcServer } = await restartServer();
+    expect(existsSync(socketPath)).toBe(true);
+
+    stopIpcServer();
+    expect(existsSync(socketPath)).toBe(false);
+  });
+
+  it('destroys active sockets when stopIpcServer is called', async () => {
+    const { socketPath, stopIpcServer } = await restartServer();
+
+    // Open a long-lived connection (don't send end())
+    const conn = createConnection(socketPath);
+    await new Promise<void>((resolve, reject) => {
+      conn.once('connect', () => resolve());
+      conn.once('error', reject);
+    });
+
+    // Stop the server — should destroy the active socket server-side
+    stopIpcServer();
+
+    // Wait until our client sees the disconnect
+    await new Promise<void>((resolve) => {
+      if (conn.destroyed) return resolve();
+      conn.once('close', () => resolve());
+      conn.once('error', () => resolve());
+      // Safety timeout
+      setTimeout(() => resolve(), 500);
+    });
+
+    expect(conn.destroyed).toBe(true);
+    conn.destroy();
+  });
+
+  it('stopIpcServer is idempotent and safe to call twice', async () => {
+    const { stopIpcServer } = await restartServer();
+    stopIpcServer();
+    expect(() => stopIpcServer()).not.toThrow();
+  });
+
+  it('allows restarting after stopIpcServer (no port conflict)', async () => {
+    const first = await restartServer();
+    first.stopIpcServer();
+    expect(existsSync(first.socketPath)).toBe(false);
+
+    // Restart — should succeed without error
+    const second = await restartServer();
+    expect(existsSync(second.socketPath)).toBe(true);
+    second.stopIpcServer();
+  });
+});

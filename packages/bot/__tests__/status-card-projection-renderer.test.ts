@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StatusCardProjectionRenderer } from '../src/discord/status-card-projection-renderer.ts';
 
 describe('StatusCardProjectionRenderer', () => {
@@ -7,6 +7,10 @@ describe('StatusCardProjectionRenderer', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     renderer = new StatusCardProjectionRenderer();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renderNow forwards projection to statusCard.update', async () => {

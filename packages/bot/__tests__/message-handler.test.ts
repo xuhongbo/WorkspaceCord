@@ -34,7 +34,7 @@ vi.mock('../src/discord/delivery-notices.ts', () => ({ sendSystemNotice }));
 vi.mock('../src/panel-adapter.ts', () => ({ relocateSessionPanelToBottom }));
 // utils mocking handled by @workspacecord/core mock above
 
-const { handleMessage, resetMessageHandlerState } = await import('../src/message-handler.ts');
+const { handleMessage, resetMessageHandlerState, stopMessageHandler } = await import('../src/message-handler.ts');
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
   return {
@@ -194,5 +194,32 @@ describe('message-handler', () => {
     await handleMessage(message as never);
 
     expect(executeSessionPrompt).not.toHaveBeenCalled();
+  });
+
+  describe('stopMessageHandler', () => {
+    it('清空 rate-limit 状态，使得先前被限流的用户可再次发送', async () => {
+      const message = makeMessage();
+
+      // 第一次调用：成功
+      await handleMessage(message as never);
+      expect(executeSessionPrompt).toHaveBeenCalledTimes(1);
+
+      // 第二次调用：被限流
+      await handleMessage(message as never);
+      expect(executeSessionPrompt).toHaveBeenCalledTimes(1);
+
+      // stopMessageHandler 应重置内部状态
+      stopMessageHandler();
+
+      // 再次调用：应重新成功，因为 rate-limit map 已被清空
+      await handleMessage(message as never);
+      expect(executeSessionPrompt).toHaveBeenCalledTimes(2);
+    });
+
+    it('多次调用不抛出错误（幂等）', () => {
+      stopMessageHandler();
+      expect(() => stopMessageHandler()).not.toThrow();
+      expect(() => stopMessageHandler()).not.toThrow();
+    });
   });
 });
