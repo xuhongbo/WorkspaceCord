@@ -56,6 +56,24 @@ export {
 } from './repository/index.ts';
 export { EventBus } from './event-bus.ts';
 export * from './events.ts';
+export {
+  getDomainBus,
+  _setDomainBusForTest,
+  SessionTurnStarted,
+  SessionTurnCompleted,
+  SessionErrored,
+  SessionAwaitingHuman,
+  SessionResumed,
+  GateCreated,
+  GateResolved,
+  type SessionTurnStartedPayload,
+  type SessionTurnCompletedPayload,
+  type SessionErroredPayload,
+  type SessionAwaitingHumanPayload,
+  type SessionResumedPayload,
+  type GateCreatedEventPayload,
+  type GateResolvedEventPayload,
+} from './domain-events.ts';
 export { createLogger, getLogger, type Logger } from './logger.ts';
 export {
   ServiceBus,

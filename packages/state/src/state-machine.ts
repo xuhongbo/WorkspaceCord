@@ -15,6 +15,11 @@ import type {
   PlatformEvent,
 } from './types.ts';
 import { STATE_PRIORITY, STATE_LABELS, PLATFORM_EVENT_TO_STATE } from './types.ts';
+import {
+  getDomainBus,
+  SessionAwaitingHuman,
+  SessionErrored,
+} from '@workspacecord/core';
 import type {
   SessionLifecycle,
   ExecutionState,
@@ -343,6 +348,27 @@ export class StateMachine {
 
     // XState 的 after.3000 自动把 completed → idle 的 context 更新完成(markAutoIdle);
     // 这里我们仍然维护 token 用于旧的 idleTimerToken 兼容语义(外部 session_idle 事件重入)。
+    // P3a:针对关键状态改变发布 domain events。订阅者可按需渲染 UI/记录遥测。
+    if (mappedState === 'awaiting_human') {
+      const detail =
+        typeof event.metadata?.detail === 'string' ? event.metadata.detail : '';
+      getDomainBus().emit(
+        SessionAwaitingHuman,
+        { sessionId: event.sessionId, detail, turn: result.state.turn },
+        'state-machine',
+      );
+    } else if (mappedState === 'error') {
+      const errorMessage =
+        typeof event.metadata?.errorMessage === 'string'
+          ? event.metadata.errorMessage
+          : 'unknown error';
+      getDomainBus().emit(
+        SessionErrored,
+        { sessionId: event.sessionId, errorMessage, phase: 'stream' },
+        'state-machine',
+      );
+    }
+
     if (mappedState === 'completed') {
       const timerToken = ++this.completedTimerSequence;
       this.completedTimerTokens.set(event.sessionId, timerToken);

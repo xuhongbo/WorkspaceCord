@@ -9,6 +9,7 @@
 
 import type { ProviderName } from '@workspacecord/core';
 import type { EventBus, EventType } from '@workspacecord/core';
+import { getDomainBus, GateCreated, GateResolved } from '@workspacecord/core';
 import { HumanGateRegistry, type HumanGateRecord } from './human-gate.ts';
 
 // ─── 类型 ────────────────────────────────────────────────────────────────────
@@ -275,7 +276,19 @@ export class GateService {
   // ─── Events ────────────────────────────────────────────────────────────────
 
   private emitCreated(gate: HumanGateRecord): void {
+    // 旧内部事件(向后兼容 gate-manager 测试 / GateManager 消费者)
     this.eventBus?.emit(GATE_CREATED_EVENT, { gate, gateId: gate.id }, 'gate-service');
+    // P3a:新的 domain event,订阅者读取只读 payload 而非完整 gate 对象
+    getDomainBus().emit(
+      GateCreated,
+      {
+        gateId: gate.id,
+        sessionId: gate.sessionId,
+        provider: gate.provider,
+        isBlocking: gate.isBlocking,
+      },
+      'gate-service',
+    );
   }
 
   private emitResolved(
@@ -286,6 +299,11 @@ export class GateService {
   ): void {
     this.eventBus?.emit(
       GATE_RESOLVED_EVENT,
+      { gateId, status, resolvedBy: source, resolvedAction: action },
+      'gate-service',
+    );
+    getDomainBus().emit(
+      GateResolved,
       { gateId, status, resolvedBy: source, resolvedAction: action },
       'gate-service',
     );
