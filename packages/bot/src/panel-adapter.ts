@@ -1,5 +1,8 @@
-// 实时作战面板集成适配器
-// 将新组件集成到现有 output-handler / session-executor / shell-handler
+// 实时作战面板集成适配器（facade）
+// 历史上承载了 500+ 行逻辑；此处作为薄外观，具体实现下沉到 ./panel/ 子模块：
+//   - panel/panel-state.ts        — 共享会话面板 Map
+//   - panel/panel-relocation.ts   — 面板重定位到频道底部
+//   - panel/panel-performance.ts  — 性能监控与失活清理
 
 import type { SessionChannel } from './discord-types.ts';
 import { StatusCardProjectionRenderer } from './discord/status-card-projection-renderer.ts';
@@ -7,7 +10,13 @@ import { SessionPanelComponent, renderDigest } from './discord/session-panel-com
 import { stateMachine, type StateMachine } from '@workspacecord/state';
 import { toPlatformEvent, mapPlatformEventToState } from '@workspacecord/state';
 import type { ProviderEvent } from '@workspacecord/providers';
-import { getSession, updateSession, getSessionPermissionSummary, setStatusCardBinding, setCurrentInteractionMessage } from '@workspacecord/engine/session-registry';
+import {
+  getSession,
+  updateSession,
+  getSessionPermissionSummary,
+  setStatusCardBinding,
+  setCurrentInteractionMessage,
+} from '@workspacecord/engine/session-registry';
 import { gateCoordinator } from '@workspacecord/state';
 import type {
   PlatformEvent,
@@ -16,25 +25,28 @@ import type {
   UnifiedState,
 } from '@workspacecord/state';
 import { performanceTracker } from './monitoring/performance-tracker.ts';
-import { clearPendingAnswers } from '@workspacecord/engine/output/answer-store';
-import { cleanupSessionDeliveryState } from './discord/delivery.ts';
-import { clearCodexHint } from './bot-services-helpers.ts';
-import { cleanupSessionAttachments } from './discord/attachment-inbox.ts';
-
-// 会话面板组件映射（替代原来的 5 个 Map）
-const sessionPanels = new Map<string, SessionPanelComponent>();
-const sessionInitializationPromises = new Map<string, Promise<void>>();
+import {
+  getPanel,
+  setPanel,
+  getInitializationPromise,
+  setInitializationPromise,
+  deleteInitializationPromise,
+} from './panel/panel-state.ts';
+import { relocateSessionPanelToBottom as doRelocate } from './panel/panel-relocation.ts';
+import {
+  createCleanupSessionPanel,
+  createCleanupInactiveSessions,
+  createGetPerformanceStats,
+  startPerformanceMonitoring as startPerfMonitoring,
+  stopPerformanceMonitoring,
+  generatePerformanceReport,
+} from './panel/panel-performance.ts';
 
 // 批量更新控制
 const BATCH_UPDATE_DELAY_MS = 500;
 const statusCardProjectionRenderer = new StatusCardProjectionRenderer();
 
-// 内存控制
-const SESSION_INACTIVE_TIMEOUT_MS = 3600000; // 1 小时
-
-function getPanel(sessionId: string): SessionPanelComponent | undefined {
-  return sessionPanels.get(sessionId);
-}
+// ─── Projection helpers ──────────────────────────────────────────────────────
 
 export function getSessionProjection(sessionId: string): SessionStateProjection {
   return stateMachine.getSnapshot(sessionId);
@@ -55,14 +67,11 @@ function ensureProjectionTurn(
 
 function cacheProjection(sessionId: string, projection: SessionStateProjection): void {
   const panel = getPanel(sessionId);
-  if (panel) {
-    panel.updateProjection(projection);
-  }
+  if (panel) panel.updateProjection(projection);
 }
 
 /** @deprecated Sync removed — StateMachine is now the single source of truth for turn/humanResolved. */
 function persistTurnState(sessionId: string, projection: SessionStateProjection): void {
-  // Only persist for crash-recovery; StateMachine is the authoritative runtime source
   updateSession(sessionId, {
     currentTurn: projection.turn,
     humanResolved: projection.humanResolved,
@@ -116,6 +125,8 @@ function resolveProviderSource(
   return session?.provider === 'codex' ? 'codex' : fallback;
 }
 
+// ─── Panel lifecycle ─────────────────────────────────────────────────────────
+
 export async function initializeSessionPanel(
   sessionId: string,
   channel: SessionChannel,
@@ -127,13 +138,12 @@ export async function initializeSessionPanel(
 ): Promise<void> {
   performanceTracker.startSessionDiscovery(sessionId);
 
-  const existing = getPanel(sessionId);
-  if (existing) {
+  if (getPanel(sessionId)) {
     performanceTracker.endSessionDiscovery(sessionId, { cached: true });
     return;
   }
 
-  const pendingInitialization = sessionInitializationPromises.get(sessionId);
+  const pendingInitialization = getInitializationPromise(sessionId);
   if (pendingInitialization) {
     await pendingInitialization;
     performanceTracker.endSessionDiscovery(sessionId, { cached: true });
@@ -153,7 +163,7 @@ export async function initializeSessionPanel(
       permissionsSummary: session ? getSessionPermissionSummary(session) : undefined,
     });
 
-    sessionPanels.set(sessionId, panel);
+    setPanel(sessionId, panel);
 
     setStatusCardBinding(sessionId, {
       messageId: panel.getMessageId() ?? options.statusCardMessageId,
@@ -167,12 +177,12 @@ export async function initializeSessionPanel(
     cacheProjection(sessionId, projection);
   })();
 
-  sessionInitializationPromises.set(sessionId, initialization);
+  setInitializationPromise(sessionId, initialization);
   try {
     await initialization;
     performanceTracker.endSessionDiscovery(sessionId, { cached: false });
   } finally {
-    sessionInitializationPromises.delete(sessionId);
+    deleteInitializationPromise(sessionId);
   }
 }
 
@@ -181,10 +191,10 @@ export async function registerExistingStatusCard(
   channel: SessionChannel,
   statusCardMessageId: string,
 ): Promise<void> {
-  await initializeSessionPanel(sessionId, channel, {
-    statusCardMessageId,
-  });
+  await initializeSessionPanel(sessionId, channel, { statusCardMessageId });
 }
+
+// ─── State updates ───────────────────────────────────────────────────────────
 
 export async function updateSessionState(
   sessionId: string,
@@ -225,13 +235,10 @@ export async function updateSessionState(
     return getSessionProjection(sessionId);
   }
 
-  // 获取旧状态用于去重比较
   const previousProjection = getSessionProjection(sessionId);
-
   const projection = stateMachine.applyPlatformEvent(platformEvent);
   cacheProjection(sessionId, projection);
 
-  // 状态未变时跳过渲染，避免不必要的 Discord API 调用
   const stateChanged =
     projection.state !== previousProjection.state ||
     projection.turn !== previousProjection.turn ||
@@ -246,6 +253,8 @@ export async function updateSessionState(
 
   return projection;
 }
+
+// ─── Result dispatch ─────────────────────────────────────────────────────────
 
 export async function handleResultEvent(
   sessionId: string,
@@ -275,8 +284,7 @@ export async function handleResultEvent(
     });
   } else if (!event.success) {
     const session = getSession(sessionId);
-    const failureText =
-      textContent.trim() || event.errors.join('\n').trim() || '任务失败';
+    const failureText = textContent.trim() || event.errors.join('\n').trim() || '任务失败';
     await panel.summaryHandler.sendTurnFailure(
       failureText,
       projection.turn,
@@ -307,6 +315,8 @@ export async function handleResultEvent(
   }
 }
 
+// ─── Awaiting human ──────────────────────────────────────────────────────────
+
 export async function handleAwaitingHuman(
   sessionId: string,
   detail: string,
@@ -318,9 +328,10 @@ export async function handleAwaitingHuman(
   if (!panel) return null;
   const session = getSession(sessionId);
 
-  // 交互卡限流：同一会话 10 秒内最多创建 1 个
   if (!panel.checkInteractionCooldown()) {
-    console.warn(`交互卡创建限流 (${sessionId}): 距上次创建仅 ${panel.getTimeSinceLastInteraction()}ms`);
+    console.warn(
+      `交互卡创建限流 (${sessionId}): 距上次创建仅 ${panel.getTimeSinceLastInteraction()}ms`,
+    );
     return null;
   }
 
@@ -366,90 +377,29 @@ export async function handleAwaitingHuman(
   return messageId;
 }
 
-const RELOCATION_TIMEOUT_MS = 15_000;
+// ─── Relocation ──────────────────────────────────────────────────────────────
 
 export async function relocateSessionPanelToBottom(
   sessionId: string,
   channel?: SessionChannel,
 ): Promise<void> {
-  let panel = getPanel(sessionId);
-  if (!panel && channel) {
-    const session = getSession(sessionId);
-    const initPromise = initializeSessionPanel(sessionId, channel, {
-      statusCardMessageId: session?.statusCardMessageId,
-      initialTurn: session?.currentTurn || 1,
-    });
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-      timeoutHandle = setTimeout(
-        () => reject(new Error('Panel initialization timeout')),
-        RELOCATION_TIMEOUT_MS,
-      );
-    });
-    try {
-      await Promise.race([initPromise, timeout]);
-    } finally {
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-    }
-    panel = getPanel(sessionId);
-  }
-  if (!panel) return;
-
-  let statusRelocation:
-    | {
-        oldMessageId?: string;
-        newMessageId: string;
-      }
-    | null = null;
-
-  try {
-    statusRelocation = await panel.statusCard.recreateAtBottom();
-  } catch (error) {
-    console.warn(`状态消息迁移失败 (${sessionId})：`, error);
-    return;
-  }
-
-  let digestRelocation = { oldMessageIds: [] as string[], newMessageIds: [] as string[] };
-  try {
-    digestRelocation = await panel.summaryHandler.relocateDigestToBottom();
-  } catch (error) {
-    console.warn(`摘要消息迁移失败 (${sessionId})：`, error);
-    if (statusRelocation?.oldMessageId && statusRelocation.newMessageId) {
-      panel.statusCard.adopt(statusRelocation.oldMessageId);
-      await panel.channel.messages.delete(statusRelocation.newMessageId).catch((e) => console.warn(`[PanelAdapter] Failed to cleanup new status card (${sessionId}): ${(e as Error).message}`));
-    }
-    return;
-  }
-
-  if (statusRelocation?.newMessageId) {
-    setStatusCardBinding(sessionId, {
-      messageId: statusRelocation.newMessageId,
-    });
-  }
-
-  if (statusRelocation?.oldMessageId) {
-    await panel.channel.messages.delete(statusRelocation.oldMessageId).catch((e) => console.warn(`[PanelAdapter] Failed to delete old status card (${sessionId}): ${(e as Error).message}`));
-  }
-  for (const messageId of digestRelocation.oldMessageIds) {
-    await panel.channel.messages.delete(messageId).catch((e) => console.warn(`[PanelAdapter] Failed to delete old digest (${sessionId}): ${(e as Error).message}`));
-  }
+  await doRelocate(sessionId, channel, (sid, ch, options) =>
+    initializeSessionPanel(sid, ch, options as Parameters<typeof initializeSessionPanel>[2]),
+  );
 }
 
+// ─── Digest queue ────────────────────────────────────────────────────────────
+
 export function queueDigest(sessionId: string, item: DigestItem): void {
-  const panel = getPanel(sessionId);
-  if (!panel) return;
-  panel.queueDigest(item);
+  getPanel(sessionId)?.queueDigest(item);
 }
 
 export function getDigestQueue(sessionId: string): DigestItem[] {
-  const panel = getPanel(sessionId);
-  if (!panel) return [];
-  return panel.getDigestQueue();
+  return getPanel(sessionId)?.getDigestQueue() ?? [];
 }
 
 export function clearDigestQueue(sessionId: string): void {
-  const panel = getPanel(sessionId);
-  if (panel) panel.clearDigestQueue();
+  getPanel(sessionId)?.clearDigestQueue();
 }
 
 export async function flushDigest(sessionId: string): Promise<void> {
@@ -463,7 +413,11 @@ export async function flushDigest(sessionId: string): Promise<void> {
   panel.clearDigestQueue();
 }
 
-export function mapPlatformEventTypeToUnifiedState(type: PlatformEvent['type']): UnifiedState | null {
+// ─── State-machine re-exports ────────────────────────────────────────────────
+
+export function mapPlatformEventTypeToUnifiedState(
+  type: PlatformEvent['type'],
+): UnifiedState | null {
   return mapPlatformEventToState(type);
 }
 
@@ -471,78 +425,14 @@ export function getStateMachine(): StateMachine {
   return stateMachine;
 }
 
-// 清理指定会话的所有面板状态（会话结束时调用）
-export function cleanupSessionPanel(sessionId: string): void {
-  const panel = getPanel(sessionId);
-  if (panel) panel.cleanup();
-  sessionPanels.delete(sessionId);
-  statusCardProjectionRenderer.clear(sessionId);
-  stateMachine.clearSession(sessionId);
-  clearPendingAnswers(sessionId);
-  cleanupSessionDeliveryState(sessionId);
-  clearCodexHint(sessionId);
-  cleanupSessionAttachments(sessionId).catch((e) => console.warn(`[PanelAdapter] Failed to cleanup attachments (${sessionId}): ${(e as Error).message}`));
+// ─── Cleanup & performance monitoring ────────────────────────────────────────
 
-  // Invalidate any pending human gates for this session
-  const activeGate = gateCoordinator.getActiveGateForSession(sessionId);
-  if (activeGate) {
-    gateCoordinator.resolveFromDiscord(activeGate.id, 'reject').catch((e) => console.warn(`[PanelAdapter] Failed to invalidate gate on cleanup (${sessionId}): ${(e as Error).message}`));
-  }
-}
-
-// 清理失活会话的状态投影缓存和组件
-export function cleanupInactiveSessions(): void {
-  const now = Date.now();
-  for (const [sessionId, panel] of sessionPanels) {
-    if (now - panel.getLastActivity() > SESSION_INACTIVE_TIMEOUT_MS) {
-      panel.cleanup();
-      sessionPanels.delete(sessionId);
-      statusCardProjectionRenderer.clear(sessionId);
-      console.log(`清理失活会话状态投影: ${sessionId}`);
-    }
-  }
-}
-
-// 获取性能统计
-export function getPerformanceStats(): {
-  discoveryLatency: ReturnType<typeof performanceTracker.getMetricStats>;
-  updateLatency: ReturnType<typeof performanceTracker.getMetricStats>;
-  activeSessions: number;
-  projectionCount: number;
-} {
-  let projectionCount = 0;
-  for (const panel of sessionPanels.values()) {
-    if (panel.getCachedProjection() !== null) projectionCount++;
-  }
-  return {
-    discoveryLatency: performanceTracker.getMetricStats('session_discovery_latency'),
-    updateLatency: performanceTracker.getMetricStats('state_update_latency'),
-    activeSessions: sessionPanels.size,
-    projectionCount,
-  };
-}
-
-// 定期清理和性能快照
-let cleanupInterval: NodeJS.Timeout | null = null;
+export const cleanupSessionPanel = createCleanupSessionPanel(statusCardProjectionRenderer);
+export const cleanupInactiveSessions = createCleanupInactiveSessions(statusCardProjectionRenderer);
+export const getPerformanceStats = createGetPerformanceStats();
 
 export function startPerformanceMonitoring(): void {
-  if (cleanupInterval) return;
-
-  cleanupInterval = setInterval(() => {
-    cleanupInactiveSessions();
-    performanceTracker.takeSnapshot();
-    performanceTracker.cleanup();
-  }, 60000); // 每分钟执行一次
+  startPerfMonitoring(() => cleanupInactiveSessions());
 }
 
-export function stopPerformanceMonitoring(): void {
-  if (cleanupInterval) {
-    clearInterval(cleanupInterval);
-    cleanupInterval = null;
-  }
-}
-
-// 生成性能报告
-export function generatePerformanceReport(): string {
-  return performanceTracker.generateReport();
-}
+export { stopPerformanceMonitoring, generatePerformanceReport };
