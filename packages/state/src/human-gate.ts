@@ -103,9 +103,14 @@ export interface CASUpdateResult {
 
 // ─── 门控注册表 ───────────────────────────────────────────────────────────────
 
+const GATE_SAVE_DEBOUNCE_MS = 1000;
+
 export class HumanGateRegistry {
   private gates: Map<string, HumanGateRecord> = new Map();
   private store: Store<HumanGateRecord[]>;
+  private saveQueue: Promise<void> = Promise.resolve();
+  private saveTimer: NodeJS.Timeout | null = null;
+  private pendingSave = false;
 
   constructor() {
     this.store = new Store<HumanGateRecord[]>('gates.json');
@@ -133,10 +138,49 @@ export class HumanGateRegistry {
     }
   }
 
-  private async _save(): Promise<void> {
-    return this.store.write(Array.from(this.gates.values())).catch((err: unknown) => {
-      console.error('[HumanGateRegistry] Failed to persist gates:', err);
-    });
+  /**
+   * 调度一次持久化写入（1s 内的多次 mutation 会被合并为单次磁盘写）。
+   * 如果已经有排队中的写入,不重复调度。
+   * 失败时仅记录,永不抛出(避免 mutation 调用链被持久化错误打断)。
+   */
+  private _save(): void {
+    this.pendingSave = true;
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      if (!this.pendingSave) return;
+      this.pendingSave = false;
+      const snapshot = Array.from(this.gates.values());
+      this.saveQueue = this.saveQueue
+        .catch(() => {})
+        .then(() =>
+          this.store.write(snapshot).catch((err: unknown) => {
+            console.error('[HumanGateRegistry] Failed to persist gates:', err);
+          }),
+        );
+    }, GATE_SAVE_DEBOUNCE_MS);
+    // 不持有事件循环
+    this.saveTimer.unref?.();
+  }
+
+  /** 立即 flush,用于测试或关键节点(如进程退出前)。 */
+  async flushSaves(): Promise<void> {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    if (this.pendingSave) {
+      this.pendingSave = false;
+      const snapshot = Array.from(this.gates.values());
+      this.saveQueue = this.saveQueue
+        .catch(() => {})
+        .then(() =>
+          this.store.write(snapshot).catch((err: unknown) => {
+            console.error('[HumanGateRegistry] Failed to persist gates:', err);
+          }),
+        );
+    }
+    await this.saveQueue;
   }
 
   // 创建新门控

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { GateCoordinator } from '../src/gate-coordinator.ts';
+import { GateService as GateCoordinator } from '../src/gate-service.ts';
 import { HumanGateRegistry } from '../src/human-gate.ts';
 
 vi.mock('@workspacecord/core', async (importOriginal) => {
@@ -155,7 +155,10 @@ describe('GateCoordinator', () => {
       });
 
       const result = coordinator.invalidateAllOnRestart();
-      expect(result).toHaveLength(0); // no discordMessageId bound
+      // 统一后 invalidateAllOnRestart 返回所有 pending gate 的摘要
+      // （由调用方自行决定是否有 discordMessageId 要处理）
+      expect(result).toHaveLength(2);
+      expect(result.every((g) => g.discordMessageId === undefined)).toBe(true);
 
       expect(registry.getStats().pending).toBe(0);
       expect(registry.getStats().invalidated).toBe(2);

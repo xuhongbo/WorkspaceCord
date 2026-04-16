@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { GateManager } from '../src/gate-manager.ts';
+import { GateService as GateManager } from '../src/gate-service.ts';
 import { HumanGateRegistry } from '../src/human-gate.ts';
 import { StateLookup } from '../src/state-lookup.ts';
 import { EventBus } from '@workspacecord/core';
