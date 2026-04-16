@@ -11,6 +11,7 @@ import type {
   ProviderName,
 } from '@workspacecord/core';
 import { config } from '@workspacecord/core';
+import { stateMachine } from '@workspacecord/state';
 import { getOutputPort } from './output-port.ts';
 import {
   loadPersistedSessions,
@@ -115,6 +116,21 @@ export async function loadSessions(): Promise<void> {
       sessionsByCategory.set(s.categoryId, new Set());
     }
     sessionsByCategory.get(s.categoryId)!.add(s.channelId);
+
+    // P2b:从磁盘恢复后把 turn/humanResolved 灌入 StateMachine,使其成为 in-memory 权威源。
+    // 调用前临时关闭 persister,避免刚读完又回写一次。
+    if ((s.currentTurn ?? 0) > 0 || (s.humanResolved ?? false)) {
+      stateMachine.transition(
+        s.id,
+        'session_restored',
+        {},
+        {
+          turn: s.currentTurn ?? 0,
+          humanResolved: s.humanResolved ?? false,
+          updatedAt: Date.now(),
+        },
+      );
+    }
   }
 
   if (cleaned) {
