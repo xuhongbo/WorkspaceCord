@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@workspacecord/core": "workspace:*",
-    "@workspacecord/providers": "workspace:*"
+    "@workspacecord/providers": "workspace:*",
+    "xstate": "^5.30.0"
   }
 }

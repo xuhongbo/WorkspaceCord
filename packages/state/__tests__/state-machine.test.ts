@@ -280,7 +280,8 @@ describe('StateMachine', () => {
 
       expect(snap.state).toBe('completed');
       expect(sm.getState('sess-1').lifecycle).toBe('completed');
-      expect((sm as any).completedTimers.size).toBe(1);
+      // P2 重构后:定时器由 XState after.3000 内置管理,wrapper 仅保留 token 用于幂等
+      expect((sm as unknown as { completedTimerTokens: Map<string, number> }).completedTimerTokens.size).toBe(1);
     });
 
     it('maps errored and sets lifecycle error', () => {

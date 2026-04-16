@@ -25,7 +25,7 @@ import {
   releaseCleanupLock,
 } from '@workspacecord/engine/agent-cleanup-request-store';
 import { archiveSessionsById } from './session-housekeeping.ts';
-import { gateCoordinator } from '@workspacecord/state';
+import { gateCoordinator, stateMachine } from '@workspacecord/state';
 type EditableRow = ActionRowBuilder<ButtonBuilder | StringSelectMenuBuilder>;
 type ComponentLike = {
   customId?: string;
@@ -43,8 +43,8 @@ export async function resolveAwaitingHumanIfNeeded(sessionId: string): Promise<v
     return;
   }
 
+  // P2:humanResolved 经 StateMachine(persister 会同步到 session),这里只清 interaction 消息 ID
   updateSession(sessionId, {
-    humanResolved: true,
     currentInteractionMessageId: undefined,
   });
   await updateSessionState(sessionId, {
@@ -143,8 +143,9 @@ export async function handleAwaitingHumanButton(interaction: ButtonInteraction):
     return true;
   }
 
+  // P2:humanResolved 由 StateMachine.setHumanResolved → persister 回写
+  stateMachine.setHumanResolved(sessionId, true);
   updateSession(sessionId, {
-    humanResolved: true,
     currentInteractionMessageId: undefined,
     activeHumanGateId: undefined,
   });

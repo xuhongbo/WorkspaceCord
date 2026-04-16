@@ -70,13 +70,17 @@ function cacheProjection(sessionId: string, projection: SessionStateProjection):
   if (panel) panel.updateProjection(projection);
 }
 
-/** @deprecated Sync removed — StateMachine is now the single source of truth for turn/humanResolved. */
-function persistTurnState(sessionId: string, projection: SessionStateProjection): void {
+/**
+ * Persister 回调注册:P2 后 StateMachine 是 turn/humanResolved 的 in-memory 权威源,
+ * 这里只负责把变更写回 ThreadSession(用于崩溃恢复)。
+ * 启动时注册一次,避免每次 transition 都要 panel-adapter 手动 persist。
+ */
+stateMachine.registerTurnStatePersister((sessionId, projection) => {
   updateSession(sessionId, {
     currentTurn: projection.turn,
     humanResolved: projection.humanResolved,
   });
-}
+});
 
 function createStatusCardProjectionContext(sessionId: string) {
   const panel = getPanel(sessionId);
@@ -249,7 +253,7 @@ export async function updateSessionState(
   } else {
     performanceTracker.endStateUpdate(updateKey, { skipped: true });
   }
-  persistTurnState(sessionId, projection);
+  // P2:StateMachine 内部已通过 persister 回调同步 turn/humanResolved,此处不再手动 persist
 
   return projection;
 }
@@ -309,7 +313,7 @@ export async function handleResultEvent(
       attachments,
     );
     const projectionAfterTurn = stateMachine.advanceTurnToIdle(sessionId);
-    persistTurnState(sessionId, projectionAfterTurn);
+    // P2:StateMachine persister 已负责同步 turn/humanResolved
     await renderProjectionToStatusCard(sessionId, projectionAfterTurn);
     cacheProjection(sessionId, projectionAfterTurn);
   }
