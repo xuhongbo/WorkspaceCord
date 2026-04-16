@@ -47,6 +47,13 @@ export {
   parseProject,
   parseRegisteredProject,
 } from './persistence-schema.ts';
+export {
+  JsonFileRepository,
+  type Repository,
+  type QueryOptions,
+  type RepositoryEntity,
+  type JsonRepoOptions,
+} from './repository/index.ts';
 export { EventBus } from './event-bus.ts';
 export * from './events.ts';
 export { createLogger, getLogger, type Logger } from './logger.ts';
