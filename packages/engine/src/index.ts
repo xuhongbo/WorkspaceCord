@@ -77,6 +77,14 @@ export { getExpandableContent } from './output/expandable-store.ts';
 // Session sub-modules
 export { resolveEffectiveClaudePermissionMode, resolveEffectiveCodexOptions } from './session/permissions.ts';
 
+// SessionContext supervisor (P5)
+export {
+  type SessionContext,
+  sessionSupervisor,
+  getSessionContext,
+  requireSessionContext,
+} from './session-context.ts';
+
 // MonitorRun persistence (P3b)
 export {
   type MonitorRun,
