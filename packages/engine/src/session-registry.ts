@@ -572,11 +572,12 @@ export function abortSessionWithReason(sessionId: string, reason: 'user' | 'watc
 
   if (controller) {
     controller.abort();
+    // 无论 isGenerating 是否为 true，一旦中止即移除引用，防止悬挂的 controller
+    sessionControllers.delete(session.id);
   }
 
   if (session.isGenerating) {
     session.isGenerating = false;
-    sessionControllers.delete(session.id);
     debouncedSave();
     return true;
   }

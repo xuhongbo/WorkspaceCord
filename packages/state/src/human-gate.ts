@@ -5,6 +5,62 @@
 import { Store } from '@workspacecord/core';
 import type { ProviderName } from '@workspacecord/core';
 
+const HUMAN_GATE_TYPES = new Set<HumanGateType>(['binary_approval', 'text_question', 'notification']);
+const HUMAN_GATE_STATUSES = new Set<HumanGateStatus>([
+  'pending',
+  'approved',
+  'rejected',
+  'expired',
+  'invalidated',
+]);
+const HUMAN_GATE_RESOLVERS = new Set<HumanGateResolveSource>(['terminal', 'discord', 'timeout', 'restart']);
+
+function parseHumanGateRecord(raw: unknown): HumanGateRecord | undefined {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  if (
+    typeof r.id !== 'string' ||
+    typeof r.sessionId !== 'string' ||
+    typeof r.provider !== 'string' ||
+    (r.provider !== 'claude' && r.provider !== 'codex') ||
+    typeof r.type !== 'string' ||
+    !HUMAN_GATE_TYPES.has(r.type as HumanGateType) ||
+    typeof r.status !== 'string' ||
+    !HUMAN_GATE_STATUSES.has(r.status as HumanGateStatus) ||
+    typeof r.summary !== 'string' ||
+    typeof r.createdAt !== 'number' ||
+    typeof r.turn !== 'number'
+  ) {
+    return undefined;
+  }
+  const record: HumanGateRecord = {
+    id: r.id,
+    version: typeof r.version === 'number' && Number.isFinite(r.version) ? r.version : 1,
+    sessionId: r.sessionId,
+    provider: r.provider,
+    type: r.type as HumanGateType,
+    isBlocking: typeof r.isBlocking === 'boolean' ? r.isBlocking : true,
+    supportsRemoteDecision:
+      typeof r.supportsRemoteDecision === 'boolean' ? r.supportsRemoteDecision : true,
+    summary: r.summary,
+    createdAt: r.createdAt,
+    status: r.status as HumanGateStatus,
+    turn: r.turn,
+  };
+  if (typeof r.detail === 'string') record.detail = r.detail;
+  if (typeof r.relatedCommand === 'string') record.relatedCommand = r.relatedCommand;
+  if (typeof r.resolvedAt === 'number') record.resolvedAt = r.resolvedAt;
+  if (typeof r.resolvedBy === 'string' && HUMAN_GATE_RESOLVERS.has(r.resolvedBy as HumanGateResolveSource)) {
+    record.resolvedBy = r.resolvedBy as HumanGateResolveSource;
+  }
+  if (r.resolvedAction === 'approve' || r.resolvedAction === 'reject' || r.resolvedAction === 'answer') {
+    record.resolvedAction = r.resolvedAction;
+  }
+  if (typeof r.answerText === 'string') record.answerText = r.answerText;
+  if (typeof r.discordMessageId === 'string') record.discordMessageId = r.discordMessageId;
+  return record;
+}
+
 // ─── 门控类型与状态 ───────────────────────────────────────────────────────────
 
 export type HumanGateType = 'binary_approval' | 'text_question' | 'notification';
@@ -59,10 +115,18 @@ export class HumanGateRegistry {
   async init(): Promise<void> {
     try {
       const data = await this.store.read();
-      if (data && Array.isArray(data)) {
-        for (const record of data) {
+      if (!data || !Array.isArray(data)) return;
+      let dropped = 0;
+      for (const raw of data) {
+        const record = parseHumanGateRecord(raw);
+        if (record) {
           this.gates.set(record.id, record);
+        } else {
+          dropped++;
         }
+      }
+      if (dropped > 0) {
+        console.warn(`[HumanGateRegistry] Dropped ${dropped} invalid gate record(s) during load`);
       }
     } catch (err) {
       console.error('[HumanGateRegistry] Failed to load persisted gates:', err);

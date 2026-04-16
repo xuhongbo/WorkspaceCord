@@ -1,7 +1,42 @@
 import Configstore from 'configstore';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+
+// 外部配置文件最大允许大小（超过视为异常/受损文件，拒绝读入以保护启动流程）
+const EXTERNAL_CONFIG_MAX_BYTES = 1 * 1024 * 1024;
+// 外部配置缓存时效：5 秒内重复访问命中缓存，避免热路径上重复 sync 读盘
+const EXTERNAL_CONFIG_TTL_MS = 5_000;
+
+interface CachedJson {
+  at: number;
+  value: Record<string, unknown> | null;
+}
+const externalConfigCache = new Map<string, CachedJson>();
+
+function readExternalJson(path: string): Record<string, unknown> | null {
+  const now = Date.now();
+  const cached = externalConfigCache.get(path);
+  if (cached && now - cached.at < EXTERNAL_CONFIG_TTL_MS) {
+    return cached.value;
+  }
+  let value: Record<string, unknown> | null = null;
+  try {
+    if (existsSync(path)) {
+      const { size } = statSync(path);
+      if (size <= EXTERNAL_CONFIG_MAX_BYTES) {
+        const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          value = parsed as Record<string, unknown>;
+        }
+      }
+    }
+  } catch {
+    value = null;
+  }
+  externalConfigCache.set(path, { at: now, value });
+  return value;
+}
 
 export const SENSITIVE_KEYS = new Set(['DISCORD_TOKEN', 'ANTHROPIC_API_KEY', 'CODEX_API_KEY']);
 
@@ -235,22 +270,15 @@ export function maskSensitive(key: string, value: string): string {
  */
 function readAnthropicConfig(key: string): string | undefined {
   const path = join(homedir(), '.claude', 'settings.json');
-
-  try {
-    if (existsSync(path)) {
-      const content = readFileSync(path, 'utf-8');
-      const config = JSON.parse(content);
-      const env = config.env || {};
-
-      if (key === 'ANTHROPIC_API_KEY') {
-        return env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY;
-      }
-      if (key === 'ANTHROPIC_BASE_URL') {
-        return env.ANTHROPIC_BASE_URL;
-      }
-    }
-  } catch {
-    // ignore parse errors
+  const config = readExternalJson(path);
+  if (!config) return undefined;
+  const env = (config.env && typeof config.env === 'object' ? config.env : {}) as Record<string, unknown>;
+  if (key === 'ANTHROPIC_API_KEY') {
+    const token = env.ANTHROPIC_AUTH_TOKEN ?? env.ANTHROPIC_API_KEY;
+    return typeof token === 'string' ? token : undefined;
+  }
+  if (key === 'ANTHROPIC_BASE_URL') {
+    return typeof env.ANTHROPIC_BASE_URL === 'string' ? env.ANTHROPIC_BASE_URL : undefined;
   }
   return undefined;
 }
@@ -261,19 +289,13 @@ function readAnthropicConfig(key: string): string | undefined {
  */
 function readCodexConfig(key: string): string | undefined {
   const path = join(homedir(), '.codex', 'config.json');
-  try {
-    if (existsSync(path)) {
-      const content = readFileSync(path, 'utf-8');
-      const config = JSON.parse(content);
-      if (key === 'CODEX_API_KEY' && config.api_key) {
-        return config.api_key;
-      }
-      if (key === 'CODEX_BASE_URL' && config.base_url) {
-        return config.base_url;
-      }
-    }
-  } catch {
-    // ignore parse errors
+  const config = readExternalJson(path);
+  if (!config) return undefined;
+  if (key === 'CODEX_API_KEY' && typeof config.api_key === 'string') {
+    return config.api_key;
+  }
+  if (key === 'CODEX_BASE_URL' && typeof config.base_url === 'string') {
+    return config.base_url;
   }
   return undefined;
 }

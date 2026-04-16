@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
-import { Store } from '@workspacecord/core';
-import type { McpServer } from '@workspacecord/core';
+import { Store, parseRegisteredProject, formatIssues } from '@workspacecord/core';
+import type { McpServer, SchemaIssue } from '@workspacecord/core';
 
 export interface RegisteredProject {
   id: string;
@@ -18,7 +18,7 @@ export interface RegisteredProject {
   updatedAt: number;
 }
 
-const store = new Store<RegisteredProject[]>('projects.json');
+const store = new Store<unknown>('projects.json');
 let projects: RegisteredProject[] = [];
 
 function normalizePath(path: string): string {
@@ -26,11 +26,34 @@ function normalizePath(path: string): string {
 }
 
 async function saveRegistry(): Promise<void> {
-  await store.write(projects);
+  await (store as Store<RegisteredProject[]>).write(projects);
 }
 
 export async function loadRegistry(): Promise<void> {
-  projects = (await store.read()) || [];
+  const raw = await store.read();
+  if (raw === null || raw === undefined) {
+    projects = [];
+    return;
+  }
+  if (!Array.isArray(raw)) {
+    console.warn(
+      `[project-registry] projects.json is not an array (got ${typeof raw}) — starting with empty state`,
+    );
+    projects = [];
+    return;
+  }
+  const issues: SchemaIssue[] = [];
+  const parsed: RegisteredProject[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const project = parseRegisteredProject(raw[i], i, issues);
+    if (project) parsed.push(project);
+  }
+  if (issues.length > 0) {
+    console.warn(
+      `[project-registry] Dropped ${raw.length - parsed.length}/${raw.length} invalid project record(s):\n${formatIssues(issues)}`,
+    );
+  }
+  projects = parsed;
 }
 
 export function getProjectByName(name: string): RegisteredProject | undefined {

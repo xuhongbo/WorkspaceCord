@@ -34,6 +34,19 @@ export {
   formatCost,
 } from './utils.ts';
 export { Store, getDataDir, _setDataDirForTest } from './persistence.ts';
+export {
+  s,
+  parseList,
+  formatIssues,
+  type FieldSpec,
+  type SchemaIssue,
+  type SchemaResult,
+} from './schema.ts';
+export {
+  parseSessionPersistData,
+  parseProject,
+  parseRegisteredProject,
+} from './persistence-schema.ts';
 export { EventBus } from './event-bus.ts';
 export * from './events.ts';
 export { createLogger, getLogger, type Logger } from './logger.ts';

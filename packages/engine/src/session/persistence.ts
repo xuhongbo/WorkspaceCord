@@ -1,18 +1,37 @@
 // Session persistence — extracted from session-registry.ts
 // Handles reading/writing session data to disk via Store
 
-import { Store } from '@workspacecord/core';
+import { Store, parseSessionPersistData, formatIssues } from '@workspacecord/core';
+import type { SchemaIssue } from '@workspacecord/core';
 import type { ThreadSession, SessionPersistData } from '@workspacecord/core';
 
-const sessionStore = new Store<SessionPersistData[]>('sessions.json');
+const sessionStore = new Store<unknown>('sessions.json');
 
 let saveQueue: Promise<void> = Promise.resolve();
 let saveTimer: NodeJS.Timeout | null = null;
 
 /** Read persisted sessions from disk (raw data, no index building). */
 export async function loadPersistedSessions(): Promise<SessionPersistData[]> {
-  const data = await sessionStore.read();
-  return data ?? [];
+  const raw = await sessionStore.read();
+  if (raw === null || raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    console.warn(
+      `[session-manager] sessions.json is not an array (got ${typeof raw}) — starting with empty state`,
+    );
+    return [];
+  }
+  const issues: SchemaIssue[] = [];
+  const sessions: SessionPersistData[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const parsed = parseSessionPersistData(raw[i], i, issues);
+    if (parsed) sessions.push(parsed);
+  }
+  if (issues.length > 0) {
+    console.warn(
+      `[session-manager] Dropped ${raw.length - sessions.length}/${raw.length} invalid session record(s):\n${formatIssues(issues)}`,
+    );
+  }
+  return sessions;
 }
 
 function serializeSessions(sessions: Map<string, ThreadSession>): SessionPersistData[] {
@@ -66,7 +85,7 @@ function serializeSessions(sessions: Map<string, ThreadSession>): SessionPersist
 
 async function persistNow(sessions: Map<string, ThreadSession>): Promise<void> {
   const data = serializeSessions(sessions);
-  await sessionStore.write(data);
+  await (sessionStore as Store<SessionPersistData[]>).write(data);
 }
 
 /** Save all sessions to disk (queued to avoid concurrent writes). */
