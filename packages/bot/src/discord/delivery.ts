@@ -69,6 +69,46 @@ export async function sendAckReaction(
   }
 }
 
+/**
+ * Discord 发送出现 429 (rate limit) 时的最大重试次数。
+ * discord.js 自己会处理大多数 bucket 限流，这里是对少数穿透到 application 层的场景做兜底。
+ */
+const SEND_MAX_RETRIES = 3;
+
+function isDiscordRateLimitError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: unknown; status?: unknown; httpStatus?: unknown };
+  return e.code === 429 || e.status === 429 || e.httpStatus === 429;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendWithBackoff(
+  channel: ReplyCapableChannel,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  let attempt = 0;
+  // 基础退避 250ms → 500 → 1000，最多尝试 SEND_MAX_RETRIES 次
+  while (true) {
+    try {
+      const message = await channel.send(payload);
+      return message.id;
+    } catch (error) {
+      if (!isDiscordRateLimitError(error) || attempt >= SEND_MAX_RETRIES) {
+        throw error;
+      }
+      const delayMs = 250 * 2 ** attempt;
+      console.warn(
+        `[Delivery] Discord rate-limited (attempt ${attempt + 1}/${SEND_MAX_RETRIES}), retrying in ${delayMs}ms`,
+      );
+      await sleep(delayMs);
+      attempt++;
+    }
+  }
+}
+
 async function sendChunk(
   channel: ReplyCapableChannel,
   chunk: string,
@@ -81,8 +121,7 @@ async function sendChunk(
   }
 
   try {
-    const message = await channel.send(payload);
-    return message.id;
+    return await sendWithBackoff(channel, payload);
   } catch (error) {
     if (!options.replyToMessageId) {
       throw error;
@@ -90,8 +129,7 @@ async function sendChunk(
 
     const fallbackPayload: Record<string, unknown> = { content: chunk };
     if (options.files?.length) fallbackPayload.files = options.files;
-    const fallbackMessage = await channel.send(fallbackPayload);
-    return fallbackMessage.id;
+    return sendWithBackoff(channel, fallbackPayload);
   }
 }
 
