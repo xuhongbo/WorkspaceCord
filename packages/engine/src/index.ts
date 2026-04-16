@@ -76,3 +76,15 @@ export { getExpandableContent } from './output/expandable-store.ts';
 
 // Session sub-modules
 export { resolveEffectiveClaudePermissionMode, resolveEffectiveCodexOptions } from './session/permissions.ts';
+
+// MonitorRun persistence (P3b)
+export {
+  type MonitorRun,
+  beginMonitorRun,
+  checkpointMonitorRun,
+  finishMonitorRun,
+  listRunningMonitorRuns,
+  listMonitorRunsForSession,
+  getMonitorRun,
+  reconcileMonitorRunsOnStartup,
+} from './executor/monitor-run-store.ts';
