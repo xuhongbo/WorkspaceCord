@@ -86,6 +86,15 @@ export const config = {
   codexNetworkAccessEnabled: optionalBool('CODEX_NETWORK_ACCESS_ENABLED', true),
   codexWebSearchMode: optionalEnum('CODEX_WEB_SEARCH', 'live', ['disabled', 'cached', 'live']),
   codexReasoningEffort: optionalEnum('CODEX_REASONING_EFFORT', '', ['', 'minimal', 'low', 'medium', 'high', 'xhigh']),
+  /**
+   * Reasoning effort applied to Monitor-mode evaluation passes (across both providers).
+   * - Codex: forwarded to `modelReasoningEffort` on the monitor thread.
+   * - Claude: if set to 'high' or 'xhigh', switches the monitor to `monitorClaudeModel` (default: claude-opus-4-7).
+   * Empty string = inherit from the worker settings.
+   */
+  monitorReasoningEffort: optionalEnum('MONITOR_REASONING_EFFORT', 'high', ['', 'minimal', 'low', 'medium', 'high', 'xhigh']),
+  /** Claude model used for monitor passes when `monitorReasoningEffort` is high/xhigh. */
+  monitorClaudeModel: optional('MONITOR_CLAUDE_MODEL', 'claude-opus-4-7'),
   codexBaseUrl: optional('CODEX_BASE_URL', ''),
   codexApiKey: optional('CODEX_API_KEY', ''),
   codexPath: optional('CODEX_PATH', ''),

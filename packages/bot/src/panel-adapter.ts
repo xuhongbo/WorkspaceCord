@@ -6,6 +6,7 @@
 
 import type { SessionChannel } from './discord-types.ts';
 import { StatusCardProjectionRenderer } from './discord/status-card-projection-renderer.ts';
+import { formatTerminalReason } from './output/event-handlers.ts';
 import { SessionPanelComponent, renderDigest } from './discord/session-panel-component.ts';
 import { stateMachine, type StateMachine } from '@workspacecord/state';
 import { toPlatformEvent, mapPlatformEventToState } from '@workspacecord/state';
@@ -247,8 +248,13 @@ export async function updateSessionState(
     projection.state !== previousProjection.state ||
     projection.turn !== previousProjection.turn ||
     projection.phase !== previousProjection.phase;
+  const contextChanged =
+    projection.todoList !== previousProjection.todoList ||
+    projection.recentPermissionDenials !== previousProjection.recentPermissionDenials ||
+    projection.batchApprovalMode !== previousProjection.batchApprovalMode ||
+    projection.pendingApprovals !== previousProjection.pendingApprovals;
 
-  if (stateChanged) {
+  if (stateChanged || contextChanged) {
     await scheduleProjectionRender(sessionId, projection, updateKey);
   } else {
     performanceTracker.endStateUpdate(updateKey, { skipped: true });
@@ -289,8 +295,13 @@ export async function handleResultEvent(
   } else if (!event.success) {
     const session = getSessionView(sessionId);
     const failureText = textContent.trim() || event.errors.join('\n').trim() || '任务失败';
+    const reasonLabel =
+      event.terminalReason && event.terminalReason !== 'completed'
+        ? formatTerminalReason(event.terminalReason, false)
+        : null;
+    const withReason = reasonLabel ? `（${reasonLabel}）\n${failureText}` : failureText;
     await panel.summaryHandler.sendTurnFailure(
-      failureText,
+      withReason,
       projection.turn,
       session?.lastInboundMessageId,
       attachments,

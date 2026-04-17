@@ -1,7 +1,18 @@
 import { writeFileSync, readFileSync, unlinkSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { Provider, ProviderEvent, ProviderSessionOptions, ContentBlock } from './types.ts';
+import type { Provider, ProviderEvent, ProviderSessionOptions, ContentBlock, TerminalReason } from './types.ts';
+
+function inferCodexTerminalReason(errorText: string): TerminalReason {
+  const lower = errorText.toLowerCase();
+  if (/max.?turns?|turn limit|iteration limit/.test(lower)) return 'max_turns';
+  if (/rate.?limit|429|too many requests|quota/.test(lower)) return 'rate_limited';
+  if (/context|token limit|too long|input size/.test(lower)) return 'context_too_long';
+  if (/abort|cancel/.test(lower)) return 'aborted';
+  if (/image/.test(lower) && /fail|error|invalid/.test(lower)) return 'image_error';
+  if (/model|provider/.test(lower) && /error|failed/.test(lower)) return 'model_error';
+  return 'error';
+}
 import {
   buildCodexOptions,
   buildThreadOptions,
@@ -355,20 +366,24 @@ export class CodexProvider implements Provider {
               durationMs: Date.now() - startTime,
               numTurns: 1,
               errors: [],
+              terminalReason: abortController.signal.aborted ? 'aborted' : 'completed',
             };
             break;
           }
 
-          case 'turn.failed':
+          case 'turn.failed': {
+            const errText = event.error || 'Turn failed';
             yield {
               type: 'result',
               success: false,
               costUsd: 0,
               durationMs: Date.now() - startTime,
               numTurns: 1,
-              errors: [event.error || 'Turn failed'],
+              errors: [errText],
+              terminalReason: abortController.signal.aborted ? 'aborted' : inferCodexTerminalReason(errText),
             };
             break;
+          }
 
           case 'error':
             yield { type: 'error', message: event.message || 'Unknown error' };

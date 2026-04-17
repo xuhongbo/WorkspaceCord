@@ -1,5 +1,34 @@
 import { query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { Provider, ProviderEvent, ProviderSessionOptions, ContentBlock } from './types.ts';
+import type { Provider, ProviderEvent, ProviderSessionOptions, ContentBlock, TerminalReason } from './types.ts';
+
+function mapClaudeTerminalReason(raw: string | undefined): TerminalReason | undefined {
+  if (!raw) return undefined;
+  switch (raw) {
+    case 'completed':
+      return 'completed';
+    case 'max_turns':
+      return 'max_turns';
+    case 'blocking_limit':
+    case 'rapid_refill_breaker':
+      return 'rate_limited';
+    case 'prompt_too_long':
+      return 'context_too_long';
+    case 'image_error':
+      return 'image_error';
+    case 'model_error':
+      return 'model_error';
+    case 'aborted_streaming':
+    case 'aborted_tools':
+      return 'aborted';
+    case 'stop_hook_prevented':
+    case 'hook_stopped':
+      return 'hook_stopped';
+    case 'tool_deferred':
+      return 'tool_deferred';
+    default:
+      return 'error';
+  }
+}
 
 const TASK_TOOLS = new Set(['TaskCreate', 'TaskUpdate', 'TaskList', 'TaskGet']);
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp']);
@@ -28,6 +57,7 @@ type ClaudeResultMessage = SDKMessage & {
   duration_ms?: number;
   num_turns?: number;
   errors?: string[];
+  terminal_reason?: string;
 };
 
 function extractImagePath(toolName: string, toolInput: string): string | null {
@@ -238,13 +268,14 @@ export class ClaudeProvider implements Provider {
         let resultText = '';
         const toolName = '';
         if (Array.isArray(content)) {
-          for (const block of content) {
+          for (const rawBlock of content) {
+            const block = rawBlock as { type?: string; content?: unknown };
             if (block.type === 'tool_result' && block.content) {
               if (typeof block.content === 'string') {
                 resultText += block.content;
               } else if (Array.isArray(block.content)) {
-                for (const sub of block.content) {
-                  if (sub.type === 'text') resultText += sub.text;
+                for (const sub of block.content as Array<{ type?: string; text?: string }>) {
+                  if (sub.type === 'text' && sub.text) resultText += sub.text;
                 }
               }
             }
@@ -302,6 +333,7 @@ export class ClaudeProvider implements Provider {
           durationMs: r.duration_ms ?? 0,
           numTurns: r.num_turns ?? 0,
           errors: r.errors ?? [],
+          terminalReason: mapClaudeTerminalReason(r.terminal_reason) ?? (r.subtype === 'success' ? 'completed' : 'error'),
         };
       }
     }

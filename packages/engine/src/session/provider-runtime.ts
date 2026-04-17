@@ -15,23 +15,31 @@ import {
 import { getSessionContext } from '../session-context.ts';
 import { buildMonitorSystemPromptParts, buildSystemPromptParts } from './prompt-assembler.ts';
 
-function buildProviderOptions(
+export function buildProviderOptions(
   session: ThreadSession,
   controller: AbortController,
   isMonitor = false,
   runtimeOverrides: { canUseTool?: ProviderCanUseTool } = {},
 ): ProviderSessionOptions {
   const effectiveCodex = resolveEffectiveCodexOptions(session);
+  const monitorEffort = isMonitor ? config.monitorReasoningEffort || undefined : undefined;
+
+  // Monitor pass on Claude with high/xhigh effort → use the stronger judge model
+  const useMonitorJudgeModel =
+    isMonitor &&
+    session.provider === 'claude' &&
+    (monitorEffort === 'high' || monitorEffort === 'xhigh');
+  const model = useMonitorJudgeModel ? config.monitorClaudeModel || session.model : session.model;
 
   return {
     directory: session.directory,
     providerSessionId: isMonitor ? session.monitorProviderSessionId : session.providerSessionId,
-    model: session.model,
+    model,
     sandboxMode: effectiveCodex.sandboxMode,
     approvalPolicy: effectiveCodex.approvalPolicy,
     networkAccessEnabled: effectiveCodex.networkAccessEnabled,
     webSearchMode: effectiveCodex.webSearchMode,
-    modelReasoningEffort: config.codexReasoningEffort || undefined,
+    modelReasoningEffort: monitorEffort ?? (config.codexReasoningEffort || undefined),
     claudePermissionMode: resolveEffectiveClaudePermissionMode(session),
     systemPromptParts: isMonitor
       ? buildMonitorSystemPromptParts(session)

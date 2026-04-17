@@ -7,26 +7,32 @@ import {
   type AnyThreadChannel,
   type Message,
 } from 'discord.js';
-import type { UnifiedState } from '@workspacecord/state';
+import type { UnifiedState, TodoItem, SessionContextFields } from '@workspacecord/state';
 import { STATE_LABELS, STATE_COLORS } from '@workspacecord/state';
 import { truncate } from '@workspacecord/core';
+
+/**
+ * Single source of truth for the data required to render the status card.
+ * Shared by `initialize`, `update`, `buildEmbed`, and the projection renderer.
+ */
+export interface StatusCardViewData extends SessionContextFields {
+  turn: number;
+  updatedAt: number;
+  phase?: string;
+  remoteHumanControl?: boolean;
+  provider?: 'claude' | 'codex';
+  permissionsSummary?: string;
+  verbose?: boolean;
+  monitorGoal?: string;
+  monitorIteration?: number;
+  maxMonitorIterations?: number;
+}
 
 export class StatusCard {
   private messageId: string | null = null;
   private channel: TextChannel | AnyThreadChannel;
   private lastState: UnifiedState = 'idle';
-  private lastData: {
-    turn: number;
-    updatedAt: number;
-    phase?: string;
-    remoteHumanControl?: boolean;
-    provider?: 'claude' | 'codex';
-    permissionsSummary?: string;
-    verbose?: boolean;
-    monitorGoal?: string;
-    monitorIteration?: number;
-    maxMonitorIterations?: number;
-  } | null = null;
+  private lastData: StatusCardViewData | null = null;
 
   constructor(channel: TextChannel | AnyThreadChannel) {
     this.channel = channel;
@@ -40,18 +46,7 @@ export class StatusCard {
     return this.messageId;
   }
 
-  async initialize(data: {
-    turn?: number;
-    updatedAt?: number;
-    phase?: string;
-    remoteHumanControl?: boolean;
-    provider?: 'claude' | 'codex';
-    permissionsSummary?: string;
-    verbose?: boolean;
-    monitorGoal?: string;
-    monitorIteration?: number;
-    maxMonitorIterations?: number;
-  } = {}): Promise<void> {
+  async initialize(data: Partial<StatusCardViewData> = {}): Promise<void> {
     const payload = {
       turn: data.turn ?? 1,
       updatedAt: data.updatedAt ?? Date.now(),
@@ -72,21 +67,7 @@ export class StatusCard {
     await this.sendNewMessage(embed);
   }
 
-  async update(
-    state: UnifiedState,
-    data: {
-      turn: number;
-      updatedAt: number;
-      phase?: string;
-      remoteHumanControl?: boolean;
-      provider?: 'claude' | 'codex';
-      permissionsSummary?: string;
-      verbose?: boolean;
-      monitorGoal?: string;
-      monitorIteration?: number;
-      maxMonitorIterations?: number;
-    },
-  ): Promise<void> {
+  async update(state: UnifiedState, data: StatusCardViewData): Promise<void> {
     this.lastState = state;
     this.lastData = { ...data };
     const embed = this.buildEmbed(state, data);
@@ -137,21 +118,7 @@ export class StatusCard {
     }
   }
 
-  private buildEmbed(
-    state: UnifiedState,
-    data: {
-      turn: number;
-      updatedAt: number;
-      phase?: string;
-      remoteHumanControl?: boolean;
-      provider?: 'claude' | 'codex';
-      permissionsSummary?: string;
-      verbose?: boolean;
-      monitorGoal?: string;
-      monitorIteration?: number;
-      maxMonitorIterations?: number;
-    },
-  ): EmbedBuilder {
+  private buildEmbed(state: UnifiedState, data: StatusCardViewData): EmbedBuilder {
     const embed = new EmbedBuilder()
       .setColor(STATE_COLORS[state])
       .setTitle(`🤖 ${STATE_LABELS[state]}`)
@@ -191,7 +158,74 @@ export class StatusCard {
       embed.addFields({ name: '权限', value: data.permissionsSummary, inline: false });
     }
 
+    if (data.todoList && data.todoList.length > 0) {
+      const rendered = this.renderTodoList(data.todoList);
+      if (rendered) {
+        const completed = data.todoList.filter((t) => t.completed).length;
+        embed.addFields({
+          name: `待办（${completed}/${data.todoList.length}）`,
+          value: rendered,
+          inline: false,
+        });
+      }
+    }
+
+    if (data.batchApprovalMode) {
+      const pending = data.pendingApprovals ?? [];
+      const queueLine = pending.length === 0
+        ? '队列为空'
+        : pending
+            .slice(0, 5)
+            .map((a) => `• ${truncate(a.toolName, 32)} — ${truncate(a.detail, 80)}`)
+            .join('\n');
+      embed.addFields({
+        name: `批量审批（${pending.length} 待批）`,
+        value: queueLine + (pending.length > 5 ? `\n…还有 ${pending.length - 5} 条` : ''),
+        inline: false,
+      });
+    }
+
+    if (data.recentPermissionDenials && data.recentPermissionDenials.length > 0) {
+      const lines = data.recentPermissionDenials
+        .slice(0, 3)
+        .map((d) => `⛔ ${truncate(d.toolName, 28)} — ${truncate(d.reason, 80)}`)
+        .join('\n');
+      embed.addFields({ name: '最近拒绝', value: lines, inline: false });
+    }
+
     return embed;
+  }
+
+  private renderTodoList(items: TodoItem[]): string {
+    // Discord embed field value is capped at 1024 chars; stay well under to leave
+    // room for the prefix/suffix and embed overhead.
+    const TOTAL_BUDGET = 950;
+    const MAX_LINES = 8;
+    const MAX_CHAR_PER_LINE = 180;
+
+    const lines: string[] = [];
+    let used = 0;
+    let renderedCount = 0;
+
+    for (const item of items.slice(0, MAX_LINES)) {
+      const mark = item.completed ? '☑' : '☐';
+      const line = `${mark} ${truncate(item.text, MAX_CHAR_PER_LINE)}`;
+      // +1 accounts for the newline that `join('\n')` will add between lines.
+      const cost = (lines.length > 0 ? 1 : 0) + line.length;
+      if (used + cost > TOTAL_BUDGET) break;
+      lines.push(line);
+      used += cost;
+      renderedCount++;
+    }
+
+    const hidden = items.length - renderedCount;
+    if (hidden > 0) {
+      const more = `… 还有 ${hidden} 项`;
+      const cost = (lines.length > 0 ? 1 : 0) + more.length;
+      if (used + cost <= TOTAL_BUDGET) lines.push(more);
+    }
+
+    return lines.join('\n');
   }
 
   /**

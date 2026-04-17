@@ -12,6 +12,7 @@ export type {
   TextBlock,
   ImageBlock,
   LocalImageBlock,
+  TerminalReason,
 } from './types.ts';
 
 const providers = new Map<ProviderName, Provider>();

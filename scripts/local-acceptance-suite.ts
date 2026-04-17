@@ -33,6 +33,10 @@ const commands = [
     cmd: ['node', '--experimental-strip-types', 'scripts/startup-flow-e2e.ts'],
   },
   { name: 'gate-e2e', cmd: ['node', '--experimental-strip-types', 'scripts/gate-e2e.ts'] },
+  {
+    name: 'discord-features-e2e',
+    cmd: ['node', '--experimental-strip-types', 'scripts/e2e/index.ts'],
+  },
 ];
 
 const results: Array<{
