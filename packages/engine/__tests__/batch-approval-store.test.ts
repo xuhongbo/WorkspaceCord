@@ -1,0 +1,69 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  enqueueBatchApproval,
+  drainBatchApprovals,
+  getBatchApprovalCount,
+  getBatchApprovalQueue,
+  clearBatchApprovalStore,
+  type BatchApprovalEntry,
+} from '../src/output/batch-approval-store.ts';
+
+function makeEntry(overrides: Partial<BatchApprovalEntry> = {}): BatchApprovalEntry {
+  return {
+    gateId: 'g1',
+    toolUseID: 'tu-1',
+    toolName: 'Bash',
+    detail: 'rm -rf',
+    timestamp: 123,
+    resolve: () => {},
+    ...overrides,
+  };
+}
+
+describe('batch-approval-store', () => {
+  beforeEach(() => {
+    clearBatchApprovalStore('s1');
+    clearBatchApprovalStore('s2');
+  });
+
+  it('enqueue + count + queue returns pending items', () => {
+    enqueueBatchApproval('s1', makeEntry({ gateId: 'g1' }));
+    enqueueBatchApproval('s1', makeEntry({ gateId: 'g2' }));
+    expect(getBatchApprovalCount('s1')).toBe(2);
+    expect(getBatchApprovalQueue('s1').map((e) => e.gateId)).toEqual(['g1', 'g2']);
+  });
+
+  it('drainBatchApprovals calls every resolver with the given action', () => {
+    const calls: string[] = [];
+    enqueueBatchApproval('s1', makeEntry({ gateId: 'g1', resolve: (a) => calls.push(`g1:${a}`) }));
+    enqueueBatchApproval('s1', makeEntry({ gateId: 'g2', resolve: (a) => calls.push(`g2:${a}`) }));
+
+    const drained = drainBatchApprovals('s1', 'approve');
+    expect(drained).toBe(2);
+    expect(calls).toEqual(['g1:approve', 'g2:approve']);
+    expect(getBatchApprovalCount('s1')).toBe(0);
+  });
+
+  it('rejects only for the session drained, leaves others intact', () => {
+    const calls: string[] = [];
+    enqueueBatchApproval('s1', makeEntry({ resolve: (a) => calls.push(`s1:${a}`) }));
+    enqueueBatchApproval('s2', makeEntry({ resolve: (a) => calls.push(`s2:${a}`) }));
+
+    drainBatchApprovals('s1', 'reject');
+    expect(calls).toEqual(['s1:reject']);
+    expect(getBatchApprovalCount('s2')).toBe(1);
+  });
+
+  it('draining an empty queue returns 0 and is safe', () => {
+    expect(drainBatchApprovals('nobody', 'approve')).toBe(0);
+  });
+
+  it('clearBatchApprovalStore rejects all pending (for cleanup on mode-off)', () => {
+    const calls: string[] = [];
+    enqueueBatchApproval('s1', makeEntry({ resolve: (a) => calls.push(a) }));
+    enqueueBatchApproval('s1', makeEntry({ resolve: (a) => calls.push(a) }));
+    clearBatchApprovalStore('s1');
+    expect(calls).toEqual(['reject', 'reject']);
+    expect(getBatchApprovalCount('s1')).toBe(0);
+  });
+});

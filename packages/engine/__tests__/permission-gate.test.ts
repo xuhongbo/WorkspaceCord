@@ -9,18 +9,31 @@ vi.mock('../src/session-registry.ts', () => ({
 
 const mockHandleAwaitingHuman = vi.fn().mockResolvedValue(undefined);
 const mockUpdateState = vi.fn().mockResolvedValue(undefined);
+const mockQueueDigest = vi.fn();
 vi.mock('../src/output-port.ts', () => ({
   getOutputPort: () => ({
     handleAwaitingHuman: mockHandleAwaitingHuman,
     updateState: mockUpdateState,
+    queueDigest: mockQueueDigest,
   }),
 }));
 
 const mockRegisterReceiptHandle = vi.fn();
+const mockGetSnapshot = vi.fn(() => ({ batchApprovalMode: false }));
+const mockEnqueuePendingApproval = vi.fn();
 vi.mock('@workspacecord/state', () => ({
   gateCoordinator: {
     registerReceiptHandle: (...args: unknown[]) => mockRegisterReceiptHandle(...args),
   },
+  stateMachine: {
+    getSnapshot: (...args: unknown[]) => mockGetSnapshot(...args),
+    enqueuePendingApproval: (...args: unknown[]) => mockEnqueuePendingApproval(...args),
+  },
+}));
+
+const mockEnqueueBatchApproval = vi.fn();
+vi.mock('../src/output/batch-approval-store.ts', () => ({
+  enqueueBatchApproval: (...args: unknown[]) => mockEnqueueBatchApproval(...args),
 }));
 
 vi.mock('@workspacecord/core', () => ({

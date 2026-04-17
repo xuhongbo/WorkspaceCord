@@ -324,7 +324,80 @@ export class StateMachine {
     return toProjection(settled.success ? settled.state : baseState);
   }
 
+  /**
+   * Context-only updaters. These dispatch to the XState actor and rely on
+   * subscribe() to mirror the new context into entry.snapshot synchronously.
+   * No manual snapshot mutation — keeps a single source of truth.
+   */
+
+  applyTodoUpdate(
+    sessionId: string,
+    items: Array<{ text: string; completed: boolean }>,
+  ): SessionStateProjection {
+    const entry = this.ensureSession(sessionId);
+    entry.actor.send({ type: 'TODO_UPDATED', items, updatedAt: Date.now() });
+    return toProjection(entry.snapshot);
+  }
+
+  applyPermissionDenial(
+    sessionId: string,
+    toolName: string,
+    reason: string,
+  ): SessionStateProjection {
+    const entry = this.ensureSession(sessionId);
+    entry.actor.send({ type: 'PERMISSION_DENIED', toolName, reason, updatedAt: Date.now() });
+    return toProjection(entry.snapshot);
+  }
+
+  setBatchApprovalMode(
+    sessionId: string,
+    enabled: boolean,
+    pendingApprovals?: Array<{ gateId: string; toolName: string; detail: string; timestamp: number }>,
+  ): SessionStateProjection {
+    const entry = this.ensureSession(sessionId);
+    entry.actor.send({
+      type: 'BATCH_APPROVAL_SET',
+      enabled,
+      pendingApprovals,
+      updatedAt: Date.now(),
+    });
+    return toProjection(entry.snapshot);
+  }
+
+  enqueuePendingApproval(
+    sessionId: string,
+    approval: { gateId: string; toolName: string; detail: string; timestamp: number },
+  ): SessionStateProjection {
+    const entry = this.ensureSession(sessionId);
+    entry.actor.send({ type: 'BATCH_APPROVAL_ENQUEUE', approval, updatedAt: Date.now() });
+    return toProjection(entry.snapshot);
+  }
+
+  clearPendingApprovals(sessionId: string): SessionStateProjection {
+    const entry = this.ensureSession(sessionId);
+    entry.actor.send({ type: 'BATCH_APPROVAL_CLEAR', updatedAt: Date.now() });
+    return toProjection(entry.snapshot);
+  }
+
   applyPlatformEvent(event: PlatformEvent): SessionStateProjection {
+    // Context-only platform events bypass the lifecycle mapper.
+    if (event.type === 'todo_updated') {
+      const items = (event.metadata?.items as Array<{ text: string; completed: boolean }> | undefined) ?? [];
+      return this.applyTodoUpdate(event.sessionId, items);
+    }
+    if (event.type === 'permission_denied') {
+      const toolName = typeof event.metadata?.toolName === 'string' ? event.metadata.toolName : 'tool';
+      const reason = typeof event.metadata?.reason === 'string' ? event.metadata.reason : '';
+      return this.applyPermissionDenial(event.sessionId, toolName, reason);
+    }
+    if (event.type === 'batch_approval_changed') {
+      const enabled = Boolean(event.metadata?.enabled);
+      const pending = event.metadata?.pendingApprovals as
+        | Array<{ gateId: string; toolName: string; detail: string; timestamp: number }>
+        | undefined;
+      return this.setBatchApprovalMode(event.sessionId, enabled, pending);
+    }
+
     const current = this.getState(event.sessionId);
     const mapped = mapEventToTransition(event, current, {
       shouldTransition: this.shouldTransition.bind(this),

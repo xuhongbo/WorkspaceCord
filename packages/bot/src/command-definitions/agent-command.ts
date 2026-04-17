@@ -181,5 +181,22 @@ export function buildAgentCommand() {
             ),
         ),
     )
-    .addSubcommand((sub) => sub.setName('continue').setDescription('继续当前会话的生成'));
+    .addSubcommand((sub) => sub.setName('continue').setDescription('继续当前会话的生成'))
+    .addSubcommand((sub) =>
+      sub
+        .setName('batch')
+        .setDescription('批量审批模式（延后所有工具审批至一次性处理）')
+        .addStringOption((opt) =>
+          opt
+            .setName('action')
+            .setDescription('开关 / 一键批准 / 一键拒绝')
+            .setRequired(true)
+            .addChoices(
+              { name: '开启批量审批模式', value: 'on' },
+              { name: '关闭批量审批模式', value: 'off' },
+              { name: '批准队列中的全部工具调用', value: 'approve-all' },
+              { name: '拒绝队列中的全部工具调用', value: 'reject-all' },
+            ),
+        ),
+    );
 }

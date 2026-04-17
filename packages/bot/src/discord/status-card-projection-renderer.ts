@@ -1,22 +1,9 @@
 import type { SessionStateProjection } from '@workspacecord/state';
+import type { StatusCardViewData } from './status-card.ts';
 
 export interface StatusCardProjectionContext {
   statusCard: {
-    update(
-      state: SessionStateProjection['state'],
-      data: {
-        turn: number;
-        updatedAt: number;
-        phase?: string;
-        remoteHumanControl?: boolean;
-        provider?: 'claude' | 'codex';
-        permissionsSummary?: string;
-        verbose?: boolean;
-        monitorGoal?: string;
-        monitorIteration?: number;
-        maxMonitorIterations?: number;
-      },
-    ): Promise<void>;
+    update(state: SessionStateProjection['state'], data: StatusCardViewData): Promise<void>;
   };
   remoteHumanControl?: boolean;
   provider?: 'claude' | 'codex';
@@ -45,6 +32,10 @@ export class StatusCardProjectionRenderer {
         permissionsSummary: context.permissionsSummary,
         verbose: context.verbose,
         monitorGoal: context.monitorGoal,
+        todoList: projection.todoList,
+        recentPermissionDenials: projection.recentPermissionDenials,
+        batchApprovalMode: projection.batchApprovalMode,
+        pendingApprovals: projection.pendingApprovals,
       });
     } catch (error) {
       console.error(`状态卡更新失败 (${sessionId}):`, error);

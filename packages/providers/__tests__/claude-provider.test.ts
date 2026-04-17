@@ -210,6 +210,7 @@ describe('ClaudeProvider', () => {
       durationMs: 5000,
       numTurns: 3,
       errors: [],
+      terminalReason: 'completed',
     });
   });
 
@@ -253,6 +254,7 @@ describe('ClaudeProvider', () => {
       durationMs: 200,
       numTurns: 1,
       errors: [],
+      terminalReason: 'error',
     });
   });
 
@@ -376,6 +378,7 @@ describe('ClaudeProvider', () => {
       durationMs: 0,
       numTurns: 0,
       errors: [],
+      terminalReason: 'completed',
     });
   });
 

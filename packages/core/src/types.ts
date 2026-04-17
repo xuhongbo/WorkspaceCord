@@ -185,6 +185,8 @@ export interface Config {
   codexNetworkAccessEnabled: boolean;
   codexWebSearchMode: 'disabled' | 'cached' | 'live';
   codexReasoningEffort: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | '';
+  monitorReasoningEffort: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | '';
+  monitorClaudeModel: string;
   codexBaseUrl: string;
   codexApiKey: string;
   codexPath: string;

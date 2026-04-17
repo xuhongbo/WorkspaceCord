@@ -13,6 +13,11 @@ export function toProjection(state: StateMachineState): SessionStateProjection {
     turn: state.turn,
     phase: state.phase,
     humanResolved: state.humanResolved,
+    todoList: state.todoList,
+    todoUpdatedAt: state.todoUpdatedAt,
+    recentPermissionDenials: state.recentPermissionDenials,
+    batchApprovalMode: state.batchApprovalMode,
+    pendingApprovals: state.pendingApprovals,
   };
 }
 

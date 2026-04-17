@@ -73,6 +73,15 @@ export {
   getQuestionCount,
 } from './output/answer-store.ts';
 export { getExpandableContent } from './output/expandable-store.ts';
+export {
+  type BatchAction,
+  type BatchApprovalEntry,
+  enqueueBatchApproval,
+  drainBatchApprovals,
+  getBatchApprovalQueue,
+  getBatchApprovalCount,
+  clearBatchApprovalStore,
+} from './output/batch-approval-store.ts';
 
 // Session sub-modules
 export { resolveEffectiveClaudePermissionMode, resolveEffectiveCodexOptions } from './session/permissions.ts';

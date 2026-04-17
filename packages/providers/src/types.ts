@@ -61,9 +61,33 @@ export type ProviderEvent =
       durationMs: number;
       numTurns: number;
       errors: string[];
+      /** Unified terminal reason across providers. */
+      terminalReason?: TerminalReason;
       metadata?: { sessionEnd?: boolean };
     }
+  | {
+      type: 'permission_denied';
+      toolName: string;
+      reason: string;
+      source: 'hook' | 'user' | 'timeout' | 'terminal';
+    }
   | { type: 'error'; message: string };
+
+/**
+ * Unified terminal reason for a completed / failed turn across providers.
+ * Claude maps from SDK `terminal_reason`; Codex infers from TurnFailedEvent / abort signals.
+ */
+export type TerminalReason =
+  | 'completed'
+  | 'max_turns'
+  | 'aborted'
+  | 'rate_limited'
+  | 'context_too_long'
+  | 'model_error'
+  | 'tool_deferred'
+  | 'hook_stopped'
+  | 'image_error'
+  | 'error';
 
 // ── Provider Interface ──────────────────────────────────────────
 

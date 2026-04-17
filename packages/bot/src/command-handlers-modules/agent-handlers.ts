@@ -11,6 +11,8 @@ import {
 import { config, formatRelative } from '@workspacecord/core';
 import { createSession, getSessionByChannel, getSessionsByCategory, setMode, setMonitorGoal, setAgentPersona, setVerbose, setModel, setStatusCardBinding, setCurrentInteractionMessage, abortSession, endSession, updateSessionPermissions, getSessionPermissionSummary, getSessionPermissionDetails } from '@workspacecord/engine/session-registry';
 import { getSessionView } from '@workspacecord/engine/session-context';
+import { drainBatchApprovals, getBatchApprovalCount } from '@workspacecord/engine/output/batch-approval-store';
+import { stateMachine } from '@workspacecord/state';
 import * as projectMgr from '@workspacecord/engine/project-manager';
 import { archiveSession } from '../archive-manager.ts';
 import { executeSessionContinue } from '@workspacecord/engine/session-executor';
@@ -65,6 +67,8 @@ export async function handleAgent(interaction: ChatInputCommandInteraction): Pro
       return handleAgentPermissions(interaction);
     case 'continue':
       return handleAgentContinue(interaction);
+    case 'batch':
+      return handleAgentBatch(interaction);
     default:
       await interaction.reply({ content: `未知子命令：${sub}`, ephemeral: true });
   }
@@ -489,4 +493,62 @@ export async function handleAgentContinue(interaction: ChatInputCommandInteracti
   await interaction.deferReply();
   await interaction.editReply('继续中...');
   await executeSessionContinue(session, channel as SessionChannel);
+}
+
+export async function handleAgentBatch(interaction: ChatInputCommandInteraction): Promise<void> {
+  const channel = interaction.channel;
+  if (!channel) {
+    await interaction.reply({ content: '无频道上下文。', ephemeral: true });
+    return;
+  }
+  const session = getSessionByChannel(channel.id);
+  if (!session) {
+    await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
+    return;
+  }
+  const action = interaction.options.getString('action', true);
+
+  if (action === 'on') {
+    stateMachine.setBatchApprovalMode(session.id, true);
+    await interaction.reply({
+      content: '✅ 已开启批量审批模式。后续权限请求将排队，使用 `/agent batch action:approve-all` 或 `reject-all` 统一处理。',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (action === 'off') {
+    const pending = getBatchApprovalCount(session.id);
+    stateMachine.setBatchApprovalMode(session.id, false);
+    drainBatchApprovals(session.id, 'reject');
+    await interaction.reply({
+      content: `✅ 已关闭批量审批模式${pending > 0 ? `，队列中 ${pending} 条待批请求已按拒绝处理。` : '。'}`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (action === 'approve-all' || action === 'reject-all') {
+    const projection = stateMachine.getSnapshot(session.id);
+    if (!projection.batchApprovalMode) {
+      await interaction.reply({
+        content: '批量审批模式未启用。先用 `/agent batch action:on` 开启。',
+        ephemeral: true,
+      });
+      return;
+    }
+    const batchAction = action === 'approve-all' ? 'approve' : 'reject';
+    const count = drainBatchApprovals(session.id, batchAction);
+    stateMachine.clearPendingApprovals(session.id);
+    await interaction.reply({
+      content:
+        count === 0
+          ? '队列中没有待批准的请求。'
+          : `✅ 已${batchAction === 'approve' ? '批准' : '拒绝'} ${count} 条待批请求。`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.reply({ content: `未知动作：${action}`, ephemeral: true });
 }

@@ -218,11 +218,19 @@ const reasoning: EventHandler<'reasoning'> = (event, ctx) => {
   }
 };
 
-const todoList: EventHandler<'todo_list'> = (event, ctx) => {
+const todoList: EventHandler<'todo_list'> = async (event, ctx) => {
   const completed = event.items.filter((item) => item.completed).length;
   queueDigest(ctx.sessionId, {
     kind: 'todo',
     text: `待办更新：${completed}/${event.items.length} 已完成`,
+  });
+  await updateSessionState(ctx.sessionId, {
+    type: 'todo_updated',
+    sessionId: ctx.sessionId,
+    source: providerSource(ctx.sessionId),
+    confidence: 'high',
+    timestamp: Date.now(),
+    metadata: { items: event.items },
   });
 };
 
@@ -233,6 +241,24 @@ const MODE_LABELS: Record<string, string> = {
   monitor: '监控',
 };
 
+const TERMINAL_REASON_LABELS: Record<string, string> = {
+  completed: '已完成',
+  max_turns: '已达最大轮次',
+  aborted: '已中止',
+  rate_limited: '触发速率限制',
+  context_too_long: '上下文超长',
+  model_error: '模型错误',
+  tool_deferred: '工具审批延后',
+  hook_stopped: '被钩子阻断',
+  image_error: '图像错误',
+  error: '异常',
+};
+
+function formatTerminalReason(reason: string | undefined, fallbackSuccess: boolean): string {
+  if (!reason) return fallbackSuccess ? '已完成' : '异常';
+  return TERMINAL_REASON_LABELS[reason] ?? reason;
+}
+
 const result: EventHandler<'result'> = async (event, ctx) => {
   ctx.state.success = event.success;
   const lastText = ctx.streamer.getText();
@@ -240,9 +266,12 @@ const result: EventHandler<'result'> = async (event, ctx) => {
   const duration = event.durationMs ? `${(event.durationMs / 1000).toFixed(1)}s` : 'unknown';
   const turns = event.numTurns || 0;
   const modeLabel = MODE_LABELS[ctx.mode] || '自动';
+  const reasonLabel = formatTerminalReason(event.terminalReason, event.success);
+  const showReason = event.terminalReason && event.terminalReason !== 'completed';
+  const reasonSuffix = showReason ? ` | ${reasonLabel}` : '';
   const statusLine = event.success
-    ? `-# $${cost} | ${duration} | ${turns} turns | ${modeLabel}`
-    : `-# Error | $${cost} | ${duration} | ${turns} turns`;
+    ? `-# $${cost} | ${duration} | ${turns} turns | ${modeLabel}${reasonSuffix}`
+    : `-# ${reasonLabel} | $${cost} | ${duration} | ${turns} turns`;
 
   ctx.streamer.append(`\n${statusLine}`, { persist: false });
   if (!event.success && event.errors.length) {
@@ -277,6 +306,25 @@ const result: EventHandler<'result'> = async (event, ctx) => {
     };
   }
   ctx.state.pendingAttachments = [];
+};
+
+const permissionDenied: EventHandler<'permission_denied'> = async (event, ctx) => {
+  queueDigest(ctx.sessionId, {
+    kind: 'denied',
+    text: `⛔ 权限拒绝：${truncate(event.toolName, 40)} — ${truncate(event.reason, 80)}`,
+  });
+  await updateSessionState(ctx.sessionId, {
+    type: 'permission_denied',
+    sessionId: ctx.sessionId,
+    source: providerSource(ctx.sessionId),
+    confidence: 'high',
+    timestamp: Date.now(),
+    metadata: {
+      toolName: event.toolName,
+      reason: event.reason,
+      source: event.source,
+    },
+  });
 };
 
 const errorEvent: EventHandler<'error'> = async (event, ctx) => {
@@ -317,6 +365,7 @@ export const EVENT_HANDLERS: HandlerMap = {
   file_change: fileChange,
   reasoning,
   todo_list: todoList,
+  permission_denied: permissionDenied,
   result,
   error: errorEvent,
   session_init: sessionInit,

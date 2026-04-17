@@ -23,7 +23,10 @@ export type PlatformEventType =
   | 'completed'
   | 'errored'
   | 'stalled'
-  | 'session_ended';
+  | 'session_ended'
+  | 'todo_updated'
+  | 'permission_denied'
+  | 'batch_approval_changed';
 
 export const STATE_PRIORITY: Record<UnifiedState, number> = {
   error: 9,
@@ -61,7 +64,43 @@ export const STATE_COLORS: Record<UnifiedState, number> = {
   offline: 0x95a5a6, // 浅灰
 };
 
-export interface SessionStateProjection {
+export interface TodoItem {
+  text: string;
+  completed: boolean;
+}
+
+export interface PendingApproval {
+  gateId: string;
+  toolName: string;
+  detail: string;
+  timestamp: number;
+}
+
+export interface PermissionDenialRecord {
+  toolName: string;
+  reason: string;
+  timestamp: number;
+}
+
+/**
+ * Shared context fields added on top of the core state machine fields.
+ * Used by SessionStateProjection, StateMachineState, and TransitionMetadata
+ * so the shape stays in sync across the three.
+ */
+export interface SessionContextFields {
+  /** Latest TodoWrite / todo_list snapshot from the agent (both providers). */
+  todoList?: TodoItem[];
+  /** Timestamp of the last todoList update. */
+  todoUpdatedAt?: number;
+  /** Recent permission-denied events, newest first (max 5). */
+  recentPermissionDenials?: PermissionDenialRecord[];
+  /** Whether the session is in batch-approval (defer) mode. */
+  batchApprovalMode?: boolean;
+  /** Pending approvals queued while batch-approval mode is enabled. */
+  pendingApprovals?: PendingApproval[];
+}
+
+export interface SessionStateProjection extends SessionContextFields {
   state: UnifiedState;
   stateSource: 'formal' | 'inferred';
   confidence: 'high' | 'medium' | 'low';
@@ -130,7 +169,7 @@ export type GateStatus =
   | 'expired'
   | 'invalidated';
 
-export interface StateMachineState {
+export interface StateMachineState extends SessionContextFields {
   lifecycle: SessionLifecycle;
   execution: ExecutionState | null;
   gate: GateStatus | null;
@@ -157,7 +196,7 @@ export type TransitionUpdates = {
   gate?: GateStatus | null;
 };
 
-export type TransitionMetadata = {
+export type TransitionMetadata = SessionContextFields & {
   displayState?: UnifiedState;
   stateSource?: 'formal' | 'inferred';
   confidence?: 'high' | 'medium' | 'low';

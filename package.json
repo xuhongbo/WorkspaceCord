@@ -29,7 +29,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.85",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.112",
     "@clack/prompts": "^1.1.0",
     "cac": "^7.0.0",
     "configstore": "^8.0.0",
