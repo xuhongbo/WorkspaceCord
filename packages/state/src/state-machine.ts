@@ -379,6 +379,17 @@ export class StateMachine {
     return toProjection(entry.snapshot);
   }
 
+  /**
+   * Drop one pending approval by its gateId without touching the rest of the
+   * queue. Used by the abort handler to keep state consistent when a single
+   * deferred tool call is cancelled out-of-band (provider-side abort).
+   */
+  removePendingApproval(sessionId: string, gateId: string): SessionStateProjection {
+    const entry = this.ensureSession(sessionId);
+    entry.actor.send({ type: 'BATCH_APPROVAL_REMOVE', gateId, updatedAt: Date.now() });
+    return toProjection(entry.snapshot);
+  }
+
   applyPlatformEvent(event: PlatformEvent): SessionStateProjection {
     // Context-only platform events bypass the lifecycle mapper.
     if (event.type === 'todo_updated') {

@@ -12,6 +12,7 @@ import { config, formatRelative } from '@workspacecord/core';
 import { createSession, getSessionByChannel, getSessionsByCategory, setMode, setMonitorGoal, setAgentPersona, setVerbose, setModel, setStatusCardBinding, setCurrentInteractionMessage, abortSession, endSession, updateSessionPermissions, getSessionPermissionSummary, getSessionPermissionDetails } from '@workspacecord/engine/session-registry';
 import { getSessionView } from '@workspacecord/engine/session-context';
 import { drainBatchApprovals, getBatchApprovalCount } from '@workspacecord/engine/output/batch-approval-store';
+import { shouldUseClaudePermissionHandler } from '@workspacecord/engine/executor/permission-gate';
 import { stateMachine } from '@workspacecord/state';
 import { updateSessionState } from '../panel-adapter.ts';
 import * as projectMgr from '@workspacecord/engine/project-manager';
@@ -522,6 +523,18 @@ export async function handleAgentBatch(interaction: ChatInputCommandInteraction)
   const source = 'claude' as const;
 
   if (action === 'on') {
+    // Batch queueing only fires from the Claude canUseTool handler, which is
+    // *not* installed when the session is in auto mode or has bypass
+    // permissions. Refuse action:on in those configs so users aren't misled
+    // into thinking tool calls are being deferred.
+    if (!shouldUseClaudePermissionHandler(session)) {
+      const hint =
+        session.mode === 'auto'
+          ? '当前会话是 `auto` 模式，工具不走审批 hook。请先 `/agent mode mode:normal` 再开启批量审批。'
+          : '当前会话的 Claude 权限模式为 `bypass`，工具不走审批 hook。请先 `/agent permissions claude-permissions:normal`。';
+      await interaction.reply({ content: `⚠️ 无法开启批量审批：${hint}`, ephemeral: true });
+      return;
+    }
     await updateSessionState(session.id, {
       type: 'batch_approval_changed',
       sessionId: session.id,

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   enqueueBatchApproval,
+  removeBatchApproval,
   drainBatchApprovals,
   getBatchApprovalCount,
   getBatchApprovalQueue,
@@ -77,6 +78,23 @@ describe('batch-approval-store', () => {
     clearBatchApprovalStore('s1');
     expect(calls).toEqual(['reject', 'reject']);
     expect(getBatchApprovalCount('s1')).toBe(0);
+  });
+
+  it('removeBatchApproval drops one entry by gateId without touching the rest', () => {
+    enqueueBatchApproval('s1', makeEntry({ gateId: 'keep1' }));
+    enqueueBatchApproval('s1', makeEntry({ gateId: 'drop-me' }));
+    enqueueBatchApproval('s1', makeEntry({ gateId: 'keep2' }));
+    expect(removeBatchApproval('s1', 'drop-me')).toBe(true);
+    expect(getBatchApprovalQueue('s1').map((e) => e.gateId)).toEqual(['keep1', 'keep2']);
+    expect(removeBatchApproval('s1', 'not-there')).toBe(false);
+  });
+
+  it('removeBatchApproval cleans up the session key when the last entry is removed', () => {
+    enqueueBatchApproval('s1', makeEntry({ gateId: 'only' }));
+    removeBatchApproval('s1', 'only');
+    expect(getBatchApprovalCount('s1')).toBe(0);
+    // Fresh enqueue must still work after key cleanup
+    expect(enqueueBatchApproval('s1', makeEntry({ gateId: 'reborn' }))).toBe('enqueued');
   });
 
   it('after overflow + clear, a fresh enqueue is accepted again (no zombie retention)', () => {

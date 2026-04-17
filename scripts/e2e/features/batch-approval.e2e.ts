@@ -173,9 +173,10 @@ async function runOne(
 }
 
 export async function run(harness: DiscordE2EHarness): Promise<void> {
-  // batch approval is provider-agnostic; one run with claude is sufficient
+  // Batch mode requires the Claude canUseTool hook, which only installs in
+  // normal mode (not auto). Use normal so action:on isn't rejected.
   const channel = await harness.createScratchChannel({ label: 'batch' });
-  const session = await harness.createSession({ channel, provider: 'claude' });
+  const session = await harness.createSession({ channel, provider: 'claude', mode: 'normal' });
   await runOne(harness, channel, session.id);
   assert(true, 'batch-approval passed');
 }

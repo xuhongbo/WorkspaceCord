@@ -4,7 +4,7 @@ import { gateCoordinator, stateMachine } from '@workspacecord/state';
 import { truncate, config } from '@workspacecord/core';
 import type { ThreadSession as Session } from '@workspacecord/core';
 import type { ProviderCanUseTool } from '@workspacecord/providers';
-import { enqueueBatchApproval } from '../output/batch-approval-store.ts';
+import { enqueueBatchApproval, removeBatchApproval } from '../output/batch-approval-store.ts';
 
 type GateResolveResult = {
   action: 'approve' | 'reject';
@@ -148,10 +148,18 @@ export function createClaudePermissionHandler(
           text: `已入批量审批队列：${truncate(toolName, 40)}`,
         });
 
-        // Session abort (user /agent stop, bot shutdown, etc.) must unblock
-        // the pending canUseTool; otherwise the SDK turn leaks forever.
-        if (context.signal.aborted) settle('reject');
-        else context.signal.addEventListener('abort', () => settle('reject'), { once: true });
+        // Session abort (user /agent stop, bot shutdown, provider-side abort)
+        // must unblock the pending canUseTool and drop its entry from both
+        // queues. settle('reject') alone is not enough: if the abort came
+        // from the provider rather than through abortSessionWithReason, the
+        // zombie entry would inflate queue counts until the 100-item cap.
+        const onAbort = () => {
+          settle('reject');
+          removeBatchApproval(liveSession.id, gateId);
+          stateMachine.removePendingApproval(liveSession.id, gateId);
+        };
+        if (context.signal.aborted) onAbort();
+        else context.signal.addEventListener('abort', onAbort, { once: true });
       });
 
       if (batchAction === 'approve') {

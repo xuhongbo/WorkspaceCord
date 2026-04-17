@@ -94,6 +94,11 @@ export type SessionMachineEvent =
       updatedAt: number;
     }
   | {
+      type: 'BATCH_APPROVAL_REMOVE';
+      gateId: string;
+      updatedAt: number;
+    }
+  | {
       type: 'AUTO_IDLE';
       updatedAt: number;
     };
@@ -237,6 +242,17 @@ export const sessionMachine = setup({
         updatedAt: event.updatedAt,
       };
     }),
+    removePendingApproval: assign(({ context, event }) => {
+      if (event.type !== 'BATCH_APPROVAL_REMOVE') return context;
+      const previous = context.pendingApprovals ?? [];
+      const next = previous.filter((e) => e.gateId !== event.gateId);
+      if (next.length === previous.length) return context;
+      return {
+        ...context,
+        pendingApprovals: next,
+        updatedAt: event.updatedAt,
+      };
+    }),
   },
 }).createMachine({
   id: 'session',
@@ -249,6 +265,7 @@ export const sessionMachine = setup({
     BATCH_APPROVAL_SET: { actions: 'applyBatchApprovalSet' },
     BATCH_APPROVAL_ENQUEUE: { actions: 'enqueuePendingApproval' },
     BATCH_APPROVAL_CLEAR: { actions: 'clearPendingApprovals' },
+    BATCH_APPROVAL_REMOVE: { actions: 'removePendingApproval' },
   },
   context: {
     gate: null,

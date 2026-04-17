@@ -44,6 +44,22 @@ export function enqueueBatchApproval(sessionId: string, entry: BatchApprovalEntr
   return 'enqueued';
 }
 
+/**
+ * Remove a single pending entry without resolving its promise. Intended for
+ * the abort-listener path that has already settled the waiter out-of-band and
+ * just needs to keep the store consistent with the XState queue.
+ * Returns true if an entry with the given gateId was found and removed.
+ */
+export function removeBatchApproval(sessionId: string, gateId: string): boolean {
+  const queue = store.get(sessionId);
+  if (!queue) return false;
+  const idx = queue.findIndex((e) => e.gateId === gateId);
+  if (idx === -1) return false;
+  queue.splice(idx, 1);
+  if (queue.length === 0) store.delete(sessionId);
+  return true;
+}
+
 export function drainBatchApprovals(sessionId: string, action: BatchAction): number {
   const queue = store.get(sessionId);
   if (!queue || queue.length === 0) return 0;

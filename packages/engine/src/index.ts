@@ -77,6 +77,7 @@ export {
   type BatchAction,
   type BatchApprovalEntry,
   enqueueBatchApproval,
+  removeBatchApproval,
   drainBatchApprovals,
   getBatchApprovalQueue,
   getBatchApprovalCount,

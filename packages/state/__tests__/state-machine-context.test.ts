@@ -38,6 +38,21 @@ describe('StateMachine — SessionContextFields via XState', () => {
     expect(projection.recentPermissionDenials?.[4].toolName).toBe('tool3');
   });
 
+  it('removePendingApproval drops one entry by gateId', () => {
+    machine.setBatchApprovalMode('s1', true);
+    machine.enqueuePendingApproval('s1', { gateId: 'g1', toolName: 'Read', detail: 'file', timestamp: 1 });
+    machine.enqueuePendingApproval('s1', { gateId: 'g2', toolName: 'Write', detail: 'file', timestamp: 2 });
+    machine.enqueuePendingApproval('s1', { gateId: 'g3', toolName: 'Bash', detail: 'cmd', timestamp: 3 });
+
+    machine.removePendingApproval('s1', 'g2');
+    const pending = machine.getSnapshot('s1').pendingApprovals ?? [];
+    expect(pending.map((e) => e.gateId)).toEqual(['g1', 'g3']);
+
+    // Missing gateId is a no-op (doesn't throw, queue unchanged)
+    machine.removePendingApproval('s1', 'never-existed');
+    expect(machine.getSnapshot('s1').pendingApprovals).toHaveLength(2);
+  });
+
   it('setBatchApprovalMode toggles the flag and seeds the queue', () => {
     const enabled = machine.setBatchApprovalMode('s1', true);
     expect(enabled.batchApprovalMode).toBe(true);
