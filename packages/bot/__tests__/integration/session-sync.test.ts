@@ -32,7 +32,7 @@ vi.mock('@workspacecord/engine/project-registry', () => ({
   getAllRegisteredProjects,
 }));
 
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   getAllSessions,
   getSession,
   createSession,

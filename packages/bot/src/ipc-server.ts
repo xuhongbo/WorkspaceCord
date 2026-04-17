@@ -1,10 +1,11 @@
 import { createServer, type Socket } from 'node:net';
-import { unlinkSync, existsSync } from 'node:fs';
+import { unlinkSync, existsSync, chmodSync } from 'node:fs';
 import type { Client, TextChannel } from 'discord.js';
 import type { SessionChannel } from './discord-types.ts';
 import { config } from '@workspacecord/core';
 import { updateSessionState } from './panel-adapter.ts';
-import { getSession, getSessionByProviderSession, updateSession } from '@workspacecord/engine/session-registry';
+import { getSessionByProviderSession, updateSession } from '@workspacecord/engine/session-registry';
+import { getSessionView } from '@workspacecord/engine/session-context';
 import { buildClaudeSubagentProviderSessionId } from './session-local-registration.ts';
 import { discoverAndRegisterSession } from './session-discovery.ts';
 import { gateCoordinator } from '@workspacecord/state';
@@ -82,6 +83,17 @@ export function startIpcServer(client: Client): void {
   });
 
   server.listen(socketPath, () => {
+    // 仅 owner 可读写（0600），防止 /tmp 下其它本地进程连上来调用内部 IPC。
+    // Windows 命名管道不支持 chmod；失败时记录但不阻塞启动。
+    if (process.platform !== 'win32') {
+      try {
+        chmodSync(socketPath, 0o600);
+      } catch (err) {
+        console.warn(
+          `[IpcServer] Failed to set 0600 on socket ${socketPath}: ${(err as Error).message}`,
+        );
+      }
+    }
     console.log(`[IpcServer] Listening on ${socketPath}`);
   });
 
@@ -177,7 +189,7 @@ async function handleHookEvent(payload: Record<string, unknown>): Promise<void> 
     });
 
     if (registered) {
-      session = getSession(registered.sessionId);
+      session = getSessionView(registered.sessionId);
       console.log(`[IpcServer] Auto-registered session: ${registered.sessionId}`);
     }
   }
@@ -216,7 +228,7 @@ async function handleGateResolved(payload: Record<string, unknown>): Promise<voi
 
   const gate = gateCoordinator.getGate(data.gateId);
   if (gate?.discordMessageId) {
-    const session = getSession(data.sessionId);
+    const session = getSessionView(data.sessionId);
     if (session) {
       const channel = discordClient?.channels.cache.get(session.channelId) as TextChannel | undefined;
       if (channel) {

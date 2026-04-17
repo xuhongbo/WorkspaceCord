@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { GateManager } from '../src/gate-manager.ts';
+import { GateService as GateManager } from '../src/gate-service.ts';
 import { HumanGateRegistry } from '../src/human-gate.ts';
 import { EventBus } from '@workspacecord/core';
 import type { EventType } from '@workspacecord/core';
@@ -279,15 +279,17 @@ describe('GateManager', () => {
   });
 
   describe('cleanup and archive', () => {
-    it('cleans up expired gates', () => {
+    it('cleans up expired gates (manual path when no remote timer)', () => {
       vi.useFakeTimers();
 
+      // supportsRemoteDecision=false → 不挂 5 分钟自动超时定时器,
+      // 由 cleanupExpired(manual) 负责标记为 expired
       gateManager.createGate({
         sessionId: 'sess-1',
         provider: 'claude',
         type: 'binary_approval',
         isBlocking: true,
-        supportsRemoteDecision: true,
+        supportsRemoteDecision: false,
         summary: 'Old gate',
         turn: 1,
       });

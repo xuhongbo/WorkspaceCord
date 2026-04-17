@@ -11,6 +11,11 @@ import { applyWorkflowHook, refreshSession, updatePanelState } from './session-h
 import { buildWorkerProgressReport, createSyntheticResult, summarizeWorkerPass } from './worker-report.ts';
 import { buildAskUserReviewPrompt, buildMonitorPrompt, buildSteeringPrompt } from './monitor-prompts.ts';
 import { parseAskUserDecision, parseMonitorDecision } from './monitor-parsers.ts';
+import {
+  beginMonitorRun,
+  checkpointMonitorRun,
+  finishMonitorRun,
+} from './monitor-run-store.ts';
 
 const MAX_MONITOR_ITERATIONS = 6;
 
@@ -359,6 +364,17 @@ export async function runMonitorLoop(
   console.log(
     `[SessionExecutor] monitor:loop-start sessionId=${session.id} goal=${truncate(goal, 80)}`,
   );
+  // P3b:为本次 goal 建立一条可持久化的 MonitorRun,便于崩溃后 reconcile
+  const monitorRun = await beginMonitorRun({
+    sessionId: session.id,
+    goal,
+    maxIterations: MAX_MONITOR_ITERATIONS,
+  }).catch((err: unknown) => {
+    console.warn(
+      `[SessionExecutor] failed to persist MonitorRun for session ${session.id}: ${(err as Error).message}`,
+    );
+    return null;
+  });
   let workerResult = initialResult;
   let currentSession = refreshSession(session);
 
@@ -440,6 +456,12 @@ export async function runMonitorLoop(
         decision.rationale ||
         'The monitor judged the request complete.';
       await getOutputPort().handleResult(currentSession.id, createSyntheticResult(true, summary), summary);
+      if (monitorRun) {
+        await finishMonitorRun(monitorRun.id, 'completed', {
+          iteration,
+          lastRationale: decision.rationale,
+        }).catch(() => {});
+      }
       console.log(
         `[SessionExecutor] monitor:complete sessionId=${currentSession.id} iteration=${iteration} rationale=${truncate(decision.rationale, 80)}`,
       );
@@ -461,10 +483,25 @@ export async function runMonitorLoop(
       await getOutputPort().handleAwaitingHuman(currentSession.id, blocker, {
         source: currentSession.provider === 'codex' ? 'codex' : 'claude',
       });
+      if (monitorRun) {
+        await finishMonitorRun(monitorRun.id, 'blocked', {
+          iteration,
+          lastRationale: decision.rationale,
+        }).catch(() => {});
+      }
       console.warn(
         `[SessionExecutor] monitor:blocked sessionId=${currentSession.id} iteration=${iteration} reason=${truncate(decision.rationale, 80)}`,
       );
       return;
+    }
+
+    // 第 N 轮决策为 continue → checkpoint 并准备下一轮
+    if (monitorRun) {
+      await checkpointMonitorRun(monitorRun.id, {
+        iteration,
+        lastRationale: decision.rationale,
+        lastWorkerSummary: summarizeWorkerPass(buildWorkerProgressReport(goal, workerResult)),
+      }).catch(() => {});
     }
 
     await updatePanelState(currentSession, 'work_started', channel);
@@ -516,6 +553,12 @@ export async function runMonitorLoop(
   await getOutputPort().handleAwaitingHuman(currentSession.id, limitSummary, {
     source: currentSession.provider === 'codex' ? 'codex' : 'claude',
   });
+  if (monitorRun) {
+    await finishMonitorRun(monitorRun.id, 'failed', {
+      iteration: MAX_MONITOR_ITERATIONS,
+      lastRationale: 'Reached the continuation safety limit.',
+    }).catch(() => {});
+  }
   console.warn(
     `[SessionExecutor] monitor:limit-reached sessionId=${currentSession.id} iterations=${MAX_MONITOR_ITERATIONS}`,
   );

@@ -27,7 +27,7 @@ vi.mock('@workspacecord/core', async (importOriginal) => {
   };
 });
 
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   getSession,
   updateSession,
   abortSession: vi.fn(() => false),
@@ -122,8 +122,8 @@ describe('button-handler awaiting_human', () => {
 
     await handleButton(interaction as never);
 
+    // P2 后 humanResolved 经 StateMachine;updateSession 只清理 Discord 相关字段
     expect(updateSession).toHaveBeenCalledWith('s1', {
-      humanResolved: true,
       currentInteractionMessageId: undefined,
       activeHumanGateId: undefined,
     });
@@ -139,8 +139,8 @@ describe('button-handler awaiting_human', () => {
 
     await handleButton(interaction as never);
 
+    // P2 后 humanResolved 经 StateMachine;updateSession 只清理 Discord 相关字段
     expect(updateSession).toHaveBeenCalledWith('s1', {
-      humanResolved: true,
       currentInteractionMessageId: undefined,
       activeHumanGateId: undefined,
     });

@@ -25,6 +25,7 @@ const handleCodexMonitorStateChange = vi.fn();
 const checkAutoArchive = vi.fn();
 
 const invalidateAllOnRestart = vi.fn(() => []);
+const reconcileOnStartup = vi.fn(() => ({ invalidated: [], resumed: [] }));
 const cleanupExpired = vi.fn(() => 0);
 const archiveResolved = vi.fn(() => 0);
 const getGate = vi.fn();
@@ -105,7 +106,7 @@ vi.mock('../src/codex-monitor-bridge.ts', () => ({ handleCodexMonitorStateChange
 vi.mock('../src/panel-adapter.ts', () => ({ startPerformanceMonitoring, stopPerformanceMonitoring }));
 vi.mock('../src/discord/delivery-policy.ts', () => ({ buildDeliveryPlan }));
 vi.mock('../src/discord/delivery.ts', () => ({ deliver }));
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   loadSessions,
   getAllSessions,
   endSession: vi.fn(),
@@ -120,6 +121,8 @@ vi.mock('@workspacecord/state', async (importOriginal) => {
   return {
     ...actual,
     gateCoordinator: {
+      init: vi.fn().mockResolvedValue(undefined),
+      reconcileOnStartup,
       invalidateAllOnRestart,
       cleanupExpired,
       archiveResolved,
@@ -219,7 +222,7 @@ describe('BotServicesOrchestrator', () => {
     await orchestrator.setupServices(client as any);
 
     expect(setBotStartTime).toHaveBeenCalledTimes(1);
-    expect(invalidateAllOnRestart).toHaveBeenCalledTimes(1);
+    expect(reconcileOnStartup).toHaveBeenCalledTimes(1);
   });
 
   it('注册 session-sync 服务并启动', async () => {

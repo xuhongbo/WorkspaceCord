@@ -30,7 +30,7 @@ function resetSessions() {
   storedSessions.length = 0;
 }
 
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   getAllSessions: mockGetAllSessions,
   getSessionsByCategory: mockGetSessionsByCategory,
   getSession: vi.fn(),

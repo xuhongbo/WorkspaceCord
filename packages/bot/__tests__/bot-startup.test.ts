@@ -113,7 +113,7 @@ vi.mock('@workspacecord/core', async (importOriginal) => {
 });
 vi.mock('../src/commands.ts', () => ({ registerCommands }));
 vi.mock('@workspacecord/engine/project-manager', () => ({ loadProjects }));
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   loadSessions,
   getAllSessions,
   endSession: vi.fn(),
@@ -167,6 +167,8 @@ vi.mock('@workspacecord/state', async (importOriginal) => {
   return {
     ...actual,
     gateCoordinator: {
+      init: vi.fn().mockResolvedValue(undefined),
+      reconcileOnStartup: vi.fn().mockReturnValue({ invalidated: [], resumed: [] }),
       invalidateAllOnRestart,
       getGate: vi.fn(),
     },

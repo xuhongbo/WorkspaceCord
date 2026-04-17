@@ -34,8 +34,60 @@ export {
   formatCost,
 } from './utils.ts';
 export { Store, getDataDir, _setDataDirForTest } from './persistence.ts';
+export {
+  s,
+  parseList,
+  formatIssues,
+  type FieldSpec,
+  type SchemaIssue,
+  type SchemaResult,
+} from './schema.ts';
+export {
+  parseSessionPersistData,
+  parseProject,
+  parseRegisteredProject,
+} from './persistence-schema.ts';
+export {
+  JsonFileRepository,
+  SqliteRepository,
+  type Repository,
+  type QueryOptions,
+  type RepositoryEntity,
+  type JsonRepoOptions,
+  type JsonIndexSpec,
+  type SqliteRepoOptions,
+  type SqliteIndexSpec,
+} from './repository/index.ts';
 export { EventBus } from './event-bus.ts';
 export * from './events.ts';
+export {
+  getDomainBus,
+  _setDomainBusForTest,
+  SessionTurnStarted,
+  SessionTurnCompleted,
+  SessionErrored,
+  SessionAwaitingHuman,
+  SessionResumed,
+  SessionCreated,
+  SessionEnded,
+  SessionModeChanged,
+  MonitorRunStarted,
+  MonitorRunEnded,
+  GateCreated,
+  GateResolved,
+  type SessionTurnStartedPayload,
+  type SessionTurnCompletedPayload,
+  type SessionErroredPayload,
+  type SessionAwaitingHumanPayload,
+  type SessionResumedPayload,
+  type SessionCreatedPayload,
+  type SessionEndedPayload,
+  type SessionModeChangedPayload,
+  type MonitorRunStartedPayload,
+  type MonitorRunEndedPayload,
+  type GateCreatedEventPayload,
+  type GateResolvedEventPayload,
+} from './domain-events.ts';
 export { createLogger, getLogger, type Logger } from './logger.ts';
 export {
   ServiceBus,

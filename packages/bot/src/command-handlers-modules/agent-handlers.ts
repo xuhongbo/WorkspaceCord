@@ -9,7 +9,8 @@ import {
   type AnyThreadChannel,
 } from 'discord.js';
 import { config, formatRelative } from '@workspacecord/core';
-import { createSession, getSession, getSessionByChannel, getSessionsByCategory, setMode, setMonitorGoal, setAgentPersona, setVerbose, setModel, setStatusCardBinding, setCurrentInteractionMessage, abortSession, endSession, updateSessionPermissions, getSessionPermissionSummary, getSessionPermissionDetails } from '@workspacecord/engine/session-registry';
+import { createSession, getSessionByChannel, getSessionsByCategory, setMode, setMonitorGoal, setAgentPersona, setVerbose, setModel, setStatusCardBinding, setCurrentInteractionMessage, abortSession, endSession, updateSessionPermissions, getSessionPermissionSummary, getSessionPermissionDetails } from '@workspacecord/engine/session-registry';
+import { getSessionView } from '@workspacecord/engine/session-context';
 import * as projectMgr from '@workspacecord/engine/project-manager';
 import { archiveSession } from '../archive-manager.ts';
 import { executeSessionContinue } from '@workspacecord/engine/session-executor';
@@ -462,7 +463,7 @@ export async function handleAgentPermissions(interaction: ChatInputCommandIntera
   }
 
   await updateSessionPermissions(session.id, patch);
-  const refreshed = getSession(session.id) ?? { ...session, ...patch };
+  const refreshed = getSessionView(session.id) ?? { ...session, ...patch };
   const timing = session.isGenerating ? '已保存，将在下一轮生效。' : '已更新并立即生效。';
   await interaction.reply({
     content: `${timing}\n当前权限：${getSessionPermissionDetails(refreshed as never)}`,

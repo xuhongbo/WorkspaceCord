@@ -1,4 +1,4 @@
-import { getSession } from '../session-registry.ts';
+import { getSessionView } from '../session-context.ts';
 import { getOutputPort } from '../output-port.ts';
 import { gateCoordinator } from '@workspacecord/state';
 import { truncate, config } from '@workspacecord/core';
@@ -11,7 +11,7 @@ type GateResolveResult = {
 };
 
 function refreshSession(session: Session): Session {
-  return getSession(session.id) ?? session;
+  return getSessionView(session.id) ?? session;
 }
 
 export function waitForGateResolution(

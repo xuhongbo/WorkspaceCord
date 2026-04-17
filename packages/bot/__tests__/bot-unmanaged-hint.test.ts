@@ -84,10 +84,15 @@ vi.mock('@workspacecord/state', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
-    gateCoordinator: { invalidateAllOnRestart: vi.fn(() => []), getGate: vi.fn() },
+    gateCoordinator: {
+      init: vi.fn().mockResolvedValue(undefined),
+      reconcileOnStartup: vi.fn(() => ({ invalidated: [], resumed: [] })),
+      invalidateAllOnRestart: vi.fn(() => []),
+      getGate: vi.fn(),
+    },
   };
 });
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   loadSessions: vi.fn(),
   getAllSessions: vi.fn(() => []),
   endSession: vi.fn(),

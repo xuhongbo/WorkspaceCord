@@ -102,6 +102,27 @@ export const config = {
   healthCheckIdleThresholdMs: optionalInt('HEALTH_CHECK_IDLE_THRESHOLD_MS', 7_200_000),
 
   hookSecret: optional('HOOK_SECRET', ''),
+
+  /**
+   * 重启后 Monitor run 自动续跑策略:
+   *  - `abandon-only`(默认):只把 running 的 run 标记为 abandoned,不自动续跑
+   *  - `resume-with-goal`:session 仍在 monitor 模式且保存了 goal → 重新拉起 monitor 循环
+   */
+  monitorAutoResumePolicy: optionalEnum(
+    'MONITOR_AUTO_RESUME_POLICY',
+    'abandon-only',
+    ['abandon-only', 'resume-with-goal'],
+  ),
+
+  /**
+   * 重启后 pending 人工门控的处理策略:
+   *  - `invalidate-all`(默认):全部标记为 invalidated,Discord 消息置灰
+   *  - `resume-pending`:保留 pending,按剩余时间重建 5 分钟超时,用户可继续审批
+   */
+  gateRestartPolicy: optionalEnum('GATE_RESTART_POLICY', 'invalidate-all', [
+    'invalidate-all',
+    'resume-pending',
+  ]),
 } as const;
 
 if (config.anthropicApiKey) process.env.ANTHROPIC_API_KEY = config.anthropicApiKey;

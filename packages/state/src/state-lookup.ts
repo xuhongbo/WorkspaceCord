@@ -1,5 +1,5 @@
 import type { HumanGateRecord } from './human-gate.ts';
-import type { GateManager } from './gate-manager.ts';
+import type { GateService } from './gate-service.ts';
 
 export interface SessionStateSummary {
   sessionId: string;
@@ -20,25 +20,25 @@ export interface GateStats {
 
 /**
  * Read-only state query interface.
- * Delegates to GateManager for all reads — no direct mutation.
+ * Delegates to GateService for all reads — no direct mutation.
  */
 export class StateLookup {
-  private readonly gateManager: GateManager;
+  private readonly gateService: GateService;
 
-  constructor(gateManager: GateManager) {
-    this.gateManager = gateManager;
+  constructor(gateService: GateService) {
+    this.gateService = gateService;
   }
 
   getActiveGates(): HumanGateRecord[] {
-    return this.gateManager.getAllGates().filter((g) => g.status === 'pending');
+    return this.gateService.getAllGates().filter((g) => g.status === 'pending');
   }
 
   getGatesBySession(sessionId: string): HumanGateRecord[] {
-    return this.gateManager.getAllGates().filter((g) => g.sessionId === sessionId);
+    return this.gateService.getAllGates().filter((g) => g.sessionId === sessionId);
   }
 
   getGateStats(): GateStats {
-    const all = this.gateManager.getAllGates();
+    const all = this.gateService.getAllGates();
     return {
       total: all.length,
       pending: all.filter((g) => g.status === 'pending').length,

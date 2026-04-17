@@ -16,7 +16,13 @@ export type ThreadType = SessionType;
 export type ClaudePermissionMode = 'bypass' | 'normal';
 export type CodexBypassMode = boolean;
 
-export interface ThreadSession {
+/**
+ * 持久化部分:落盘到 sessions.json 的字段,重启后完整恢复。
+ *
+ * 与 runtime 分离的意图:让 Repository 层的类型专注于"磁盘上应该有什么",
+ * 避免 `isGenerating` 这种进程生命周期内才有意义的状态混入持久化路径。
+ */
+export interface SessionPersistent {
   id: string; // Internal session ID (sanitized agentLabel + dedup suffix)
   channelId: string; // Primary Discord ID: TextChannel.id for persistent, Thread.id for subagent
   categoryId: string; // Discord Category ID (= project)
@@ -41,7 +47,6 @@ export interface ThreadSession {
   monitorGoal?: string;
   monitorProviderSessionId?: string;
   workflowState: SessionWorkflowState;
-  isGenerating: boolean;
   createdAt: number;
   lastActivity: number;
   messageCount: number;
@@ -62,7 +67,27 @@ export interface ThreadSession {
   activeHumanGateId?: string; // 当前活跃的人工门控 ID
 }
 
-export type SessionPersistData = Omit<ThreadSession, 'isGenerating'>;
+/**
+ * 运行时字段:只在进程内有意义,重启后应重置。
+ * AbortController / abortReason 等更底层的运行时状态由 session-registry 的独立 Map
+ * 维护,不在此接口里。
+ */
+export interface SessionRuntimeFields {
+  isGenerating: boolean;
+}
+
+/**
+ * 进程内使用的完整 session 视图。等同于 `SessionPersistent & SessionRuntimeFields`。
+ * Repository 持久化的是 `SessionPersistent`,加载时补齐 runtime 默认值再暴露为
+ * `ThreadSession` 给上层消费者。
+ */
+export interface ThreadSession extends SessionPersistent, SessionRuntimeFields {}
+
+/**
+ * 旧名字,保留向后兼容:等同于 `SessionPersistent`。
+ * 新代码应使用 `SessionPersistent` 以表达"磁盘 schema"的意图。
+ */
+export type SessionPersistData = SessionPersistent;
 
 // ─── Workflow State ───────────────────────────────────────────────────────────
 

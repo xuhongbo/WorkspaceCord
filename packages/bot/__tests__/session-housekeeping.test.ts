@@ -5,7 +5,7 @@ const endSession = vi.fn();
 const getAllSessions = vi.fn();
 const archiveSession = vi.fn();
 
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   getSession,
   endSession,
   getAllSessions,
