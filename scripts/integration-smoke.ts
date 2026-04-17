@@ -15,6 +15,8 @@ import {
 import { config } from '../packages/core/src/config.ts';
 import { handleProject, handleAgent, handleSubagent, handleShell } from '../packages/bot/src/command-handlers.ts';
 import { executeSessionPrompt } from '../packages/engine/src/session-executor.ts';
+import { registerOutputPort } from '../packages/engine/src/output-port.ts';
+import { DiscordOutputPort } from '../packages/bot/src/discord-output-port.ts';
 import {
   loadRegistry,
   getProjectByName,
@@ -236,6 +238,8 @@ try {
       GatewayIntentBits.MessageContent,
     ],
   });
+  // 注册 DiscordOutputPort,否则 executeSessionPrompt 调用 getOutputPort() 会抛错
+  registerOutputPort(new DiscordOutputPort());
   await client.login(config.token);
   await waitFor(1000);
 

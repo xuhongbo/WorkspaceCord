@@ -7,7 +7,7 @@ import type { ProviderEvent } from '@workspacecord/providers';
 import { truncate } from '@workspacecord/core';
 import type { TextChannel } from 'discord.js';
 import type { SessionChannel } from '../discord-types.ts';
-import { getSession } from '@workspacecord/engine/session-registry';
+import { getSessionView } from '@workspacecord/engine/session-context';
 import { autoSpawnSubagentThread } from '../subagent-manager.ts';
 import {
   updateSessionState,
@@ -65,7 +65,7 @@ type HandlerMap = {
 };
 
 function providerSource(sessionId: string): 'claude' | 'codex' {
-  const session = getSession(sessionId);
+  const session = getSessionView(sessionId);
   return session?.provider === 'codex' ? 'codex' : 'claude';
 }
 
@@ -79,7 +79,7 @@ const askUser: EventHandler<'ask_user'> = async (event, ctx) => {
   ctx.state.askedUser = true;
   ctx.state.askUserQuestionsJson = event.questionsJson;
   await ctx.streamer.discard();
-  const session = getSession(ctx.sessionId);
+  const session = getSessionView(ctx.sessionId);
   if (!session) return;
   const source = providerSource(ctx.sessionId);
   await updateSessionState(ctx.sessionId, {
@@ -106,7 +106,7 @@ const taskStarted: EventHandler<'task_started'> = async (event, ctx) => {
     kind: 'subagent',
     text: `子代理启动：${truncate(event.description, 80)}`,
   });
-  const session = getSession(ctx.sessionId);
+  const session = getSessionView(ctx.sessionId);
   if (!session || ctx.channel.type === undefined) return;
   autoSpawnSubagentThread(session, event.taskId, event.description, ctx.channel as TextChannel)
     .then((result) => {
@@ -250,7 +250,7 @@ const result: EventHandler<'result'> = async (event, ctx) => {
   }
   await ctx.streamer.finalize();
 
-  const session = getSession(ctx.sessionId);
+  const session = getSessionView(ctx.sessionId);
   if (!session) {
     ctx.state.pendingAttachments = [];
     return;
@@ -285,7 +285,7 @@ const errorEvent: EventHandler<'error'> = async (event, ctx) => {
   await ctx.streamer.finalize();
   queueDigest(ctx.sessionId, { kind: 'error', text: `错误：${truncate(event.message, 120)}` });
   if (ctx.mode === 'monitor') return;
-  const session = getSession(ctx.sessionId);
+  const session = getSessionView(ctx.sessionId);
   if (!session) return;
   await flushDigest(ctx.sessionId);
   await updateSessionState(ctx.sessionId, {

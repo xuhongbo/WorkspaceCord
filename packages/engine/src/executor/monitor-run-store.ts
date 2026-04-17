@@ -10,7 +10,12 @@
 //
 // Repository 写入 debounce=0,因为调用频率低(每轮 N 秒一次)且每次都值得立即落盘。
 
-import { JsonFileRepository } from '@workspacecord/core';
+import {
+  JsonFileRepository,
+  getDomainBus,
+  MonitorRunStarted,
+  MonitorRunEnded,
+} from '@workspacecord/core';
 import type { Repository } from '@workspacecord/core';
 
 export interface MonitorRun extends Record<string, unknown> {
@@ -81,6 +86,18 @@ export async function beginMonitorRun(params: {
     lastCheckpointAt: now,
   };
   await monitorRepo.save(run);
+
+  getDomainBus().emit(
+    MonitorRunStarted,
+    {
+      sessionId: run.sessionId,
+      runId: run.id,
+      goal: run.goal,
+      maxIterations: run.maxIterations,
+    },
+    'monitor-run-store',
+  );
+
   return run;
 }
 
@@ -98,11 +115,24 @@ export async function finishMonitorRun(
   finalPatch: Partial<Pick<MonitorRun, 'lastRationale' | 'lastWorkerSummary' | 'iteration'>> = {},
 ): Promise<void> {
   await ensureInit();
-  await monitorRepo.update(runId, {
+  const updated = await monitorRepo.update(runId, {
     ...finalPatch,
     status,
     lastCheckpointAt: Date.now(),
   });
+  if (updated) {
+    getDomainBus().emit(
+      MonitorRunEnded,
+      {
+        sessionId: updated.sessionId,
+        runId: updated.id,
+        status,
+        iteration: updated.iteration,
+        rationale: updated.lastRationale,
+      },
+      'monitor-run-store',
+    );
+  }
 }
 
 export async function listRunningMonitorRuns(): Promise<MonitorRun[]> {
@@ -130,6 +160,17 @@ export async function reconcileMonitorRunsOnStartup(): Promise<MonitorRun[]> {
   const now = Date.now();
   for (const run of running) {
     await monitorRepo.update(run.id, { status: 'abandoned', lastCheckpointAt: now });
+    getDomainBus().emit(
+      MonitorRunEnded,
+      {
+        sessionId: run.sessionId,
+        runId: run.id,
+        status: 'abandoned',
+        iteration: run.iteration,
+        rationale: run.lastRationale,
+      },
+      'monitor-run-store',
+    );
   }
   return running;
 }

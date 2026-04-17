@@ -35,7 +35,7 @@ vi.mock('../../src/discord/delivery-policy.ts', () => ({
 vi.mock('../../src/discord/delivery.ts', () => ({
   deliver: deliveryMocks.deliver,
 }));
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   getSession: mocks.getSession,
   updateSession: mocks.updateSession,
   getSessionByChannel: vi.fn(),

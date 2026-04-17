@@ -45,6 +45,43 @@ export interface SessionResumedPayload {
   readonly reason: 'gate_resolved' | 'user_continue' | 'monitor_step';
 }
 
+export interface SessionCreatedPayload {
+  readonly sessionId: string;
+  readonly channelId: string;
+  readonly categoryId: string;
+  readonly provider: 'claude' | 'codex';
+  readonly type: 'persistent' | 'subagent';
+  readonly mode: string;
+  readonly discoverySource: 'discord' | 'claude-hook' | 'codex-log' | 'sync';
+}
+
+export interface SessionEndedPayload {
+  readonly sessionId: string;
+  readonly channelId: string;
+  readonly categoryId: string;
+}
+
+export interface SessionModeChangedPayload {
+  readonly sessionId: string;
+  readonly previousMode: string;
+  readonly nextMode: string;
+}
+
+export interface MonitorRunStartedPayload {
+  readonly sessionId: string;
+  readonly runId: string;
+  readonly goal: string;
+  readonly maxIterations: number;
+}
+
+export interface MonitorRunEndedPayload {
+  readonly sessionId: string;
+  readonly runId: string;
+  readonly status: 'completed' | 'blocked' | 'failed' | 'abandoned';
+  readonly iteration: number;
+  readonly rationale?: string;
+}
+
 // ─── 域事件名称(EventType branded strings)───────────────────────────────────
 
 export const SessionTurnStarted = 'session.turn.started' as EventType<SessionTurnStartedPayload>;
@@ -52,6 +89,11 @@ export const SessionTurnCompleted = 'session.turn.completed' as EventType<Sessio
 export const SessionErrored = 'session.errored' as EventType<SessionErroredPayload>;
 export const SessionAwaitingHuman = 'session.awaiting_human' as EventType<SessionAwaitingHumanPayload>;
 export const SessionResumed = 'session.resumed' as EventType<SessionResumedPayload>;
+export const SessionCreated = 'session.created' as EventType<SessionCreatedPayload>;
+export const SessionEnded = 'session.ended' as EventType<SessionEndedPayload>;
+export const SessionModeChanged = 'session.mode_changed' as EventType<SessionModeChangedPayload>;
+export const MonitorRunStarted = 'monitor.run.started' as EventType<MonitorRunStartedPayload>;
+export const MonitorRunEnded = 'monitor.run.ended' as EventType<MonitorRunEndedPayload>;
 
 // ─── 门控事件(与 GateService 现有 emit 契约对齐)──────────────────────────
 

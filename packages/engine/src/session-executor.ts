@@ -4,7 +4,8 @@ import type {
 import { isAbortError, truncate } from '@workspacecord/core';
 import type { ProviderEvent, ContentBlock } from '@workspacecord/providers';
 import { getOutputPort } from './output-port.ts';
-import { getSession, abortSessionWithReason, consumeAbortReason, setMonitorGoal } from './session-registry.ts';
+import { abortSessionWithReason, consumeAbortReason, setMonitorGoal } from './session-registry.ts';
+import { getSessionView } from './session-context.ts';
 import { sendPrompt, continueSessionWithOverrides } from './session/provider-runtime.ts';
 import { createClaudePermissionHandler, shouldUseClaudePermissionHandler } from './executor/permission-gate.ts';
 import { applyWorkflowHook, extractPromptText, refreshSession, updatePanelState } from './executor/session-hooks.ts';
@@ -144,7 +145,7 @@ export async function executeSessionPrompt(
 
   if ((options.updateMonitorGoal ?? true) && goalText && !session.monitorGoal) {
     setMonitorGoal(session.id, goalText);
-    session = getSession(session.id) ?? session;
+    session = getSessionView(session.id) ?? session;
   }
 
   const goal = session.monitorGoal || goalText;

@@ -1,6 +1,7 @@
 import type { Guild } from 'discord.js';
 import { archiveSession } from './archive-manager.ts';
-import { endSession, getAllSessions, getSession } from '@workspacecord/engine/session-registry';
+import { endSession, getAllSessions } from '@workspacecord/engine/session-registry';
+import { getSessionView } from '@workspacecord/engine/session-context';
 import type { ThreadSession } from '@workspacecord/core';
 
 export interface ProjectCleanupPreview {
@@ -104,7 +105,7 @@ export async function cleanupSessionsById(
   };
 
   for (const sessionId of new Set(Array.from(sessionIds).filter(Boolean))) {
-    const session = getSession(sessionId);
+    const session = getSessionView(sessionId);
     if (!session) {
       result.skippedSessions += 1;
       continue;
@@ -152,7 +153,7 @@ export async function archiveSessionsById(
   };
 
   for (const sessionId of new Set(Array.from(sessionIds).filter(Boolean))) {
-    const session = getSession(sessionId);
+    const session = getSessionView(sessionId);
     if (!session || session.type !== 'persistent') {
       result.missingSessions += 1;
       continue;

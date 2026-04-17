@@ -8,7 +8,7 @@ import { loadSessions, createSession, endSession } from '../packages/engine/src/
 import { loadProjects } from '../packages/engine/src/project-manager.ts';
 import { _setDataDirForTest } from '../packages/core/src/persistence.ts';
 import { registerOutputPort } from '../packages/engine/src/output-port.ts';
-import { gateCoordinator } from '../packages/state/src/gate-coordinator.ts';
+import { gateCoordinator } from '../packages/state/src/index.ts';
 
 interface StepResult {
   name: string;

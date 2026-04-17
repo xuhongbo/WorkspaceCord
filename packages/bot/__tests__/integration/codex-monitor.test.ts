@@ -8,7 +8,7 @@ const normalizeCodexEvent = vi.fn();
 const registerExistingStatusCard = vi.fn();
 const updateSessionState = vi.fn();
 
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   resolveCodexSessionFromMonitor,
 }));
 

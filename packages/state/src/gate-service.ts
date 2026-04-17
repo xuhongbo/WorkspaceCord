@@ -39,6 +39,20 @@ export interface InvalidatedGate {
   discordMessageId?: string;
 }
 
+/** 重启后如何处理磁盘上残留的 pending gate。 */
+export type GateRestartPolicy =
+  /** 默认:全部标记为 invalidated,Discord 消息会被标灰。 */
+  | 'invalidate-all'
+  /** 续命:保留 pending 状态,按剩余时间重建 5 分钟超时,用户可继续审批。 */
+  | 'resume-pending';
+
+export interface GateReconcileResult {
+  /** 本次 reconcile 过程中被标记为 invalidated 的 gates(仅 invalidate-all 策略)。 */
+  invalidated: InvalidatedGate[];
+  /** 仍保持 pending 状态并已重建超时的 gates(仅 resume-pending 策略)。 */
+  resumed: HumanGateRecord[];
+}
+
 const GATE_TIMEOUT_MS = 5 * 60 * 1000; // 5 分钟
 
 // Domain event 类型(P3a 将激活订阅,当前仅发布)
@@ -65,6 +79,15 @@ export class GateService {
   constructor(registry: HumanGateRegistry, eventBus: EventBus | null = null) {
     this.registry = registry;
     this.eventBus = eventBus;
+  }
+
+  /**
+   * 启动时调用一次,把磁盘上的 gates.json 灌入内存。
+   * 在此之前 getAll/getGate 都是空,historical bug:init 从未被调用 ⇒ 磁盘上的
+   * pending gate 在重启后等同丢失。这里补齐闭环。
+   */
+  async init(): Promise<void> {
+    await this.registry.init();
   }
 
   // ─── 创建 / 查询 ───────────────────────────────────────────────────────────
@@ -253,6 +276,55 @@ export class GateService {
     this.timeoutTimers.clear();
 
     return invalidated;
+  }
+
+  /**
+   * 按策略对重启后残留的 pending gates 做 reconcile。
+   * - `invalidate-all`:等同 `invalidateAllOnRestart`,返回被标为 invalidated 的清单。
+   * - `resume-pending`:保持 pending 状态,对每个 blocking + remote 支持的 gate 按
+   *   `createdAt + GATE_TIMEOUT_MS - now` 的剩余时间重建超时。已过期的直接按 timeout 处理。
+   */
+  reconcileOnStartup(policy: GateRestartPolicy): GateReconcileResult {
+    if (policy === 'invalidate-all') {
+      return { invalidated: this.invalidateAllOnRestart(), resumed: [] };
+    }
+
+    const now = Date.now();
+    const resumed: HumanGateRecord[] = [];
+    const invalidated: InvalidatedGate[] = [];
+
+    for (const gate of this.registry.getAll()) {
+      if (gate.status !== 'pending') continue;
+      const age = now - gate.createdAt;
+
+      if (age >= GATE_TIMEOUT_MS) {
+        // 已超出 5 分钟窗口:不恢复,直接按 timeout 关闭
+        this.registry.update(gate.id, gate.version, {
+          status: 'expired',
+          resolvedAt: now,
+          resolvedBy: 'timeout',
+        });
+        invalidated.push({
+          gateId: gate.id,
+          sessionId: gate.sessionId,
+          discordMessageId: gate.discordMessageId,
+        });
+        continue;
+      }
+
+      if (gate.supportsRemoteDecision && gate.isBlocking) {
+        const remaining = GATE_TIMEOUT_MS - age;
+        const timer = setTimeout(() => this.handleTimeout(gate.id), remaining);
+        timer.unref?.();
+        this.timeoutTimers.set(gate.id, timer);
+      }
+      resumed.push(gate);
+    }
+
+    console.log(
+      `[GateService] Resumed ${resumed.length} pending gate(s), expired ${invalidated.length} overdue on restart`,
+    );
+    return { invalidated, resumed };
   }
 
   cleanupExpired(maxAgeMs: number = GATE_TIMEOUT_MS): number {

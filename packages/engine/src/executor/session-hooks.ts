@@ -1,10 +1,11 @@
-import { getSession, updateWorkflowState } from '../session-registry.ts';
+import { updateWorkflowState } from '../session-registry.ts';
+import { getSessionView } from '../session-context.ts';
 import { getOutputPort } from '../output-port.ts';
 import type { ThreadSession as Session } from '@workspacecord/core';
 import type { ContentBlock } from '@workspacecord/providers';
 
 export function refreshSession(session: Session): Session {
-  return getSession(session.id) ?? session;
+  return getSessionView(session.id) ?? session;
 }
 
 export function applyWorkflowHook(

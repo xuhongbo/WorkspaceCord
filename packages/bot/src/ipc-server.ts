@@ -4,7 +4,8 @@ import type { Client, TextChannel } from 'discord.js';
 import type { SessionChannel } from './discord-types.ts';
 import { config } from '@workspacecord/core';
 import { updateSessionState } from './panel-adapter.ts';
-import { getSession, getSessionByProviderSession, updateSession } from '@workspacecord/engine/session-registry';
+import { getSessionByProviderSession, updateSession } from '@workspacecord/engine/session-registry';
+import { getSessionView } from '@workspacecord/engine/session-context';
 import { buildClaudeSubagentProviderSessionId } from './session-local-registration.ts';
 import { discoverAndRegisterSession } from './session-discovery.ts';
 import { gateCoordinator } from '@workspacecord/state';
@@ -188,7 +189,7 @@ async function handleHookEvent(payload: Record<string, unknown>): Promise<void> 
     });
 
     if (registered) {
-      session = getSession(registered.sessionId);
+      session = getSessionView(registered.sessionId);
       console.log(`[IpcServer] Auto-registered session: ${registered.sessionId}`);
     }
   }
@@ -227,7 +228,7 @@ async function handleGateResolved(payload: Record<string, unknown>): Promise<voi
 
   const gate = gateCoordinator.getGate(data.gateId);
   if (gate?.discordMessageId) {
-    const session = getSession(data.sessionId);
+    const session = getSessionView(data.sessionId);
     if (session) {
       const channel = discordClient?.channels.cache.get(session.channelId) as TextChannel | undefined;
       if (channel) {

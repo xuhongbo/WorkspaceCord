@@ -19,9 +19,11 @@ describe('JsonFileRepository', () => {
     _setDataDirForTest(dataDir);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     _setDataDirForTest(null);
-    rmSync(dataDir, { recursive: true, force: true });
+    // 给 Repository debounced 写操作一个窗口完成,避免 rmSync 遇到临时文件
+    await new Promise((r) => setTimeout(r, 30));
+    rmSync(dataDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 20 });
     vi.restoreAllMocks();
   });
 
@@ -160,6 +162,118 @@ describe('JsonFileRepository', () => {
     await repo.init();
     expect(repo.size()).toBe(1);
     expect(repo.get('good')?.count).toBe(1);
+  });
+
+  describe('secondary indexes', () => {
+    it('find({ where: indexed_field }) goes through O(1) index', async () => {
+      const repo = new JsonFileRepository<TestEntity>({
+        filename: 'idx.json',
+        idField: 'id',
+        indexes: [{ field: 'group' }],
+        debounceMs: 0,
+      });
+      await repo.init();
+      await repo.save({ id: '1', name: 'a', group: 'g1', count: 1 });
+      await repo.save({ id: '2', name: 'b', group: 'g2', count: 2 });
+      await repo.save({ id: '3', name: 'c', group: 'g1', count: 3 });
+
+      const g1 = repo.find({ where: { group: 'g1' } });
+      expect(g1.map((e) => e.id).sort()).toEqual(['1', '3']);
+
+      const none = repo.find({ where: { group: 'missing' } });
+      expect(none).toEqual([]);
+    });
+
+    it('update() re-indexes when indexed field changes', async () => {
+      const repo = new JsonFileRepository<TestEntity>({
+        filename: 'idx-update.json',
+        idField: 'id',
+        indexes: [{ field: 'group' }],
+        debounceMs: 0,
+      });
+      await repo.init();
+      await repo.save({ id: '1', name: 'a', group: 'g1', count: 1 });
+      expect(repo.find({ where: { group: 'g1' } })).toHaveLength(1);
+
+      await repo.update('1', { group: 'g2' });
+      expect(repo.find({ where: { group: 'g1' } })).toHaveLength(0);
+      expect(repo.find({ where: { group: 'g2' } })).toHaveLength(1);
+    });
+
+    it('delete() removes entry from indexes', async () => {
+      const repo = new JsonFileRepository<TestEntity>({
+        filename: 'idx-del.json',
+        idField: 'id',
+        indexes: [{ field: 'group' }],
+        debounceMs: 0,
+      });
+      await repo.init();
+      await repo.save({ id: '1', name: 'a', group: 'g1', count: 1 });
+      await repo.delete('1');
+      expect(repo.find({ where: { group: 'g1' } })).toHaveLength(0);
+    });
+
+    it('reindex() picks up direct mutations on indexed fields', async () => {
+      const repo = new JsonFileRepository<TestEntity>({
+        filename: 'idx-reindex.json',
+        idField: 'id',
+        indexes: [{ field: 'group' }],
+        debounceMs: 0,
+      });
+      await repo.init();
+      await repo.save({ id: '1', name: 'a', group: 'g1', count: 1 });
+
+      // 直接 mutate(模拟旧代码风格 — 不调用 repo.update)
+      const ref = repo.get('1')!;
+      ref.group = 'g2';
+      // 索引还指向 g1,但 find 的 filter 会校验真实值,返回空
+      expect(repo.find({ where: { group: 'g1' } })).toHaveLength(0);
+      // g2 索引还没有这条记录,也查不到
+      expect(repo.find({ where: { group: 'g2' } })).toHaveLength(0);
+
+      // 调用 reindex 后索引对齐真实值
+      repo.reindex('1');
+      expect(repo.find({ where: { group: 'g1' } })).toHaveLength(0);
+      expect(repo.find({ where: { group: 'g2' } })).toHaveLength(1);
+    });
+
+    it('indexes survive init() re-open', async () => {
+      const repo1 = new JsonFileRepository<TestEntity>({
+        filename: 'idx-restart.json',
+        idField: 'id',
+        indexes: [{ field: 'group' }],
+        debounceMs: 0,
+      });
+      await repo1.init();
+      await repo1.save({ id: '1', name: 'a', group: 'g1', count: 1 });
+      await repo1.save({ id: '2', name: 'b', group: 'g1', count: 2 });
+      await repo1.flush();
+
+      const repo2 = new JsonFileRepository<TestEntity>({
+        filename: 'idx-restart.json',
+        idField: 'id',
+        indexes: [{ field: 'group' }],
+        debounceMs: 0,
+      });
+      await repo2.init();
+      expect(repo2.find({ where: { group: 'g1' } })).toHaveLength(2);
+    });
+
+    it('multi-field where: indexed field narrows, non-indexed field filters', async () => {
+      const repo = new JsonFileRepository<TestEntity>({
+        filename: 'idx-multi.json',
+        idField: 'id',
+        indexes: [{ field: 'group' }],
+        debounceMs: 0,
+      });
+      await repo.init();
+      await repo.save({ id: '1', name: 'a', group: 'g1', count: 1 });
+      await repo.save({ id: '2', name: 'a', group: 'g1', count: 2 });
+      await repo.save({ id: '3', name: 'b', group: 'g1', count: 3 });
+
+      const result = repo.find({ where: { group: 'g1', name: 'a' } });
+      expect(result.map((e) => e.id).sort()).toEqual(['1', '2']);
+    });
   });
 
   describe('debounced writes', () => {

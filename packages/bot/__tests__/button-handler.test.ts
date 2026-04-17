@@ -27,7 +27,7 @@ vi.mock('@workspacecord/core', async (importOriginal) => {
   };
 });
 
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   getSession,
   updateSession,
   abortSession: vi.fn(() => false),

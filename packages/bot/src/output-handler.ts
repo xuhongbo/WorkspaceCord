@@ -1,7 +1,7 @@
 import type { SessionChannel } from './discord-types.ts';
 import { truncate, isAbortError } from '@workspacecord/core';
 import type { ProviderEvent, ProviderName } from '@workspacecord/providers';
-import { getSession } from '@workspacecord/engine/session-registry';
+import { getSessionView } from '@workspacecord/engine/session-context';
 import {
   initializeSessionPanel,
   updateSessionState,
@@ -71,7 +71,7 @@ export async function handleOutputStream(
 
   const state = createInitialState();
   let lastDigestFlushAt = Date.now();
-  const session = getSession(sessionId);
+  const session = getSessionView(sessionId);
 
   if (session) {
     await initializeSessionPanel(sessionId, channel, {

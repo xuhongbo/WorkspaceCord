@@ -49,10 +49,14 @@ export {
 } from './persistence-schema.ts';
 export {
   JsonFileRepository,
+  SqliteRepository,
   type Repository,
   type QueryOptions,
   type RepositoryEntity,
   type JsonRepoOptions,
+  type JsonIndexSpec,
+  type SqliteRepoOptions,
+  type SqliteIndexSpec,
 } from './repository/index.ts';
 export { EventBus } from './event-bus.ts';
 export * from './events.ts';
@@ -64,6 +68,11 @@ export {
   SessionErrored,
   SessionAwaitingHuman,
   SessionResumed,
+  SessionCreated,
+  SessionEnded,
+  SessionModeChanged,
+  MonitorRunStarted,
+  MonitorRunEnded,
   GateCreated,
   GateResolved,
   type SessionTurnStartedPayload,
@@ -71,6 +80,11 @@ export {
   type SessionErroredPayload,
   type SessionAwaitingHumanPayload,
   type SessionResumedPayload,
+  type SessionCreatedPayload,
+  type SessionEndedPayload,
+  type SessionModeChangedPayload,
+  type MonitorRunStartedPayload,
+  type MonitorRunEndedPayload,
   type GateCreatedEventPayload,
   type GateResolvedEventPayload,
 } from './domain-events.ts';

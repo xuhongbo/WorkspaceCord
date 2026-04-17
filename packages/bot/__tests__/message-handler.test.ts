@@ -26,7 +26,7 @@ vi.mock('@workspacecord/core', async (importOriginal) => {
     isAbortError: vi.fn(() => false),
   };
 });
-vi.mock('@workspacecord/engine/session-registry', () => ({ getSessionByChannel, updateSession }));
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), getSessionByChannel, updateSession }));
 vi.mock('@workspacecord/engine/session-executor', () => ({ executeSessionPrompt }));
 vi.mock('../src/discord/delivery-policy.ts', () => ({ buildDeliveryPlan }));
 vi.mock('../src/discord/delivery.ts', () => ({ sendTyping, sendAckReaction, deliver }));

@@ -1,42 +1,38 @@
-// 会话注册表 — 纯存储、CRUD、查找索引
-// 从 thread-manager.ts 提取，职责单一化
+// 会话注册表 — Repository 背后的单一数据源
+//
+// 设计:
+//   - `sessionRepo` 是唯一持久化权威,PK=id,按 channelId / categoryId /
+//     providerSessionId 建索引;所有查询 / 写入都通过它。
+//   - 原来四个 Map(sessions / idToChannelId / sessionsByCategory /
+//     providerSessionIndex)被一条 `JsonFileRepository` 替代。
+//   - 运行时独有、不持久化的状态(AbortController、abortReason)仍保留独立 Map。
+//   - 现存调用方习惯直接 mutate `session.X = Y`;为兼容这个模式,`updateSession`
+//     / 各 setter / `debouncedSaveSession` 都会触发 `sessionRepo.reindex(id)`
+//     把索引同步回来,并调度一次 debounced 写盘。
 
 import { existsSync } from 'node:fs';
 import { sep } from 'node:path';
-import { sanitizeName, resolvePath } from '@workspacecord/core';
+import {
+  sanitizeName,
+  resolvePath,
+  JsonFileRepository,
+  parseSessionPersistData,
+  formatIssues,
+  getDomainBus,
+  SessionCreated,
+  SessionEnded,
+  SessionModeChanged,
+} from '@workspacecord/core';
 import type {
   ThreadSession,
   SessionMode,
   SessionWorkflowState,
   ProviderName,
+  SchemaIssue,
 } from '@workspacecord/core';
 import { config } from '@workspacecord/core';
 import { stateMachine } from '@workspacecord/state';
 import { getOutputPort } from './output-port.ts';
-import {
-  loadPersistedSessions,
-  saveAllSessions,
-  debouncedSave as debouncedSavePersistence,
-  saveImmediate as saveImmediatePersistence,
-} from './session/persistence.ts';
-
-// ─── Storage ──────────────────────────────────────────────────────────────────
-
-// channelId (the session's own Discord channel or thread ID) → ThreadSession
-const sessions = new Map<string, ThreadSession>();
-
-// internal session id → channelId
-const idToChannelId = new Map<string, string>();
-
-// categoryId → Set<channelId> (索引，用于快速查找)
-const sessionsByCategory = new Map<string, Set<string>>();
-
-// providerSessionId → channelId (二级索引，用于 O(1) provider session 查找)
-const providerSessionIndex = new Map<string, string>();
-
-// Session 运行时状态（不持久化）
-const sessionControllers = new Map<string, AbortController>();
-const sessionAbortReasons = new Map<string, 'user' | 'watchdog'>();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -48,77 +44,74 @@ function createDefaultWorkflowState(): SessionWorkflowState {
   };
 }
 
+// ─── Storage ──────────────────────────────────────────────────────────────────
+
+// Repository<T> 需要 T 满足 Record<string, unknown> 约束(见 repository/types.ts)。
+// ThreadSession 是显式 interface,TS 不会自动满足该约束,这里用 intersection 局部兼容。
+type ThreadSessionEntity = ThreadSession & Record<string, unknown>;
+
+const sessionRepo = new JsonFileRepository<ThreadSessionEntity>({
+  filename: 'sessions.json',
+  idField: 'id',
+  indexes: [
+    { field: 'channelId' },
+    { field: 'categoryId' },
+    { field: 'providerSessionId' },
+  ],
+  serialize: (session) => {
+    // 写盘时去掉 SessionRuntimeFields(当前只有 isGenerating);
+    // 加载时 parse 会补回默认 false,因此 JSON 里不会出现这一字段。
+    const { isGenerating: _ignored, ...persistent } = session as ThreadSessionEntity & {
+      isGenerating: boolean;
+    };
+    void _ignored;
+    return persistent;
+  },
+  parse: (raw, idx) => {
+    const issues: SchemaIssue[] = [];
+    const parsed = parseSessionPersistData(raw, idx, issues);
+    if (!parsed) {
+      if (issues.length > 0) {
+        console.warn(
+          `[session-manager] Dropped invalid session record at index ${idx}:\n${formatIssues(issues)}`,
+        );
+      }
+      return undefined;
+    }
+    // hydrate 到 ThreadSession:补齐默认值,强制清零运行时字段
+    return {
+      ...parsed,
+      provider: (parsed.provider ?? 'claude') as ProviderName,
+      verbose: parsed.verbose ?? false,
+      mode: parsed.mode ?? 'auto',
+      subagentDepth: parsed.subagentDepth ?? 0,
+      type: parsed.type ?? 'persistent',
+      workflowState: parsed.workflowState ?? createDefaultWorkflowState(),
+      currentTurn: parsed.currentTurn ?? 0,
+      humanResolved: parsed.humanResolved ?? false,
+      discoverySource: parsed.discoverySource ?? 'discord',
+      isGenerating: false,
+    } as ThreadSessionEntity;
+  },
+  debounceMs: 1000,
+});
+
+// Session 运行时状态(不持久化)
+const sessionControllers = new Map<string, AbortController>();
+const sessionAbortReasons = new Map<string, 'user' | 'watchdog'>();
+
+let initialized = false;
+
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
 export async function loadSessions(): Promise<void> {
-  const data = await loadPersistedSessions();
-  if (data.length === 0) return;
+  if (initialized) return;
+  await sessionRepo.init();
+  initialized = true;
 
-  let cleaned = false;
-
-  for (const s of data) {
-    if (!s.categoryId) {
-      cleaned = true;
-      console.warn(`Skipping invalid persisted session "${s.id}" (missing categoryId).`);
-      continue;
-    }
-    if (!s.channelId) {
-      cleaned = true;
-      console.warn(`Skipping invalid persisted session "${s.id}" (missing channelId).`);
-      continue;
-    }
-    if (sessions.has(s.channelId)) {
-      cleaned = true;
-      console.warn(
-        `Skipping duplicate persisted session "${s.id}" (channelId ${s.channelId} already loaded).`,
-      );
-      continue;
-    }
-
-    const provider: ProviderName = s.provider ?? 'claude';
-
-    sessions.set(s.channelId, {
-      ...s,
-      provider,
-      verbose: s.verbose ?? false,
-      mode: s.mode ?? 'auto',
-      subagentDepth: s.subagentDepth ?? 0,
-      type: s.type ?? 'persistent',
-      codexSandboxMode: s.codexSandboxMode,
-      codexApprovalPolicy: s.codexApprovalPolicy,
-      codexBypass: s.codexBypass,
-      codexNetworkAccessEnabled: s.codexNetworkAccessEnabled,
-      codexWebSearchMode: s.codexWebSearchMode,
-      workflowState: s.workflowState ?? createDefaultWorkflowState(),
-      currentTurn: s.currentTurn ?? 0,
-      humanResolved: s.humanResolved ?? false,
-      currentInteractionMessageId: s.currentInteractionMessageId,
-      statusCardMessageId: s.statusCardMessageId,
-      lastInboundMessageId: s.lastInboundMessageId,
-      discoverySource: s.discoverySource ?? 'discord',
-      lastObservedState: s.lastObservedState,
-      lastObservedEventKey: s.lastObservedEventKey,
-      lastObservedAt: s.lastObservedAt,
-      lastObservedCwd: s.lastObservedCwd,
-      remoteHumanControl: s.remoteHumanControl,
-      activeHumanGateId: s.activeHumanGateId,
-      isGenerating: false,
-    });
-    idToChannelId.set(s.id, s.channelId);
-
-    // 维护 provider session 索引
-    if (s.providerSessionId) {
-      providerSessionIndex.set(s.providerSessionId, s.channelId);
-    }
-
-    // 维护 category 索引
-    if (!sessionsByCategory.has(s.categoryId)) {
-      sessionsByCategory.set(s.categoryId, new Set());
-    }
-    sessionsByCategory.get(s.categoryId)!.add(s.channelId);
-
-    // P2b:从磁盘恢复后把 turn/humanResolved 灌入 StateMachine,使其成为 in-memory 权威源。
-    // 调用前临时关闭 persister,避免刚读完又回写一次。
+  const sessions = sessionRepo.getAll();
+  // P2b:把 turn/humanResolved 灌入 StateMachine,使其成为 in-memory 权威源。
+  for (const s of sessions) {
     if ((s.currentTurn ?? 0) > 0 || (s.humanResolved ?? false)) {
       stateMachine.transition(
         s.id,
@@ -133,25 +126,19 @@ export async function loadSessions(): Promise<void> {
     }
   }
 
-  if (cleaned) {
-    await saveSessions();
+  console.log(`[session-manager] Restored ${sessions.length} session(s)`);
+}
+
+/**
+ * 直接 mutate session 对象后,调用该函数同步索引并调度一次写盘。
+ * 不知道具体哪个 session 变动时,会对所有 session reindex(n 很小,代价低)。
+ */
+function scheduleResyncAndWrite(sessionId?: string): void {
+  if (sessionId) {
+    sessionRepo.reindex(sessionId);
+    return;
   }
-
-  console.log(`[session-manager] Restored ${sessions.size} session(s)`);
-}
-
-function saveSessions(): Promise<void> {
-  return saveAllSessions(sessions);
-}
-
-/** 延迟批量保存（1秒内的多次调用会合并） */
-function debouncedSave(): void {
-  debouncedSavePersistence(sessions);
-}
-
-/** 立即保存（用于关键操作） */
-function saveSessionsImmediate(): Promise<void> {
-  return saveImmediatePersistence(sessions);
+  for (const s of sessionRepo.getAll()) sessionRepo.reindex(s.id);
 }
 
 // ─── Create / CRUD ────────────────────────────────────────────────────────────
@@ -207,17 +194,17 @@ export async function createSession(params: CreateSessionParams): Promise<Thread
     throw new Error(`Directory does not exist: ${resolvedDir}`);
   }
 
-  if (sessions.has(channelId)) {
+  // channelId 唯一性:走索引的 O(1) 检查
+  if (sessionRepo.find({ where: { channelId }, limit: 1 }).length > 0) {
     throw new Error(`Session for channelId "${channelId}" already exists`);
   }
 
-  // Derive a unique internal ID from the agentLabel (auto-deduplicate)
+  // 从 agentLabel 派生唯一内部 ID(autoincrement 后缀防冲突)
   const baseId = sanitizeName(agentLabel);
   let id = baseId;
   let suffix = 1;
-  while (idToChannelId.has(id)) {
+  while (sessionRepo.get(id)) {
     suffix++;
-    // Append suffix to the already-sanitized base (avoiding re-truncation that loses the suffix)
     const suffixStr = `-${suffix}`;
     id = baseId.slice(0, 50 - suffixStr.length) + suffixStr;
   }
@@ -261,18 +248,22 @@ export async function createSession(params: CreateSessionParams): Promise<Thread
     remoteHumanControl,
   };
 
-  sessions.set(channelId, session);
-  idToChannelId.set(id, channelId);
-  if (providerSessionId) {
-    providerSessionIndex.set(providerSessionId, channelId);
-  }
+  await sessionRepo.save(session as ThreadSessionEntity);
+  await sessionRepo.flush(); // createSession 立即落盘
 
-  if (!sessionsByCategory.has(categoryId)) {
-    sessionsByCategory.set(categoryId, new Set());
-  }
-  sessionsByCategory.get(categoryId)!.add(channelId);
-
-  await saveSessionsImmediate();
+  getDomainBus().emit(
+    SessionCreated,
+    {
+      sessionId: session.id,
+      channelId: session.channelId,
+      categoryId: session.categoryId,
+      provider: session.provider,
+      type: session.type,
+      mode: session.mode,
+      discoverySource: session.discoverySource ?? 'discord',
+    },
+    'session-registry',
+  );
 
   return session;
 }
@@ -280,12 +271,11 @@ export async function createSession(params: CreateSessionParams): Promise<Thread
 // ─── Lookups ──────────────────────────────────────────────────────────────────
 
 export function getSession(id: string): ThreadSession | undefined {
-  const channelId = idToChannelId.get(id);
-  return channelId ? sessions.get(channelId) : undefined;
+  return sessionRepo.get(id);
 }
 
 export function getSessionByChannel(channelId: string): ThreadSession | undefined {
-  return sessions.get(channelId);
+  return sessionRepo.find({ where: { channelId }, limit: 1 })[0];
 }
 
 /** Backward-compat alias */
@@ -300,28 +290,16 @@ export function getSessionByProviderSession(
   providerSessionId: string,
 ): ThreadSession | undefined {
   if (!providerSessionId) return undefined;
-  const channelId = providerSessionIndex.get(providerSessionId);
-  if (channelId) {
-    const session = sessions.get(channelId);
-    if (session && session.provider === provider) return session;
-  }
-  return undefined;
+  const candidates = sessionRepo.find({ where: { providerSessionId } });
+  return candidates.find((s) => s.provider === provider);
 }
 
 export function getSessionsByCategory(categoryId: string): ThreadSession[] {
-  const channelIds = sessionsByCategory.get(categoryId);
-  if (!channelIds) return [];
-
-  const result: ThreadSession[] = [];
-  for (const channelId of channelIds) {
-    const session = sessions.get(channelId);
-    if (session) result.push(session);
-  }
-  return result;
+  return sessionRepo.find({ where: { categoryId } });
 }
 
 export function getAllSessions(): ThreadSession[] {
-  return Array.from(sessions.values());
+  return sessionRepo.getAll();
 }
 
 export function findCodexSessionForMonitor(
@@ -338,7 +316,7 @@ export function findCodexSessionForMonitor(
   let matched: ThreadSession | undefined;
   let matchedLen = -1;
 
-  for (const session of sessions.values()) {
+  for (const session of sessionRepo.getAll()) {
     if (session.provider !== 'codex') continue;
     const sessionDir = resolvePath(session.directory);
     if (normalizedCwd !== sessionDir && !normalizedCwd.startsWith(`${sessionDir}/`)) continue;
@@ -357,7 +335,6 @@ function stripCodexMonitorPrefix(sessionId: string): string {
 
 export function findCodexSessionByProviderSessionId(providerSessionId: string): ThreadSession | undefined {
   const normalized = stripCodexMonitorPrefix(providerSessionId);
-  // Try O(1) index lookup first
   const byNormalized = getSessionByProviderSession('codex', normalized);
   if (byNormalized) return byNormalized;
   if (normalized !== providerSessionId) {
@@ -371,7 +348,7 @@ export function findCodexSessionByCwd(cwd: string): ThreadSession | undefined {
   let best: ThreadSession | undefined;
   let bestLen = -1;
 
-  for (const session of sessions.values()) {
+  for (const session of sessionRepo.getAll()) {
     if (session.provider !== 'codex') continue;
     const dir = resolvePath(session.directory);
     const isMatch = normalizedCwd === dir || normalizedCwd.startsWith(`${dir}${sep}`);
@@ -401,15 +378,11 @@ export function updateSession(
   sessionId: string,
   patch: Partial<ThreadSession>,
 ): void {
-  const session = getSession(sessionId);
+  const session = sessionRepo.get(sessionId);
   if (!session) return;
-  // Update providerSessionId index if changed
-  if (patch.providerSessionId !== undefined && patch.providerSessionId !== session.providerSessionId) {
-    if (session.providerSessionId) providerSessionIndex.delete(session.providerSessionId);
-    if (patch.providerSessionId) providerSessionIndex.set(patch.providerSessionId, session.channelId);
-  }
   Object.assign(session, patch);
-  debouncedSave();
+  // patch 可能改变索引字段(例如 providerSessionId) → 走 reindex 确保索引一致,并调度写盘
+  sessionRepo.reindex(sessionId);
 }
 
 export async function updateSessionPermissions(
@@ -426,13 +399,14 @@ export async function updateSessionPermissions(
     >
   >,
 ): Promise<void> {
-  const session = getSession(sessionId);
+  const session = sessionRepo.get(sessionId);
   if (!session) {
     throw new Error(`Session "${sessionId}" not found`);
   }
   Object.assign(session, patch);
   session.lastActivity = Date.now();
-  await saveSessionsImmediate();
+  sessionRepo.reindex(sessionId); // 更新这些字段通常不触发索引变化,但统一走 reindex 保证落盘
+  await sessionRepo.flush();
 }
 
 // ─── Permission resolution (delegated to session-permissions.ts) ─────────────
@@ -450,26 +424,26 @@ export function setStatusCardBinding(
   sessionId: string,
   binding: { messageId?: string },
 ): void {
-  const session = getSession(sessionId);
+  const session = sessionRepo.get(sessionId);
   if (!session) return;
   session.statusCardMessageId = binding.messageId;
-  debouncedSave();
+  sessionRepo.reindex(sessionId);
 }
 
 export function setCurrentInteractionMessage(
   sessionId: string,
   messageId: string | undefined,
 ): void {
-  const session = getSession(sessionId);
+  const session = sessionRepo.get(sessionId);
   if (!session) return;
   session.currentInteractionMessageId = messageId;
-  debouncedSave();
+  sessionRepo.reindex(sessionId);
 }
 
 // ─── End session ──────────────────────────────────────────────────────────────
 
 export async function endSession(id: string): Promise<void> {
-  const session = getSession(id);
+  const session = sessionRepo.get(id);
   if (!session) return; // Idempotent: already ended
 
   const controller = sessionControllers.get(session.id);
@@ -479,79 +453,80 @@ export async function endSession(id: string): Promise<void> {
   sessionControllers.delete(session.id);
   sessionAbortReasons.delete(session.id);
 
-  idToChannelId.delete(session.id);
-  if (session.providerSessionId) {
-    providerSessionIndex.delete(session.providerSessionId);
-  }
-  sessions.delete(session.channelId);
+  // 快照 channelId / categoryId 在 delete 前,避免事件 payload 引用到被移除的记录
+  const channelId = session.channelId;
+  const categoryId = session.categoryId;
 
-  const categorySet = sessionsByCategory.get(session.categoryId);
-  if (categorySet) {
-    categorySet.delete(session.channelId);
-    if (categorySet.size === 0) {
-      sessionsByCategory.delete(session.categoryId);
-    }
-  }
+  await sessionRepo.delete(id);
+  await sessionRepo.flush();
 
   getOutputPort().cleanupPanel(session.id);
-  await saveSessionsImmediate();
+
+  getDomainBus().emit(
+    SessionEnded,
+    { sessionId: id, channelId, categoryId },
+    'session-registry',
+  );
 }
 
 // ─── State management ─────────────────────────────────────────────────────────
 
 export function setMode(sessionId: string, mode: SessionMode): void {
-  const session = getSession(sessionId);
-  if (session) {
-    session.mode = mode;
-    if (mode === 'monitor') {
-      session.monitorProviderSessionId = undefined;
-    }
-    session.workflowState = createDefaultWorkflowState();
-    debouncedSave();
+  const session = sessionRepo.get(sessionId);
+  if (!session) return;
+  const previousMode = session.mode;
+  session.mode = mode;
+  if (mode === 'monitor') {
+    session.monitorProviderSessionId = undefined;
+  }
+  session.workflowState = createDefaultWorkflowState();
+  sessionRepo.reindex(sessionId);
+  if (previousMode !== mode) {
+    getDomainBus().emit(
+      SessionModeChanged,
+      { sessionId, previousMode, nextMode: mode },
+      'session-registry',
+    );
   }
 }
 
 export function setVerbose(sessionId: string, verbose: boolean): void {
-  const session = getSession(sessionId);
-  if (session) {
-    session.verbose = verbose;
-    debouncedSave();
-  }
+  const session = sessionRepo.get(sessionId);
+  if (!session) return;
+  session.verbose = verbose;
+  sessionRepo.reindex(sessionId);
 }
 
 export function setModel(sessionId: string, model: string): void {
-  const session = getSession(sessionId);
-  if (session) {
-    session.model = model;
-    debouncedSave();
-  }
+  const session = sessionRepo.get(sessionId);
+  if (!session) return;
+  session.model = model;
+  sessionRepo.reindex(sessionId);
 }
 
 export function setAgentPersona(sessionId: string, persona: string | undefined): void {
-  const session = getSession(sessionId);
-  if (session) {
-    session.agentPersona = persona;
-    debouncedSave();
-  }
+  const session = sessionRepo.get(sessionId);
+  if (!session) return;
+  session.agentPersona = persona;
+  sessionRepo.reindex(sessionId);
 }
 
 export function setMonitorGoal(sessionId: string, goal: string | undefined): void {
-  const session = getSession(sessionId);
-  if (session) {
-    session.monitorGoal = goal;
-    if (!goal) {
-      session.monitorProviderSessionId = undefined;
-    }
-    session.workflowState = createDefaultWorkflowState();
-    debouncedSave();
+  const session = sessionRepo.get(sessionId);
+  if (!session) return;
+  session.monitorGoal = goal;
+  if (!goal) {
+    session.monitorProviderSessionId = undefined;
   }
+  session.workflowState = createDefaultWorkflowState();
+  sessionRepo.reindex(sessionId);
 }
 
 export function updateWorkflowState(
   sessionId: string,
   patch: Partial<SessionWorkflowState> | ((current: SessionWorkflowState) => SessionWorkflowState),
 ): void {
-  const session = getSession(sessionId);
+  const session = sessionRepo.get(sessionId);
   if (!session) return;
 
   const next =
@@ -563,14 +538,14 @@ export function updateWorkflowState(
     ...next,
     updatedAt: Date.now(),
   };
-  debouncedSave();
+  sessionRepo.reindex(sessionId);
 }
 
 export function resetWorkflowState(sessionId: string): void {
-  const session = getSession(sessionId);
+  const session = sessionRepo.get(sessionId);
   if (!session) return;
   session.workflowState = createDefaultWorkflowState();
-  debouncedSave();
+  sessionRepo.reindex(sessionId);
 }
 
 // ─── Abort management ─────────────────────────────────────────────────────────
@@ -580,7 +555,7 @@ export function abortSession(sessionId: string): boolean {
 }
 
 export function abortSessionWithReason(sessionId: string, reason: 'user' | 'watchdog'): boolean {
-  const session = getSession(sessionId);
+  const session = sessionRepo.get(sessionId);
   if (!session) return false;
 
   const controller = sessionControllers.get(session.id);
@@ -588,13 +563,13 @@ export function abortSessionWithReason(sessionId: string, reason: 'user' | 'watc
 
   if (controller) {
     controller.abort();
-    // 无论 isGenerating 是否为 true，一旦中止即移除引用，防止悬挂的 controller
+    // 无论 isGenerating 是否为 true,一旦中止即移除引用,防止悬挂的 controller
     sessionControllers.delete(session.id);
   }
 
   if (session.isGenerating) {
     session.isGenerating = false;
-    debouncedSave();
+    sessionRepo.reindex(sessionId);
     return true;
   }
 
@@ -602,7 +577,7 @@ export function abortSessionWithReason(sessionId: string, reason: 'user' | 'watc
 }
 
 export function consumeAbortReason(sessionId: string): 'user' | 'watchdog' | undefined {
-  const session = getSession(sessionId);
+  const session = sessionRepo.get(sessionId);
   if (!session) return undefined;
   const reason = sessionAbortReasons.get(session.id);
   sessionAbortReasons.delete(session.id);
@@ -612,7 +587,7 @@ export function consumeAbortReason(sessionId: string): 'user' | 'watchdog' | und
 // ─── Abort controller access (for executor) ───────────────────────────────────
 
 export function getSessionController(sessionId: string): AbortController | undefined {
-  const session = getSession(sessionId);
+  const session = sessionRepo.get(sessionId);
   if (!session) return undefined;
   return sessionControllers.get(session.id);
 }
@@ -630,19 +605,31 @@ export function clearSessionAbortReason(sessionId: string): void {
 }
 
 export function markSessionGenerating(sessionId: string, generating: boolean): void {
-  const session = getSession(sessionId);
+  const session = sessionRepo.get(sessionId);
   if (!session) return;
   session.isGenerating = generating;
   session.lastActivity = Date.now();
+  sessionRepo.reindex(sessionId);
   if (!generating) {
-    void saveSessionsImmediate();
+    void sessionRepo.flush();
   }
 }
 
 export function saveSessionImmediate(): Promise<void> {
-  return saveSessionsImmediate();
+  scheduleResyncAndWrite();
+  return sessionRepo.flush();
 }
 
 export function debouncedSaveSession(): void {
-  debouncedSave();
+  scheduleResyncAndWrite();
+}
+
+// ─── Testing utilities ────────────────────────────────────────────────────────
+
+/** 测试工具:清空仓储 + 运行时状态。仅供 vitest 使用。 */
+export async function _resetSessionRegistryForTest(): Promise<void> {
+  await sessionRepo.clear();
+  sessionControllers.clear();
+  sessionAbortReasons.clear();
+  initialized = false;
 }

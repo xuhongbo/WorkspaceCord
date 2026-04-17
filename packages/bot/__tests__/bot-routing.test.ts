@@ -35,7 +35,7 @@ vi.mock('@workspacecord/core', async (importOriginal) => {
   };
 });
 vi.mock('../src/commands.ts', () => ({ registerCommands: vi.fn() }));
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   loadSessions: vi.fn(),
   getAllSessions: vi.fn(() => []),
   endSession: vi.fn(),

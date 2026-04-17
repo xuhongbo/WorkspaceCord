@@ -11,12 +11,12 @@ import { stateMachine, type StateMachine } from '@workspacecord/state';
 import { toPlatformEvent, mapPlatformEventToState } from '@workspacecord/state';
 import type { ProviderEvent } from '@workspacecord/providers';
 import {
-  getSession,
   updateSession,
   getSessionPermissionSummary,
   setStatusCardBinding,
   setCurrentInteractionMessage,
 } from '@workspacecord/engine/session-registry';
+import { getSessionView } from '@workspacecord/engine/session-context';
 import { gateCoordinator } from '@workspacecord/state';
 import type {
   PlatformEvent,
@@ -85,7 +85,7 @@ stateMachine.registerTurnStatePersister((sessionId, projection) => {
 function createStatusCardProjectionContext(sessionId: string) {
   const panel = getPanel(sessionId);
   if (!panel) return undefined;
-  const session = getSession(sessionId);
+  const session = getSessionView(sessionId);
   return {
     statusCard: panel.statusCard,
     remoteHumanControl: session?.remoteHumanControl,
@@ -125,7 +125,7 @@ function resolveProviderSource(
   sessionId: string,
   fallback: 'claude' | 'codex' = 'claude',
 ): 'claude' | 'codex' {
-  const session = getSession(sessionId);
+  const session = getSessionView(sessionId);
   return session?.provider === 'codex' ? 'codex' : fallback;
 }
 
@@ -156,7 +156,7 @@ export async function initializeSessionPanel(
 
   const initialization = (async () => {
     const panel = new SessionPanelComponent(sessionId, channel);
-    const session = getSession(sessionId);
+    const session = getSessionView(sessionId);
 
     await panel.initialize({
       statusCardMessageId: options.statusCardMessageId,
@@ -212,7 +212,7 @@ export async function updateSessionState(
   performanceTracker.startStateUpdate(updateKey);
 
   if (!getPanel(sessionId) && options.channel) {
-    const session = getSession(sessionId);
+    const session = getSessionView(sessionId);
     await initializeSessionPanel(sessionId, options.channel, {
       statusCardMessageId: session?.statusCardMessageId,
       initialTurn: session?.currentTurn || 1,
@@ -229,7 +229,7 @@ export async function updateSessionState(
     return null;
   }
 
-  const session = getSession(sessionId);
+  const session = getSessionView(sessionId);
   if (
     platformEvent.source === 'codex' &&
     platformEvent.type === 'completed' &&
@@ -287,7 +287,7 @@ export async function handleResultEvent(
       metadata: { from: 'result' },
     });
   } else if (!event.success) {
-    const session = getSession(sessionId);
+    const session = getSessionView(sessionId);
     const failureText = textContent.trim() || event.errors.join('\n').trim() || '任务失败';
     await panel.summaryHandler.sendTurnFailure(
       failureText,
@@ -305,7 +305,7 @@ export async function handleResultEvent(
     });
   } else {
     const beforeProjection = getSessionProjection(sessionId);
-    const session = getSession(sessionId);
+    const session = getSessionView(sessionId);
     await panel.summaryHandler.sendTurnSummary(
       textContent,
       beforeProjection.turn,
@@ -330,7 +330,7 @@ export async function handleAwaitingHuman(
 ): Promise<string | null> {
   const panel = getPanel(sessionId);
   if (!panel) return null;
-  const session = getSession(sessionId);
+  const session = getSessionView(sessionId);
 
   if (!panel.checkInteractionCooldown()) {
     console.warn(

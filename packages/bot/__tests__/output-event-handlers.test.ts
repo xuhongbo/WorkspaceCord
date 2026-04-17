@@ -6,7 +6,7 @@ const queueDigest = vi.fn();
 const flushDigest = vi.fn().mockResolvedValue(undefined);
 const handleAwaitingHuman = vi.fn().mockResolvedValue(null);
 
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   getSession,
 }));
 

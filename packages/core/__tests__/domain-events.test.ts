@@ -5,6 +5,11 @@ import {
   GateResolved,
   SessionAwaitingHuman,
   SessionErrored,
+  SessionCreated,
+  SessionEnded,
+  SessionModeChanged,
+  MonitorRunStarted,
+  MonitorRunEnded,
   getDomainBus,
   _setDomainBusForTest,
 } from '../src/index.ts';
@@ -85,6 +90,44 @@ describe('domain event catalog (P3a)', () => {
     bus.emit(GateCreated, { gateId: 'x', sessionId: 's', provider: 'claude', isBlocking: false });
     expect(a).toHaveBeenCalledTimes(1);
     expect(b).toHaveBeenCalledTimes(1);
+  });
+
+  it('SessionCreated / SessionEnded / SessionModeChanged round-trip', () => {
+    const created = vi.fn();
+    const ended = vi.fn();
+    const modeChanged = vi.fn();
+    bus.on(SessionCreated, created);
+    bus.on(SessionEnded, ended);
+    bus.on(SessionModeChanged, modeChanged);
+
+    bus.emit(SessionCreated, {
+      sessionId: 's1',
+      channelId: 'c1',
+      categoryId: 'cat1',
+      provider: 'claude',
+      type: 'persistent',
+      mode: 'auto',
+      discoverySource: 'discord',
+    });
+    bus.emit(SessionModeChanged, { sessionId: 's1', previousMode: 'auto', nextMode: 'monitor' });
+    bus.emit(SessionEnded, { sessionId: 's1', channelId: 'c1', categoryId: 'cat1' });
+
+    expect(created.mock.calls[0][0].payload.sessionId).toBe('s1');
+    expect(modeChanged.mock.calls[0][0].payload.nextMode).toBe('monitor');
+    expect(ended.mock.calls[0][0].payload.channelId).toBe('c1');
+  });
+
+  it('MonitorRunStarted / MonitorRunEnded carry sessionId + status', () => {
+    const started = vi.fn();
+    const ended = vi.fn();
+    bus.on(MonitorRunStarted, started);
+    bus.on(MonitorRunEnded, ended);
+
+    bus.emit(MonitorRunStarted, { sessionId: 's1', runId: 'r1', goal: 'fix', maxIterations: 6 });
+    bus.emit(MonitorRunEnded, { sessionId: 's1', runId: 'r1', status: 'abandoned', iteration: 3 });
+
+    expect(started.mock.calls[0][0].payload.goal).toBe('fix');
+    expect(ended.mock.calls[0][0].payload.status).toBe('abandoned');
   });
 
   it('middleware runs but does not block emission', async () => {

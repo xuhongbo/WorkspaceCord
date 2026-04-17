@@ -46,7 +46,7 @@ vi.mock('@workspacecord/engine/project-manager', () => ({
   getMcpServers: vi.fn(() => []),
 }));
 
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   createSession,
   getSession,
   getSessionByChannel,

@@ -2,10 +2,8 @@
 // 从 panel-adapter.ts 抽出，原 relocateSessionPanelToBottom 及其超时兜底逻辑。
 
 import type { SessionChannel } from '../discord-types.ts';
-import {
-  getSession,
-  setStatusCardBinding,
-} from '@workspacecord/engine/session-registry';
+import { setStatusCardBinding } from '@workspacecord/engine/session-registry';
+import { getSessionView } from '@workspacecord/engine/session-context';
 import { getPanel } from './panel-state.ts';
 
 const RELOCATION_TIMEOUT_MS = 15_000;
@@ -17,7 +15,7 @@ export async function relocateSessionPanelToBottom(
 ): Promise<void> {
   let panel = getPanel(sessionId);
   if (!panel && channel) {
-    const session = getSession(sessionId);
+    const session = getSessionView(sessionId);
     const initPromise = initialize(sessionId, channel, {
       statusCardMessageId: session?.statusCardMessageId,
       initialTurn: session?.currentTurn || 1,

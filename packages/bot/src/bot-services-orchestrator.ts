@@ -3,7 +3,11 @@ import type { Client } from 'discord.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ServiceBus, intervalService, config } from '@workspacecord/core';
-import { registerOutputPort } from '@workspacecord/engine';
+import {
+  registerOutputPort,
+  reconcileAndCollectAutoResumeCandidates,
+  executeSessionContinue,
+} from '@workspacecord/engine';
 import { gateCoordinator } from '@workspacecord/state';
 import { DiscordOutputPort } from './discord-output-port.ts';
 import { LogBuffer } from './bot-log-buffer.ts';
@@ -19,7 +23,8 @@ import { stopMessageHandler } from './message-handler.ts';
 import { runSubagentWatchdog } from './subagent-manager.ts';
 import { loadArchived, checkAutoArchive } from './archive-manager.ts';
 import { loadProjects } from '@workspacecord/engine/project-manager';
-import { loadSessions, getSession } from '@workspacecord/engine/session-registry';
+import { loadSessions } from '@workspacecord/engine/session-registry';
+import { getSessionView } from '@workspacecord/engine/session-context';
 import { registerCommands } from './commands.ts';
 import { cleanupOldMessages, notifyUnmanagedCodexHint } from './bot-services-helpers.ts';
 
@@ -69,7 +74,10 @@ export class BotServicesOrchestrator {
     }
 
     setBotStartTime(Date.now());
-    await this.#invalidatePendingGates(client);
+    // 先让 gate registry 从磁盘加载 gates.json(历史 bug:此前从未调用 ⇒ pending gate 重启后丢)
+    await gateCoordinator.init();
+    await this.#reconcilePendingGates(client, logBuffer);
+    await this.#resumeAbandonedMonitorRuns(client, logBuffer);
 
     if (config.messageRetentionDays) {
       await cleanupOldMessages(client);
@@ -85,20 +93,63 @@ export class BotServicesOrchestrator {
     return { serviceBus: this.#serviceBus, logBuffer, presenceManager, logChannel, codexMonitor: null };
   }
 
-  async #invalidatePendingGates(client: Client): Promise<void> {
-    const invalidated = gateCoordinator.invalidateAllOnRestart();
-    if (!invalidated.length) return;
-    console.log(`[GateInvalidation] Invalidating ${invalidated.length} pending gates on restart`);
+  /**
+   * 重启后对悬挂的 Monitor run 执行 reconcile,并按 config.monitorAutoResumePolicy 续跑符合条件的 session。
+   * 续跑采用 fire-and-forget:每个 session 独立异步运行,不阻塞启动。
+   */
+  async #resumeAbandonedMonitorRuns(client: Client, logBuffer: LogBuffer): Promise<void> {
+    let result;
+    try {
+      result = await reconcileAndCollectAutoResumeCandidates(config.monitorAutoResumePolicy);
+    } catch (err) {
+      console.error('[MonitorAutoResume] reconcile failed:', err);
+      return;
+    }
 
-    for (const { gateId, discordMessageId } of invalidated) {
+    if (result.abandoned.length > 0) {
+      logBuffer.log(
+        `Marked ${result.abandoned.length} orphan monitor run(s) as abandoned on startup.`,
+      );
+    }
+
+    if (result.candidates.length === 0) return;
+
+    logBuffer.log(
+      `Auto-resuming ${result.candidates.length} monitor session(s) (policy=${config.monitorAutoResumePolicy}).`,
+    );
+
+    for (const candidate of result.candidates) {
+      const session = getSessionView(candidate.sessionId);
+      if (!session) continue;
+      const channel = client.channels.cache.get(candidate.channelId) as TextChannel | undefined;
+      if (!channel) {
+        console.warn(
+          `[MonitorAutoResume] sessionId=${candidate.sessionId} channel ${candidate.channelId} not accessible, skipping`,
+        );
+        continue;
+      }
+      console.log(
+        `[MonitorAutoResume] resuming sessionId=${candidate.sessionId} runId=${candidate.runId} lastIteration=${candidate.lastIteration}`,
+      );
+      void executeSessionContinue(session, channel).catch((err: unknown) => {
+        console.error(
+          `[MonitorAutoResume] sessionId=${candidate.sessionId} resume failed:`,
+          err,
+        );
+      });
+    }
+  }
+
+  async #reconcilePendingGates(client: Client, logBuffer: LogBuffer): Promise<void> {
+    const result = gateCoordinator.reconcileOnStartup(config.gateRestartPolicy);
+
+    // 过期或被策略标灰的:回填 Discord 消息为灰色
+    for (const { gateId, discordMessageId } of result.invalidated) {
       if (!discordMessageId) continue;
-
       const gate = gateCoordinator.getGate(gateId);
       if (!gate?.sessionId) continue;
-
-      const session = getSession(gate.sessionId);
+      const session = getSessionView(gate.sessionId);
       if (!session) continue;
-
       const channel = client.channels.cache.get(session.channelId) as TextChannel | undefined;
       if (!channel?.messages) continue;
 
@@ -115,11 +166,18 @@ export class BotServicesOrchestrator {
           })),
         });
       } catch (err) {
-        console.error(`[GateInvalidation] Failed to update message for gate ${gateId}:`, err);
+        console.error(`[GateReconcile] Failed to update message for gate ${gateId}:`, err);
       }
     }
 
-    console.log(`[GateInvalidation] ${invalidated.length} gates invalidated`);
+    if (result.resumed.length > 0) {
+      logBuffer.log(
+        `Resumed ${result.resumed.length} pending gate(s) across restart (policy=resume-pending).`,
+      );
+    }
+    if (result.invalidated.length > 0) {
+      logBuffer.log(`Closed ${result.invalidated.length} orphan/overdue gate(s) on startup.`);
+    }
   }
 
   #registerServices(

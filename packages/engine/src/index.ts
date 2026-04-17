@@ -83,6 +83,7 @@ export {
   sessionSupervisor,
   getSessionContext,
   requireSessionContext,
+  getSessionView,
 } from './session-context.ts';
 
 // MonitorRun persistence (P3b)
@@ -96,3 +97,9 @@ export {
   getMonitorRun,
   reconcileMonitorRunsOnStartup,
 } from './executor/monitor-run-store.ts';
+export {
+  type MonitorAutoResumePolicy,
+  type MonitorAutoResumeCandidate,
+  type ReconcileResult,
+  reconcileAndCollectAutoResumeCandidates,
+} from './executor/monitor-autoresume.ts';

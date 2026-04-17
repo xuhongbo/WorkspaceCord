@@ -2,7 +2,17 @@ import { ensureProvider } from '@workspacecord/providers';
 import type { ProviderEvent, ContentBlock, ProviderCanUseTool, ProviderSessionOptions } from '@workspacecord/providers';
 import type { ThreadSession } from '@workspacecord/core';
 import { config, isAbortError } from '@workspacecord/core';
-import * as registry from '../session-registry.ts';
+import {
+  resolveEffectiveCodexOptions,
+  resolveEffectiveClaudePermissionMode,
+  setSessionController,
+  clearSessionController,
+  markSessionGenerating,
+  debouncedSaveSession,
+  saveSessionImmediate,
+  getSessionController,
+} from '../session-registry.ts';
+import { getSessionContext } from '../session-context.ts';
 import { buildMonitorSystemPromptParts, buildSystemPromptParts } from './prompt-assembler.ts';
 
 function buildProviderOptions(
@@ -11,7 +21,7 @@ function buildProviderOptions(
   isMonitor = false,
   runtimeOverrides: { canUseTool?: ProviderCanUseTool } = {},
 ): ProviderSessionOptions {
-  const effectiveCodex = registry.resolveEffectiveCodexOptions(session);
+  const effectiveCodex = resolveEffectiveCodexOptions(session);
 
   return {
     directory: session.directory,
@@ -22,7 +32,7 @@ function buildProviderOptions(
     networkAccessEnabled: effectiveCodex.networkAccessEnabled,
     webSearchMode: effectiveCodex.webSearchMode,
     modelReasoningEffort: config.codexReasoningEffort || undefined,
-    claudePermissionMode: registry.resolveEffectiveClaudePermissionMode(session),
+    claudePermissionMode: resolveEffectiveClaudePermissionMode(session),
     systemPromptParts: isMonitor
       ? buildMonitorSystemPromptParts(session)
       : buildSystemPromptParts(session),
@@ -36,53 +46,48 @@ export async function* sendPrompt(
   prompt: string | ContentBlock[],
   runtimeOverrides: { canUseTool?: ProviderCanUseTool } = {},
 ): AsyncGenerator<ProviderEvent> {
-  const session = registry.getSession(sessionId);
-  if (!session) throw new Error(`Session "${sessionId}" not found`);
-  if (session.isGenerating) throw new Error('Session is already generating');
+  const ctx = getSessionContext(sessionId);
+  if (!ctx) throw new Error(`Session "${sessionId}" not found`);
+  if (ctx.session.isGenerating) throw new Error('Session is already generating');
 
   const controller = new AbortController();
-  registry.setSessionController(session.id, controller);
-  registry.markSessionGenerating(session.id, true);
+  setSessionController(ctx.sessionId, controller);
+  markSessionGenerating(ctx.sessionId, true);
 
-  const provider = await ensureProvider(session.provider);
+  const provider = await ensureProvider(ctx.session.provider);
 
   try {
     const stream = provider.sendPrompt(
       prompt,
-      buildProviderOptions(session, controller, false, runtimeOverrides),
+      buildProviderOptions(ctx.session, controller, false, runtimeOverrides),
     );
 
     for await (const event of stream) {
       if (event.type === 'session_init') {
-        const current = registry.getSession(sessionId);
-        if (current) {
-          current.providerSessionId = event.providerSessionId || undefined;
-          registry.debouncedSaveSession();
-        }
+        ctx.session.providerSessionId = event.providerSessionId || undefined;
+        ctx.save();
       }
       if (event.type === 'result') {
-        const current = registry.getSession(sessionId);
-        if (current) current.totalCost += event.costUsd;
+        ctx.session.totalCost += event.costUsd;
       }
       yield event;
     }
 
-    const current = registry.getSession(sessionId);
-    if (current) current.messageCount++;
+    ctx.session.messageCount++;
   } catch (err: unknown) {
     if (!isAbortError(err)) {
       throw err;
     }
   } finally {
     try {
-      registry.markSessionGenerating(sessionId, false);
-      registry.clearSessionController(sessionId);
-      await registry.saveSessionImmediate();
+      markSessionGenerating(sessionId, false);
+      clearSessionController(sessionId);
+      await saveSessionImmediate();
     } catch (cleanupErr) {
       console.error(`[ProviderRuntime] cleanup error for session ${sessionId}:`, cleanupErr);
-      // Ensure isGenerating is reset even if save fails
-      const s = registry.getSession(sessionId);
-      if (s) s.isGenerating = false;
+      // 降级:即便落盘失败,也要把 isGenerating 复位,防止后续误判
+      const fallback = getSessionContext(sessionId);
+      if (fallback) fallback.session.isGenerating = false;
     }
   }
 }
@@ -97,51 +102,46 @@ export async function* continueSessionWithOverrides(
   sessionId: string,
   runtimeOverrides: { canUseTool?: ProviderCanUseTool } = {},
 ): AsyncGenerator<ProviderEvent> {
-  const session = registry.getSession(sessionId);
-  if (!session) throw new Error(`Session "${sessionId}" not found`);
-  if (session.isGenerating) throw new Error('Session is already generating');
+  const ctx = getSessionContext(sessionId);
+  if (!ctx) throw new Error(`Session "${sessionId}" not found`);
+  if (ctx.session.isGenerating) throw new Error('Session is already generating');
 
   const controller = new AbortController();
-  registry.setSessionController(session.id, controller);
-  registry.markSessionGenerating(session.id, true);
+  setSessionController(ctx.sessionId, controller);
+  markSessionGenerating(ctx.sessionId, true);
 
-  const provider = await ensureProvider(session.provider);
+  const provider = await ensureProvider(ctx.session.provider);
 
   try {
     const stream = provider.continueSession(
-      buildProviderOptions(session, controller, false, runtimeOverrides),
+      buildProviderOptions(ctx.session, controller, false, runtimeOverrides),
     );
 
     for await (const event of stream) {
       if (event.type === 'session_init') {
-        const current = registry.getSession(sessionId);
-        if (current) {
-          current.providerSessionId = event.providerSessionId || undefined;
-          registry.debouncedSaveSession();
-        }
+        ctx.session.providerSessionId = event.providerSessionId || undefined;
+        ctx.save();
       }
       if (event.type === 'result') {
-        const current = registry.getSession(sessionId);
-        if (current) current.totalCost += event.costUsd;
+        ctx.session.totalCost += event.costUsd;
       }
       yield event;
     }
 
-    const current = registry.getSession(sessionId);
-    if (current) current.messageCount++;
+    ctx.session.messageCount++;
   } catch (err: unknown) {
     if (!isAbortError(err)) {
       throw err;
     }
   } finally {
     try {
-      registry.markSessionGenerating(sessionId, false);
-      registry.clearSessionController(sessionId);
-      await registry.saveSessionImmediate();
+      markSessionGenerating(sessionId, false);
+      clearSessionController(sessionId);
+      await saveSessionImmediate();
     } catch (cleanupErr) {
       console.error(`[ProviderRuntime] cleanup error for session ${sessionId}:`, cleanupErr);
-      const s = registry.getSession(sessionId);
-      if (s) s.isGenerating = false;
+      const fallback = getSessionContext(sessionId);
+      if (fallback) fallback.session.isGenerating = false;
     }
   }
 }
@@ -150,40 +150,34 @@ export async function* sendMonitorPrompt(
   sessionId: string,
   prompt: string,
 ): AsyncGenerator<ProviderEvent> {
-  const session = registry.getSession(sessionId);
-  if (!session) throw new Error(`Session "${sessionId}" not found`);
+  const ctx = getSessionContext(sessionId);
+  if (!ctx) throw new Error(`Session "${sessionId}" not found`);
 
-  const provider = await ensureProvider(session.provider);
-  const current = registry.getSession(sessionId);
-  if (current) current.lastActivity = Date.now();
+  const provider = await ensureProvider(ctx.session.provider);
+  ctx.session.lastActivity = Date.now();
 
-  // Link to the session's main abort controller so aborting the session also aborts the monitor
-  const mainController = registry.getSessionController(sessionId);
+  // 与主 session 的 abort controller 联动:主任务被中止时 monitor 也一并终止
+  const mainController = getSessionController(sessionId);
   const controller = new AbortController();
   const onMainAbort = () => controller.abort();
   mainController?.signal.addEventListener('abort', onMainAbort, { once: true });
 
   try {
-    const stream = provider.sendPrompt(prompt, buildProviderOptions(session, controller, true));
+    const stream = provider.sendPrompt(prompt, buildProviderOptions(ctx.session, controller, true));
 
     for await (const event of stream) {
       if (event.type === 'session_init') {
-        const cur = registry.getSession(sessionId);
-        if (cur) {
-          cur.monitorProviderSessionId = event.providerSessionId || undefined;
-          registry.debouncedSaveSession();
-        }
+        ctx.session.monitorProviderSessionId = event.providerSessionId || undefined;
+        ctx.save();
       }
       if (event.type === 'result') {
-        const cur = registry.getSession(sessionId);
-        if (cur) cur.totalCost += event.costUsd;
+        ctx.session.totalCost += event.costUsd;
       }
       yield event;
     }
 
-    const cur = registry.getSession(sessionId);
-    if (cur) cur.lastActivity = Date.now();
-    registry.debouncedSaveSession();
+    ctx.session.lastActivity = Date.now();
+    debouncedSaveSession();
   } catch (err: unknown) {
     if (!isAbortError(err)) {
       throw err;

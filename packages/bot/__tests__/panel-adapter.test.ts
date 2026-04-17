@@ -47,7 +47,7 @@ vi.mock('../src/discord/interaction-card.ts', () => ({
   },
 }));
 
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()),
   getSession,
   getSessionPermissionSummary,
   updateSession,

@@ -7,7 +7,8 @@ import {
 } from 'discord.js';
 import type { SessionChannel } from './discord-types.ts';
 import { config, truncate } from '@workspacecord/core';
-import { getSession, updateSession, abortSession, setMode } from '@workspacecord/engine/session-registry';
+import { updateSession, abortSession, setMode } from '@workspacecord/engine/session-registry';
+import { getSessionView } from '@workspacecord/engine/session-context';
 import {
   getExpandableContent,
   makeModeButtons,
@@ -38,7 +39,7 @@ function asComponentLike(component: unknown): ComponentLike {
 }
 
 export async function resolveAwaitingHumanIfNeeded(sessionId: string): Promise<void> {
-  const session = getSession(sessionId);
+  const session = getSessionView(sessionId);
   if (!session?.currentInteractionMessageId) {
     return;
   }
@@ -103,7 +104,7 @@ export async function handleAwaitingHumanButton(interaction: ButtonInteraction):
   const turn = parseInt(parts[2], 10);
   const action = parts[3] as 'approve' | 'deny';
 
-  const session = getSession(sessionId);
+  const session = getSessionView(sessionId);
   if (!session) {
     await interaction.reply({ content: '会话不存在', ephemeral: true });
     return true;
@@ -205,7 +206,7 @@ export async function handleContinueButton(interaction: ButtonInteraction): Prom
   const customId = interaction.customId;
   if (!customId.startsWith('continue:')) return false;
   const sessionId = customId.slice(9);
-  const session = getSession(sessionId);
+  const session = getSessionView(sessionId);
   if (!session) {
     await interaction.reply({ content: '会话不存在。', ephemeral: true });
     return true;
@@ -317,7 +318,7 @@ export async function handleModeButton(interaction: ButtonInteraction): Promise<
   const parts = customId.split(':');
   const sessionId = parts[1];
   const newMode = parts[2] as 'auto' | 'plan' | 'normal' | 'monitor';
-  const session = getSession(sessionId);
+  const session = getSessionView(sessionId);
   if (!session) {
     await interaction.reply({ content: '会话不存在。', ephemeral: true });
     return true;
@@ -334,7 +335,7 @@ export async function handleModeButton(interaction: ButtonInteraction): Promise<
   await interaction.reply({ content: `已切换至 **${labels[newMode]}**`, ephemeral: true });
   try {
     const original = interaction.message;
-    const liveSession = getSession(sessionId);
+    const liveSession = getSessionView(sessionId);
     const updatedComponents: EditableRow[] = original.components.map((row) => {
       if (!('components' in row)) return row as unknown as EditableRow;
       const first = asComponentLike(row.components?.[0]);
@@ -358,7 +359,7 @@ export async function handleSelectMenuAction(interaction: StringSelectMenuIntera
     const sessionId = parts[1];
     const questionIndex = parseInt(parts[2], 10);
     const selected = interaction.values[0];
-    const session = getSession(sessionId);
+    const session = getSessionView(sessionId);
     if (!session) {
       await interaction.reply({ content: '会话不存在。', ephemeral: true });
       return true;
@@ -401,7 +402,7 @@ export async function handleSelectMenuAction(interaction: StringSelectMenuIntera
     const afterPrefix = customId.slice(14);
     const sessionId = afterPrefix.includes(':') ? afterPrefix.split(':')[0] : afterPrefix;
     const selected = interaction.values[0];
-    const session = getSession(sessionId);
+    const session = getSessionView(sessionId);
     if (!session) {
       await interaction.reply({ content: '会话不存在。', ephemeral: true });
       return true;
@@ -421,7 +422,7 @@ export async function handleSelectMenuAction(interaction: StringSelectMenuIntera
   if (customId.startsWith('select:')) {
     const sessionId = customId.slice(7);
     const selected = interaction.values[0];
-    const session = getSession(sessionId);
+    const session = getSessionView(sessionId);
     if (!session) {
       await interaction.reply({ content: '会话不存在。', ephemeral: true });
       return true;

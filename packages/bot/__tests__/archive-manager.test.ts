@@ -16,7 +16,8 @@ vi.mock('@workspacecord/engine/project-manager', () => ({
   setHistoryChannelId,
 }));
 
-vi.mock('@workspacecord/engine/session-registry', () => ({
+vi.mock('@workspacecord/engine/session-registry', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   endSession,
   getAllSessions,
   getSessionsByCategory,
