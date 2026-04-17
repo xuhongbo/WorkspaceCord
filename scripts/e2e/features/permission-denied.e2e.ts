@@ -47,7 +47,7 @@ async function runOne(
         return blob.includes('⛔ 权限拒绝：Write');
       });
     },
-    { since, timeoutMs: 8_000, label: `digest ⛔ message (${provider})` },
+    { since, timeoutMs: 15_000, label: `digest ⛔ message (${provider})` },
   );
 
   const { getSessionView } = await import(
@@ -66,7 +66,7 @@ async function runOne(
       () => fetchStatusCard(channel, sv.statusCardMessageId),
       '最近拒绝',
       '⛔ Write',
-      { timeoutMs: 10_000, label: `最近拒绝 field (${provider})` },
+      { timeoutMs: 15_000, label: `最近拒绝 field (${provider})` },
     );
   } catch (err) {
     const msg = await fetchStatusCard(channel, sv.statusCardMessageId);

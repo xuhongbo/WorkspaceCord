@@ -507,9 +507,19 @@ export async function handleAgentBatch(interaction: ChatInputCommandInteraction)
     await interaction.reply({ content: '此频道没有活跃的会话。', ephemeral: true });
     return;
   }
+  // Batch approval hooks into the Claude canUseTool path. Codex uses
+  // `approvalPolicy` on its own thread and never reaches this store, so
+  // enabling batch mode would look successful but actually defer nothing.
+  if (session.provider !== 'claude') {
+    await interaction.reply({
+      content: '批量审批模式目前仅支持 Claude 会话。Codex 请使用 `/agent permissions codex-approval` 配置。',
+      ephemeral: true,
+    });
+    return;
+  }
   const action = interaction.options.getString('action', true);
 
-  const source = session.provider === 'codex' ? 'codex' : 'claude';
+  const source = 'claude' as const;
 
   if (action === 'on') {
     await updateSessionState(session.id, {

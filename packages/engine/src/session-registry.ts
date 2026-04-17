@@ -33,6 +33,7 @@ import type {
 import { config } from '@workspacecord/core';
 import { stateMachine } from '@workspacecord/state';
 import { getOutputPort } from './output-port.ts';
+import { clearBatchApprovalStore } from './output/batch-approval-store.ts';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -452,6 +453,8 @@ export async function endSession(id: string): Promise<void> {
   }
   sessionControllers.delete(session.id);
   sessionAbortReasons.delete(session.id);
+  // Drain any deferred batch approvals so SDK turns don't leak on end/abort.
+  clearBatchApprovalStore(session.id);
 
   // 快照 channelId / categoryId 在 delete 前,避免事件 payload 引用到被移除的记录
   const channelId = session.channelId;

@@ -20,11 +20,28 @@ export interface BatchApprovalEntry {
   resolve: (action: BatchAction) => void;
 }
 
+/**
+ * Upper bound kept in lock-step with `MAX_PENDING_APPROVALS` in
+ * `xstate-session-machine.ts`. The state-machine queue is what users see on
+ * the status card; if this store grew beyond that cap, `approve-all` would
+ * fire approvals for tool calls the user never saw — a silent safety
+ * regression. When the store is full, new requests are auto-rejected so the
+ * SDK turn continues instead of blocking forever.
+ */
+export const MAX_BATCH_APPROVAL_STORE_SIZE = 100;
+
 const store = new Map<string, BatchApprovalEntry[]>();
 
-export function enqueueBatchApproval(sessionId: string, entry: BatchApprovalEntry): void {
+export type EnqueueResult = 'enqueued' | 'overflow';
+
+export function enqueueBatchApproval(sessionId: string, entry: BatchApprovalEntry): EnqueueResult {
   if (!store.has(sessionId)) store.set(sessionId, []);
-  store.get(sessionId)!.push(entry);
+  const queue = store.get(sessionId)!;
+  if (queue.length >= MAX_BATCH_APPROVAL_STORE_SIZE) {
+    return 'overflow';
+  }
+  queue.push(entry);
+  return 'enqueued';
 }
 
 export function drainBatchApprovals(sessionId: string, action: BatchAction): number {

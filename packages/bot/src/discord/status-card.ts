@@ -197,16 +197,34 @@ export class StatusCard {
   }
 
   private renderTodoList(items: TodoItem[]): string {
+    // Discord embed field value is capped at 1024 chars; stay well under to leave
+    // room for the prefix/suffix and embed overhead.
+    const TOTAL_BUDGET = 950;
     const MAX_LINES = 8;
-    const MAX_CHAR = 180;
+    const MAX_CHAR_PER_LINE = 180;
+
     const lines: string[] = [];
+    let used = 0;
+    let renderedCount = 0;
+
     for (const item of items.slice(0, MAX_LINES)) {
       const mark = item.completed ? '☑' : '☐';
-      lines.push(`${mark} ${truncate(item.text, MAX_CHAR)}`);
+      const line = `${mark} ${truncate(item.text, MAX_CHAR_PER_LINE)}`;
+      // +1 accounts for the newline that `join('\n')` will add between lines.
+      const cost = (lines.length > 0 ? 1 : 0) + line.length;
+      if (used + cost > TOTAL_BUDGET) break;
+      lines.push(line);
+      used += cost;
+      renderedCount++;
     }
-    if (items.length > MAX_LINES) {
-      lines.push(`… 还有 ${items.length - MAX_LINES} 项`);
+
+    const hidden = items.length - renderedCount;
+    if (hidden > 0) {
+      const more = `… 还有 ${hidden} 项`;
+      const cost = (lines.length > 0 ? 1 : 0) + more.length;
+      if (used + cost <= TOTAL_BUDGET) lines.push(more);
     }
+
     return lines.join('\n');
   }
 

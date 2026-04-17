@@ -97,33 +97,61 @@ export function createClaudePermissionHandler(
       const gateId = `batch-${liveSession.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const timestamp = Date.now();
       const displayName = context.displayName || toolName;
-      stateMachine.enqueuePendingApproval(liveSession.id, { gateId, toolName: displayName, detail, timestamp });
-      // Nudge the status card so the new queue item shows up immediately
-      await getOutputPort().updateState(liveSession.id, {
-        type: 'batch_approval_changed',
-        sessionId: liveSession.id,
-        source: liveSession.provider === 'codex' ? 'codex' : 'claude',
-        confidence: 'high',
-        timestamp,
-        metadata: {
-          enabled: true,
-          pendingApprovals: stateMachine.getSnapshot(liveSession.id).pendingApprovals,
-        },
-      });
-      getOutputPort().queueDigest(liveSession.id, {
-        kind: 'batch',
-        text: `已入批量审批队列：${truncate(toolName, 40)}`,
-      });
 
       const batchAction = await new Promise<'approve' | 'reject'>((resolve) => {
-        enqueueBatchApproval(liveSession.id, {
+        let settled = false;
+        const settle = (action: 'approve' | 'reject') => {
+          if (settled) return;
+          settled = true;
+          resolve(action);
+        };
+
+        const enqueueResult = enqueueBatchApproval(liveSession.id, {
           gateId,
           toolUseID: context.toolUseID,
           toolName: displayName,
           detail,
           timestamp,
-          resolve,
+          resolve: settle,
         });
+
+        if (enqueueResult === 'overflow') {
+          console.warn(
+            `[SessionExecutor] permission:batch-overflow sessionId=${liveSession.id} tool=${toolName} reason="queue at capacity"`,
+          );
+          settle('reject');
+          return;
+        }
+
+        stateMachine.enqueuePendingApproval(liveSession.id, {
+          gateId,
+          toolName: displayName,
+          detail,
+          timestamp,
+        });
+        // Nudge the status card so the new queue item shows up immediately
+        void getOutputPort()
+          .updateState(liveSession.id, {
+            type: 'batch_approval_changed',
+            sessionId: liveSession.id,
+            source: liveSession.provider === 'codex' ? 'codex' : 'claude',
+            confidence: 'high',
+            timestamp,
+            metadata: {
+              enabled: true,
+              pendingApprovals: stateMachine.getSnapshot(liveSession.id).pendingApprovals,
+            },
+          })
+          .catch(() => {});
+        getOutputPort().queueDigest(liveSession.id, {
+          kind: 'batch',
+          text: `已入批量审批队列：${truncate(toolName, 40)}`,
+        });
+
+        // Session abort (user /agent stop, bot shutdown, etc.) must unblock
+        // the pending canUseTool; otherwise the SDK turn leaks forever.
+        if (context.signal.aborted) settle('reject');
+        else context.signal.addEventListener('abort', () => settle('reject'), { once: true });
       });
 
       if (batchAction === 'approve') {

@@ -6,7 +6,10 @@ export async function waitFor<T>(
   probe: () => Promise<T | null | undefined>,
   opts: { timeoutMs?: number; intervalMs?: number; label?: string } = {},
 ): Promise<T> {
-  const timeoutMs = opts.timeoutMs ?? 10_000;
+  // Default raised to 15s: Discord REST latency from some networks commonly
+  // hits 1-2s per request, and we poll every 300ms with 500ms debounce in the
+  // panel renderer. 10s was too tight on slow links.
+  const timeoutMs = opts.timeoutMs ?? 15_000;
   const intervalMs = opts.intervalMs ?? 300;
   const label = opts.label ?? 'condition';
   const deadline = Date.now() + timeoutMs;

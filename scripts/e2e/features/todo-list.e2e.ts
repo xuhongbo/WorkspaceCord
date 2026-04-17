@@ -45,7 +45,7 @@ async function runOne(
     () => fetchStatusCard(channel, sv.statusCardMessageId),
     /^待办（1\/2）/,
     '☑ task A',
-    { timeoutMs: 8_000, label: `待办 field populated (${provider})` },
+    { timeoutMs: 15_000, label: `待办 field populated (${provider})` },
   );
   await waitForEmbedField(
     () => fetchStatusCard(channel, sv.statusCardMessageId),
@@ -65,7 +65,7 @@ async function runOne(
   await waitForEmbedFieldAbsent(
     () => fetchStatusCard(channel, sv.statusCardMessageId),
     /^待办/,
-    { timeoutMs: 8_000, label: `待办 field absent when list empty (${provider})` },
+    { timeoutMs: 15_000, label: `待办 field absent when list empty (${provider})` },
   );
 }
 

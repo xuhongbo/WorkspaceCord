@@ -5,6 +5,7 @@ import {
   getBatchApprovalCount,
   getBatchApprovalQueue,
   clearBatchApprovalStore,
+  MAX_BATCH_APPROVAL_STORE_SIZE,
   type BatchApprovalEntry,
 } from '../src/output/batch-approval-store.ts';
 
@@ -27,10 +28,21 @@ describe('batch-approval-store', () => {
   });
 
   it('enqueue + count + queue returns pending items', () => {
-    enqueueBatchApproval('s1', makeEntry({ gateId: 'g1' }));
-    enqueueBatchApproval('s1', makeEntry({ gateId: 'g2' }));
+    expect(enqueueBatchApproval('s1', makeEntry({ gateId: 'g1' }))).toBe('enqueued');
+    expect(enqueueBatchApproval('s1', makeEntry({ gateId: 'g2' }))).toBe('enqueued');
     expect(getBatchApprovalCount('s1')).toBe(2);
     expect(getBatchApprovalQueue('s1').map((e) => e.gateId)).toEqual(['g1', 'g2']);
+  });
+
+  it('returns overflow and drops the entry once the queue is full', () => {
+    for (let i = 0; i < MAX_BATCH_APPROVAL_STORE_SIZE; i++) {
+      expect(enqueueBatchApproval('s1', makeEntry({ gateId: `g${i}` }))).toBe('enqueued');
+    }
+    expect(getBatchApprovalCount('s1')).toBe(MAX_BATCH_APPROVAL_STORE_SIZE);
+    const result = enqueueBatchApproval('s1', makeEntry({ gateId: 'overflow' }));
+    expect(result).toBe('overflow');
+    expect(getBatchApprovalCount('s1')).toBe(MAX_BATCH_APPROVAL_STORE_SIZE);
+    expect(getBatchApprovalQueue('s1').every((e) => e.gateId !== 'overflow')).toBe(true);
   });
 
   it('drainBatchApprovals calls every resolver with the given action', () => {
