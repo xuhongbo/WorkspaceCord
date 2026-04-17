@@ -78,4 +78,14 @@ describe('batch-approval-store', () => {
     expect(calls).toEqual(['reject', 'reject']);
     expect(getBatchApprovalCount('s1')).toBe(0);
   });
+
+  it('after overflow + clear, a fresh enqueue is accepted again (no zombie retention)', () => {
+    for (let i = 0; i < MAX_BATCH_APPROVAL_STORE_SIZE; i++) {
+      enqueueBatchApproval('s1', makeEntry({ gateId: `g${i}` }));
+    }
+    expect(enqueueBatchApproval('s1', makeEntry({ gateId: 'would-overflow' }))).toBe('overflow');
+    clearBatchApprovalStore('s1');
+    expect(getBatchApprovalCount('s1')).toBe(0);
+    expect(enqueueBatchApproval('s1', makeEntry({ gateId: 'fresh' }))).toBe('enqueued');
+  });
 });

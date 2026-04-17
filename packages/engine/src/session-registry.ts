@@ -455,6 +455,7 @@ export async function endSession(id: string): Promise<void> {
   sessionAbortReasons.delete(session.id);
   // Drain any deferred batch approvals so SDK turns don't leak on end/abort.
   clearBatchApprovalStore(session.id);
+  stateMachine.clearPendingApprovals(session.id);
 
   // 快照 channelId / categoryId 在 delete 前,避免事件 payload 引用到被移除的记录
   const channelId = session.channelId;
@@ -569,6 +570,13 @@ export function abortSessionWithReason(sessionId: string, reason: 'user' | 'watc
     // 无论 isGenerating 是否为 true,一旦中止即移除引用,防止悬挂的 controller
     sessionControllers.delete(session.id);
   }
+
+  // Batch-approval entries must not outlive an aborted session — otherwise
+  // stale pendings accumulate across /agent stop cycles, inflating the
+  // approve-all/reject-all count and eventually hitting the overflow cap.
+  // Drains the backing store (resolves to reject) + wipes the visible queue.
+  clearBatchApprovalStore(session.id);
+  stateMachine.clearPendingApprovals(session.id);
 
   if (session.isGenerating) {
     session.isGenerating = false;
