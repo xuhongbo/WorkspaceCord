@@ -15,7 +15,7 @@ import {
 import { getSessionContext } from '../session-context.ts';
 import { buildMonitorSystemPromptParts, buildSystemPromptParts } from './prompt-assembler.ts';
 
-function buildProviderOptions(
+export function buildProviderOptions(
   session: ThreadSession,
   controller: AbortController,
   isMonitor = false,

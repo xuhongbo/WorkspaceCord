@@ -208,10 +208,15 @@ export const sessionMachine = setup({
     }),
     applyBatchApprovalSet: assign(({ context, event }) => {
       if (event.type !== 'BATCH_APPROVAL_SET') return context;
+      // Always copy so downstream reference-equality checks (panel-adapter's
+      // contextChanged) see a fresh array when the queue is re-seeded.
+      const pending = event.enabled
+        ? [...(event.pendingApprovals ?? context.pendingApprovals ?? [])]
+        : [];
       return {
         ...context,
         batchApprovalMode: event.enabled,
-        pendingApprovals: event.enabled ? (event.pendingApprovals ?? context.pendingApprovals ?? []) : [],
+        pendingApprovals: pending,
         updatedAt: event.updatedAt,
       };
     }),

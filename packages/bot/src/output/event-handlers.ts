@@ -241,7 +241,7 @@ const MODE_LABELS: Record<string, string> = {
   monitor: '监控',
 };
 
-const TERMINAL_REASON_LABELS: Record<string, string> = {
+export const TERMINAL_REASON_LABELS: Record<string, string> = {
   completed: '已完成',
   max_turns: '已达最大轮次',
   aborted: '已中止',
@@ -254,7 +254,7 @@ const TERMINAL_REASON_LABELS: Record<string, string> = {
   error: '异常',
 };
 
-function formatTerminalReason(reason: string | undefined, fallbackSuccess: boolean): string {
+export function formatTerminalReason(reason: string | undefined, fallbackSuccess: boolean): string {
   if (!reason) return fallbackSuccess ? '已完成' : '异常';
   return TERMINAL_REASON_LABELS[reason] ?? reason;
 }

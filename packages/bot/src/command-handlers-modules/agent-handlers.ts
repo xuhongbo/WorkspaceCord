@@ -13,6 +13,7 @@ import { createSession, getSessionByChannel, getSessionsByCategory, setMode, set
 import { getSessionView } from '@workspacecord/engine/session-context';
 import { drainBatchApprovals, getBatchApprovalCount } from '@workspacecord/engine/output/batch-approval-store';
 import { stateMachine } from '@workspacecord/state';
+import { updateSessionState } from '../panel-adapter.ts';
 import * as projectMgr from '@workspacecord/engine/project-manager';
 import { archiveSession } from '../archive-manager.ts';
 import { executeSessionContinue } from '@workspacecord/engine/session-executor';
@@ -508,8 +509,17 @@ export async function handleAgentBatch(interaction: ChatInputCommandInteraction)
   }
   const action = interaction.options.getString('action', true);
 
+  const source = session.provider === 'codex' ? 'codex' : 'claude';
+
   if (action === 'on') {
-    stateMachine.setBatchApprovalMode(session.id, true);
+    await updateSessionState(session.id, {
+      type: 'batch_approval_changed',
+      sessionId: session.id,
+      source,
+      confidence: 'high',
+      timestamp: Date.now(),
+      metadata: { enabled: true },
+    });
     await interaction.reply({
       content: '✅ 已开启批量审批模式。后续权限请求将排队，使用 `/agent batch action:approve-all` 或 `reject-all` 统一处理。',
       ephemeral: true,
@@ -519,8 +529,15 @@ export async function handleAgentBatch(interaction: ChatInputCommandInteraction)
 
   if (action === 'off') {
     const pending = getBatchApprovalCount(session.id);
-    stateMachine.setBatchApprovalMode(session.id, false);
     drainBatchApprovals(session.id, 'reject');
+    await updateSessionState(session.id, {
+      type: 'batch_approval_changed',
+      sessionId: session.id,
+      source,
+      confidence: 'high',
+      timestamp: Date.now(),
+      metadata: { enabled: false },
+    });
     await interaction.reply({
       content: `✅ 已关闭批量审批模式${pending > 0 ? `，队列中 ${pending} 条待批请求已按拒绝处理。` : '。'}`,
       ephemeral: true,
@@ -539,7 +556,14 @@ export async function handleAgentBatch(interaction: ChatInputCommandInteraction)
     }
     const batchAction = action === 'approve-all' ? 'approve' : 'reject';
     const count = drainBatchApprovals(session.id, batchAction);
-    stateMachine.clearPendingApprovals(session.id);
+    await updateSessionState(session.id, {
+      type: 'batch_approval_changed',
+      sessionId: session.id,
+      source,
+      confidence: 'high',
+      timestamp: Date.now(),
+      metadata: { enabled: true, pendingApprovals: [] },
+    });
     await interaction.reply({
       content:
         count === 0

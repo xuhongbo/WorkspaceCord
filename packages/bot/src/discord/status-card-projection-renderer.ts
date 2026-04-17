@@ -22,6 +22,12 @@ export class StatusCardProjectionRenderer {
   ): Promise<void> {
     if (!context) return;
 
+    if (process.env.E2E_DEBUG_RENDER === '1') {
+      console.log(
+        `[renderer] ${sessionId} todoList=${projection.todoList?.length ?? 0} denials=${projection.recentPermissionDenials?.length ?? 0} batch=${projection.batchApprovalMode}`,
+      );
+    }
+
     try {
       await context.statusCard.update(projection.state, {
         turn: projection.turn,

@@ -98,6 +98,18 @@ export function createClaudePermissionHandler(
       const timestamp = Date.now();
       const displayName = context.displayName || toolName;
       stateMachine.enqueuePendingApproval(liveSession.id, { gateId, toolName: displayName, detail, timestamp });
+      // Nudge the status card so the new queue item shows up immediately
+      await getOutputPort().updateState(liveSession.id, {
+        type: 'batch_approval_changed',
+        sessionId: liveSession.id,
+        source: liveSession.provider === 'codex' ? 'codex' : 'claude',
+        confidence: 'high',
+        timestamp,
+        metadata: {
+          enabled: true,
+          pendingApprovals: stateMachine.getSnapshot(liveSession.id).pendingApprovals,
+        },
+      });
       getOutputPort().queueDigest(liveSession.id, {
         kind: 'batch',
         text: `已入批量审批队列：${truncate(toolName, 40)}`,

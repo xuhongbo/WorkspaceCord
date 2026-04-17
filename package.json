@@ -21,6 +21,7 @@
     "test:output-port:e2e": "node --experimental-strip-types scripts/output-port-e2e.ts",
     "test:startup-flow:e2e": "node --experimental-strip-types scripts/startup-flow-e2e.ts",
     "test:gate:e2e": "node --experimental-strip-types scripts/gate-e2e.ts",
+    "test:discord:e2e": "node --experimental-strip-types scripts/e2e/index.ts",
     "test:acceptance:local": "node --experimental-strip-types scripts/local-acceptance-suite.ts",
     "release": "node --experimental-strip-types scripts/release.ts",
     "lint": "eslint .",
